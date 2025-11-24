@@ -1,9 +1,9 @@
-📊 PNS Monitorização — Mortality Monitoring Shiny App
+PNS Monitorização — Mortality Monitoring Shiny App
 
 This Shiny application provides an interactive way to explore mortality rates in Portugal using data obtained directly from INE (Instituto Nacional de Estatística).
 It was designed to support public-health surveillance, epidemiological analysis, and forecasting of mortality trends at the national and municipal level.
 
-🚀 Main Features
+Main Features
 1. Mortality Rates (Taxas de Mortalidade)
 Download population and death counts dynamically from INE
 Compute:
@@ -31,7 +31,7 @@ Detect structural changes in mortality trends
 Works with both crude and age-standardised mortality rates
 Visualise breakpoints and export a clean summary table
 
-⚡ Performance Considerations
+Performance Considerations
 Access to INE’s API is relatively slow and sometimes rate-limited.
 To avoid long delays every time a user adjusts a setting, the app uses a controlled workflow:
 Data does NOT load automatically
@@ -41,7 +41,7 @@ Data is only downloaded after clicking:
 -“Carregar análise”
 The results are cached with memoise to avoid repeated downloads
 
-🔍 Data Sources
+Data Sources
 All data is fetched live from INE:
 Population
 -Indicators: 0008273, 0003182
@@ -52,7 +52,7 @@ Adjustments applied:
 -Infant mortality recoded as 0–4 anos
 -Exclusion of "Total" and "Idade ignorada" categories
 
-⚠️ Limitations
+Limitations
 INE API is slow and may temporarily fail
 Some municipalities have sparse mortality data, especially for specific causes
 Breakpoint detection may be unstable for series with low counts
