@@ -317,7 +317,8 @@ ui <- navbarPage(
           "rate_type",
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
-        )
+        ),
+        actionButton("go_rates", "Carregar dados")
       ),
       mainPanel(
         plotOutput("ratePlot", height = "400px"),
@@ -371,8 +372,9 @@ ui <- navbarPage(
           "Horizonte Temporal (anos):",
           min   = 1,
           max   = 8,
-          value = 3
-        )
+          value = 7
+        ),
+        actionButton("go_forecast", "Carregar projecções")
       ),
       mainPanel(
         plotOutput('forecastPlot',height='400px'),
@@ -408,7 +410,8 @@ ui <- navbarPage(
           "rate_type3",
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
-        )
+        ),
+        actionButton("go_breaks", "Carregar análise")
       ),
       mainPanel(
         plotOutput("breakPlot", height = "400px"),
@@ -428,7 +431,7 @@ server <- function(input, output, session) {
   # -------------------------
   # Rates Explorer
   # -------------------------
-  rates_sel <- reactive({
+  rates_sel <- eventReactive(input$go_rates, {
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
       incProgress(0.1)
       dat <- get_data_for_cached(input$area, input$cause)
@@ -448,6 +451,7 @@ server <- function(input, output, session) {
   })
   
   output$ratePlot <- renderPlot({
+    req(input$go_rates > 0)
     df <- rates_sel() %>%
       dplyr::filter(População == input$population)
     
@@ -474,6 +478,7 @@ server <- function(input, output, session) {
   })
   
   output$rateTable <- renderTable({
+    req(input$go_rates > 0)
     df <- rates_sel() %>%
       dplyr::filter(População == input$population)
     
@@ -493,7 +498,7 @@ server <- function(input, output, session) {
   # -------------------------
   # Forecast Explorer
   # -------------------------
-  forecast_sel <- reactive({
+  forecast_sel <- eventReactive(input$go_forecast, {
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
       incProgress(0.1)
       dat <- get_data_for_cached(input$area2, input$cause2)
@@ -558,9 +563,10 @@ server <- function(input, output, session) {
       incProgress(0.5)
       list(obs = obs_df, fc = fc_df, fits = fits)
     })
-  })
+  }, ignoreNULL = TRUE)
   
   output$forecastPlot <- renderPlot({
+    req(input$go_forecast > 0)
     dat <- forecast_sel()
     obs <- dat$obs
     fc  <- dat$fc
@@ -607,6 +613,7 @@ server <- function(input, output, session) {
       )
     },
     content = function(file) {
+      req(input$go_forecast > 0)
       dat <- forecast_sel()
       obs <- dat$obs
       fc  <- dat$fc
@@ -646,6 +653,7 @@ server <- function(input, output, session) {
   
   
   output$forecastTable <- renderTable({
+    req(input$go_forecast > 0)
     dat <- forecast_sel()
     obs <- dat$obs
     fc  <- dat$fc
@@ -692,6 +700,7 @@ server <- function(input, output, session) {
       )
     },
     content = function(file) {
+      req(input$go_forecast > 0)
       dat <- forecast_sel()
       obs <- dat$obs
       fc  <- dat$fc
@@ -729,6 +738,7 @@ server <- function(input, output, session) {
   
   
   output$accuracyTable <- renderTable({
+    req(input$go_forecast > 0)
     fits <- forecast_sel()$fits
     metrics <- c("ME", "RMSE", "MAE", "MAPE", "MASE")
     
@@ -748,6 +758,7 @@ server <- function(input, output, session) {
   }, digits = 2)
   
   output$residPlot <- renderPlot({
+    req(input$go_forecast > 0)
     fits <- forecast_sel()$fits
     res_df <- dplyr::bind_rows(lapply(names(fits), function(m) {
       res <- residuals(fits[[m]])
@@ -770,6 +781,7 @@ server <- function(input, output, session) {
   })
   
   output$residTable <- renderTable({
+    req(input$go_forecast > 0)
     fits <- forecast_sel()$fits
     tbl <- dplyr::bind_rows(lapply(names(fits), function(m) {
       fit <- fits[[m]]
@@ -788,7 +800,7 @@ server <- function(input, output, session) {
   # -------------------------
   # ITS / Breakpoints
   # -------------------------
-  its_sel <- reactive({
+  its_sel <- eventReactive(input$go_breaks, {
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
       incProgress(0.1)
       dat <- get_data_for_cached(input$area3, input$cause3)
@@ -807,9 +819,10 @@ server <- function(input, output, session) {
       incProgress(0.5)
       df
     })
-  })
+  }, ignoreNULL = TRUE)
   
   output$breakPlot <- renderPlot({
+    req(input$go_breaks > 0)
     df <- its_sel()
     y <- if (input$rate_type3 == "crude") df$crude_rate else df$dsr
     ylab <- if (input$rate_type3 == "crude") {
@@ -833,6 +846,7 @@ server <- function(input, output, session) {
   })
   
   output$breakTable <- renderTable({
+    req(input$go_breaks > 0)
     df <- its_sel()
     y <- if (input$rate_type3 == "crude") df$crude_rate else df$dsr
     ts_y <- stats::ts(y, start = min(df$year), frequency = 1)
