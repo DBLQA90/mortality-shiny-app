@@ -363,7 +363,9 @@ ui <- navbarPage(
             "RW drift" = "rwf",
             "Naive"    = "naive",
             "Theta"    = "theta",
-            "TBATS"    = "tbats"
+            "TBATS"    = "tbats",
+            "Holt"         = "holt",
+            "Holt (damped)"= "holt_damped"
           ),
           selected = c("arima", "ets")
         ),
@@ -542,7 +544,10 @@ server <- function(input, output, session) {
         rwf   = forecast::rwf(ts_data, drift = TRUE),
         naive = forecast::naive(ts_data),
         theta = forecast::thetaf(ts_data),
-        tbats = forecast::tbats(ts_data)
+        tbats = forecast::tbats(ts_data),
+        holt        = forecast::holt(ts_data),
+        holt_damped = forecast::holt(ts_data, damped = TRUE),
+        stop("Modelo desconhecido: ", m)
       ))
       names(fits) <- input$models
       
