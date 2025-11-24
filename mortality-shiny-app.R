@@ -299,7 +299,7 @@ get_data_for_cached <- memoise::memoise(get_data_for)
 # =========================================================
 
 ui <- navbarPage(
-  title = "PNS Monitorização",
+  title = "PNS Monitorização não oficial",
   
   tabPanel(
     "Taxas de Mortalidade",
