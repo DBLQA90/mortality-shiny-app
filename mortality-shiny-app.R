@@ -121,18 +121,30 @@ esp2013_df <- tibble(
 # Helpers for INE dimensions
 # =========================================================
 
-get_cat_id <- function(value, dimension_values) {
+get_cat_id <- function(value, dimension_values, dim_name = "unknown") {
+  requested <- as.character(value)
+
   ids <- dimension_values %>%
-    dplyr::filter(categ_dsg %in% value) %>%
-    dplyr::pull(cat_id)
-  if (length(ids) == 0) "" else ids
+    dplyr::mutate(categ_dsg_chr = as.character(categ_dsg)) %>%
+    dplyr::filter(categ_dsg_chr %in% requested) %>%
+    dplyr::pull(cat_id) %>%
+    unique()
+
+  if (length(ids) == 0) {
+    stop(
+      glue::glue("Não foi possível mapear categorias para {dim_name}: {paste(requested, collapse = ', ')}"),
+      call. = FALSE
+    )
+  }
+
+  ids
 }
 
 # General downloader: can include or exclude cause (dim5)
 # ---- replace the whole previous download_data() with this ----
 download_data <- function(indicator, dims, has_cause = FALSE) {
   dv   <- ineptR::get_dim_values(indicator)
-  cats <- purrr::map(dims, ~ get_cat_id(.x, dv))
+  cats <- purrr::imap(dims, ~ get_cat_id(.x, dv, dim_name = .y))
   names(cats) <- names(dims)
   
   # Build argument list without dim5 by default
@@ -187,13 +199,16 @@ compute_metrics <- function(df) {
       pop_total    = sum(pop),
       .groups = "drop"
     ) %>%
-    dplyr::rowwise() %>%
     dplyr::mutate(
-      crude_rate  = deaths_total / pop_total * 1e5,
-      crude_lower = stats::poisson.test(deaths_total)$conf.int[1] / pop_total * 1e5,
-      crude_upper = stats::poisson.test(deaths_total)$conf.int[2] / pop_total * 1e5
+      crude_rate = dplyr::if_else(pop_total > 0, deaths_total / pop_total * 1e5, NA_real_),
+      ci = purrr::map2(
+        deaths_total, pop_total,
+        ~ if (is.na(.y) || .y <= 0) c(NA_real_, NA_real_) else stats::poisson.test(.x)$conf.int / .y * 1e5
+      ),
+      crude_lower = purrr::map_dbl(ci, 1),
+      crude_upper = purrr::map_dbl(ci, 2)
     ) %>%
-    dplyr::ungroup()
+    dplyr::select(-ci)
   
   # Age-standardised (DSR)
   dsr <- df %>%
@@ -229,7 +244,10 @@ get_data_for <- function(area, cause) {
     has_cause = FALSE
   ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-    dplyr::rename(pop = value)
+    dplyr::rename(pop = value) %>%
+    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(source_priority = 1L)
   
   df_pop2 <- download_data(
     "0003182",
@@ -237,9 +255,17 @@ get_data_for <- function(area, cause) {
     has_cause = FALSE
   ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-    dplyr::rename(pop = value)
+    dplyr::rename(pop = value) %>%
+    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(source_priority = 2L)
   
-  df_pop <- dplyr::bind_rows(df_pop1, df_pop2)
+  df_pop <- dplyr::bind_rows(df_pop1, df_pop2) %>%
+    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
   
   # Deaths (with cause)
   df_death1 <- download_data(
@@ -256,7 +282,8 @@ get_data_for <- function(area, cause) {
     ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
-    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
+    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(source_priority = 1L)
   
   df_death2 <- download_data(
     "0013166",
@@ -272,9 +299,15 @@ get_data_for <- function(area, cause) {
     ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
-    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
+    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(source_priority = 2L)
   
-  df_death <- dplyr::bind_rows(df_death1, df_death2)
+  df_death <- dplyr::bind_rows(df_death1, df_death2) %>%
+    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
   
   # Combine
   df_full <- df_pop %>%
@@ -294,6 +327,21 @@ get_data_for <- function(area, cause) {
 # Cache to avoid repeated downloads for same (area, cause)
 get_data_for_cached <- memoise::memoise(get_data_for)
 
+get_selection_label <- function(selected_areas, custom_label = NULL) {
+  label <- if (is.null(custom_label)) "" else trimws(custom_label)
+  if (nzchar(label)) {
+    return(label)
+  }
+  if (length(selected_areas) == 1) {
+    return(selected_areas[[1]])
+  }
+  "Soma de locais"
+}
+
+safe_filename_token <- function(x) {
+  gsub("[^[:alnum:]_]+", "_", iconv(x, to = "ASCII//TRANSLIT"))
+}
+
 # =========================================================
 # UI
 # =========================================================
@@ -305,7 +353,8 @@ ui <- navbarPage(
     "Taxas de Mortalidade",
     sidebarLayout(
       sidebarPanel(
-        selectInput("area", "Local de residência:", choices = local_area),
+        selectInput("area", "Local de residência:", choices = local_area, multiple = TRUE, selected = "Portugal"),
+        textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
         selectInput("cause", "Causa de Morte:", choices = diseases),
         selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
@@ -318,7 +367,9 @@ ui <- navbarPage(
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
         ),
-        actionButton("go_rates", "Carregar dados")
+        actionButton("go_rates", "Carregar dados"),
+        br(), br(),
+        actionButton("cancel_rates", "Interromper carregamento")
       ),
       mainPanel(
         plotOutput("ratePlot", height = "400px"),
@@ -332,7 +383,8 @@ ui <- navbarPage(
     "Projecções",
     sidebarLayout(
       sidebarPanel(
-        selectInput("area2", "Local de residência:", choices = local_area),
+        selectInput("area2", "Local de residência:", choices = local_area, multiple = TRUE, selected = "Portugal"),
+        textInput("area_label2", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
         selectInput("cause2", "Causa de Morte:", choices = diseases),
         selectInput("sex2", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
@@ -376,7 +428,9 @@ ui <- navbarPage(
           max   = 8,
           value = 7
         ),
-        actionButton("go_forecast", "Carregar projecções")
+        actionButton("go_forecast", "Carregar projecções"),
+        br(), br(),
+        actionButton("cancel_forecast", "Interromper carregamento")
       ),
       mainPanel(
         plotOutput('forecastPlot',height='400px'),
@@ -400,7 +454,8 @@ ui <- navbarPage(
     "Análise de Quebras",
     sidebarLayout(
       sidebarPanel(
-        selectInput("area3", "Local de residência:", choices = local_area),
+        selectInput("area3", "Local de residência:", choices = local_area, multiple = TRUE, selected = "Portugal"),
+        textInput("area_label3", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
         selectInput("cause3", "Causa de Morte:", choices = diseases),
         selectInput("sex3", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
@@ -413,7 +468,9 @@ ui <- navbarPage(
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
         ),
-        actionButton("go_breaks", "Carregar análise")
+        actionButton("go_breaks", "Carregar análise"),
+        br(), br(),
+        actionButton("cancel_breaks", "Interromper carregamento")
       ),
       mainPanel(
         plotOutput("breakPlot", height = "400px"),
@@ -429,14 +486,42 @@ ui <- navbarPage(
 # =========================================================
 
 server <- function(input, output, session) {
+  cancel_seq <- reactiveValues(rates = 0L, forecast = 0L, breaks = 0L)
+
+  observeEvent(input$cancel_rates, {
+    cancel_seq$rates <- cancel_seq$rates + 1L
+    showNotification("Pedido de interrupção recebido (Taxas).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cancel_forecast, {
+    cancel_seq$forecast <- cancel_seq$forecast + 1L
+    showNotification("Pedido de interrupção recebido (Projecções).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cancel_breaks, {
+    cancel_seq$breaks <- cancel_seq$breaks + 1L
+    showNotification("Pedido de interrupção recebido (Quebras).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  abort_if_cancelled <- function(kind, token) {
+    if (!identical(cancel_seq[[kind]], token)) {
+      validate(need(FALSE, "Operação interrompida. A cache foi preservada."))
+    }
+  }
   
   # -------------------------
   # Rates Explorer
   # -------------------------
   rates_sel <- eventReactive(input$go_rates, {
+    token <- isolate(cancel_seq$rates)
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
+      validate(need(length(input$area) > 0, "Selecione pelo menos um local de residência."))
+      abort_if_cancelled("rates", token)
       incProgress(0.1)
-      dat <- get_data_for_cached(input$area, input$cause)
+      area_key <- sort(unique(input$area))
+      area_label <- get_selection_label(area_key, input$area_label)
+      dat <- get_data_for_cached(area_key, input$cause)
+      abort_if_cancelled("rates", token)
       incProgress(0.5)
       
       df1 <- dat$full  %>% dplyr::filter(sex == input$sex)
@@ -447,14 +532,16 @@ server <- function(input, output, session) {
         compute_metrics(df2) %>% dplyr::mutate(População = "Menos de 75 anos")
       )
       
+      abort_if_cancelled("rates", token)
       incProgress(0.4)
-      res
+      list(data = res, area_label = area_label)
     })
   })
   
   output$ratePlot <- renderPlot({
     req(input$go_rates > 0)
-    df <- rates_sel() %>%
+    dat <- rates_sel()
+    df <- dat$data %>%
       dplyr::filter(População == input$population)
     
     aes_y  <- if (input$rate_type == "crude") "crude_rate"  else "dsr"
@@ -471,7 +558,7 @@ server <- function(input, output, session) {
       geom_line(aes_string(y = aes_y), size = 1) +
       geom_point(aes_string(y = aes_y), size = 2) +
       labs(
-        title = paste(input$cause, input$sex, "(", input$population, ")"),
+        title = paste(dat$area_label, "-", input$cause, input$sex, "(", input$population, ")"),
         x = "Ano",
         y = ylbl
       ) +
@@ -481,7 +568,7 @@ server <- function(input, output, session) {
   
   output$rateTable <- renderTable({
     req(input$go_rates > 0)
-    df <- rates_sel() %>%
+    df <- rates_sel()$data %>%
       dplyr::filter(População == input$population)
     
     vals   <- if (input$rate_type == "crude") df$crude_rate  else df$dsr
@@ -501,9 +588,15 @@ server <- function(input, output, session) {
   # Forecast Explorer
   # -------------------------
   forecast_sel <- eventReactive(input$go_forecast, {
+    token <- isolate(cancel_seq$forecast)
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
+      validate(need(length(input$area2) > 0, "Selecione pelo menos um local de residência."))
+      abort_if_cancelled("forecast", token)
       incProgress(0.1)
-      dat <- get_data_for_cached(input$area2, input$cause2)
+      area_key <- sort(unique(input$area2))
+      area_label <- get_selection_label(area_key, input$area_label2)
+      dat <- get_data_for_cached(area_key, input$cause2)
+      abort_if_cancelled("forecast", token)
       incProgress(0.4)
       
       df1 <- dat$full  %>% dplyr::filter(sex == input$sex2)
@@ -530,6 +623,12 @@ server <- function(input, output, session) {
           need(FALSE, "Selecione pelo menos 3 anos para ajustar o modelo de projecção.")
         )
       }
+
+      if (length(input$models) == 0) {
+        validate(
+          need(FALSE, "Selecione pelo menos um modelo de projecção.")
+        )
+      }
       
       ts_data <- stats::ts(df_vals$value,
                            start = min(df_vals$year),
@@ -551,22 +650,31 @@ server <- function(input, output, session) {
       ))
       names(fits) <- input$models
       
-      fc_list <- lapply(fits, forecast::forecast, h = h)
+      fc_list <- lapply(fits, function(fit) {
+        abort_if_cancelled("forecast", token)
+        if (inherits(fit, "forecast")) {
+          fit
+        } else {
+          forecast::forecast(fit, h = h)
+        }
+      })
       
       obs_df <- df_vals
       fc_df <- dplyr::bind_rows(lapply(names(fc_list), function(m) {
+        abort_if_cancelled("forecast", token)
         fc <- fc_list[[m]]
         tibble(
           year  = seq(max(df_vals$year) + 1, by = 1, length.out = h),
           model = m,
           mean  = as.numeric(fc$mean),
-          lower = as.numeric(fc$lower[, 2]),
-          upper = as.numeric(fc$upper[, 2])
+          lower = if (is.null(dim(fc$lower))) as.numeric(fc$lower) else as.numeric(fc$lower[, ncol(fc$lower)]),
+          upper = if (is.null(dim(fc$upper))) as.numeric(fc$upper) else as.numeric(fc$upper[, ncol(fc$upper)])
         )
       }))
       
+      abort_if_cancelled("forecast", token)
       incProgress(0.5)
-      list(obs = obs_df, fc = fc_df, fits = fits)
+      list(obs = obs_df, fc = fc_df, fits = fits, area_label = area_label)
     })
   }, ignoreNULL = TRUE)
   
@@ -591,7 +699,7 @@ server <- function(input, output, session) {
         size = 1
       ) +
       labs(
-        title = "Horizonte Temporal (anos)",
+        title = paste("Horizonte Temporal (anos) -", dat$area_label),
         x = "Ano",
         y = if (input$rate_type2 == "crude") {
           "Taxa Bruta por 100.000"
@@ -607,11 +715,12 @@ server <- function(input, output, session) {
   
   output$downloadForecastPlot <- downloadHandler(
     filename = function() {
+      area_label <- if (input$go_forecast > 0) forecast_sel()$area_label else get_selection_label(input$area2, input$area_label2)
       paste0(
         "forecast_plot_",
-        gsub(" ", "_", input$area2),
+        safe_filename_token(area_label),
         "_",
-        gsub(" ", "_", input$cause2),
+        safe_filename_token(input$cause2),
         "_",
         Sys.Date(),
         ".png"
@@ -640,7 +749,7 @@ server <- function(input, output, session) {
             size = 1
           ) +
           labs(
-            title = "Horizonte Temporal (anos)",
+            title = paste("Horizonte Temporal (anos) -", dat$area_label),
             x = "Ano",
             y = if (input$rate_type2 == "crude")
               "Taxa Bruta por 100.000"
@@ -694,11 +803,12 @@ server <- function(input, output, session) {
   
   output$downloadForecastCSV <- downloadHandler(
     filename = function() {
+      area_label <- if (input$go_forecast > 0) forecast_sel()$area_label else get_selection_label(input$area2, input$area_label2)
       paste0(
         "forecast_",
-        gsub(" ", "_", input$area2),
+        safe_filename_token(area_label),
         "_",
-        gsub(" ", "_", input$cause2),
+        safe_filename_token(input$cause2),
         "_",
         Sys.Date(),
         ".csv"
@@ -806,9 +916,15 @@ server <- function(input, output, session) {
   # ITS / Breakpoints
   # -------------------------
   its_sel <- eventReactive(input$go_breaks, {
+    token <- isolate(cancel_seq$breaks)
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
+      validate(need(length(input$area3) > 0, "Selecione pelo menos um local de residência."))
+      abort_if_cancelled("breaks", token)
       incProgress(0.1)
-      dat <- get_data_for_cached(input$area3, input$cause3)
+      area_key <- sort(unique(input$area3))
+      area_label <- get_selection_label(area_key, input$area_label3)
+      dat <- get_data_for_cached(area_key, input$cause3)
+      abort_if_cancelled("breaks", token)
       incProgress(0.4)
       
       df1 <- dat$full  %>% dplyr::filter(sex == input$sex3)
@@ -821,14 +937,16 @@ server <- function(input, output, session) {
         dplyr::filter(População == input$population3) %>%
         dplyr::arrange(year)
       
+      abort_if_cancelled("breaks", token)
       incProgress(0.5)
-      df
+      list(data = df, area_label = area_label)
     })
   }, ignoreNULL = TRUE)
   
   output$breakPlot <- renderPlot({
     req(input$go_breaks > 0)
-    df <- its_sel()
+    dat <- its_sel()
+    df <- dat$data
     y <- if (input$rate_type3 == "crude") df$crude_rate else df$dsr
     ylab <- if (input$rate_type3 == "crude") {
       "Taxa Bruta por 100.000"
@@ -842,7 +960,7 @@ server <- function(input, output, session) {
       error = function(e) NULL
     )
     
-    plot(ts_y, ylab = ylab, xlab = "Ano", main = "Deteção de Quebras")
+    plot(ts_y, ylab = ylab, xlab = "Ano", main = paste("Deteção de Quebras -", dat$area_label))
     lines(ts_y)
     if (!is.null(bp_obj) && length(bp_obj$breakpoints) > 0) {
       bp_years <- df$year[bp_obj$breakpoints]
@@ -852,7 +970,7 @@ server <- function(input, output, session) {
   
   output$breakTable <- renderTable({
     req(input$go_breaks > 0)
-    df <- its_sel()
+    df <- its_sel()$data
     y <- if (input$rate_type3 == "crude") df$crude_rate else df$dsr
     ts_y <- stats::ts(y, start = min(df$year), frequency = 1)
     
