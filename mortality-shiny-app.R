@@ -688,7 +688,7 @@ advanced_forecasting_tab_ui <- function() {
 # =========================================================
 
 ui <- navbarPage(
-  title = "PNS Monitorização não oficial",
+  title = "Mortalidades e Projecções",
 
   observed_mortality_tab_ui(),
   beginner_forecasting_tab_ui(),
