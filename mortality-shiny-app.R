@@ -13,10 +13,11 @@ pacman::p_load(
   tidyverse,
   shiny,
   forecast,
-  ineptR,        # for INE data
   strucchange,   # for breakpoints
   memoise        # for caching INE queries
 )
+
+p_load_gh("c-matos/ineptR")
 
 # =========================================================
 # Parameters
