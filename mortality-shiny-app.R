@@ -17,7 +17,7 @@ pacman::p_load(
   memoise        # for caching INE queries
 )
 
-p_load_gh("c-matos/ineptR")
+pacman::p_load_gh("c-matos/ineptR")
 
 # =========================================================
 # Parameters
