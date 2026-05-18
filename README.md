@@ -1,205 +1,126 @@
-Overview
+# Mortality Shiny App
 
-The application is organised into three main components:
+Unofficial Shiny app for exploring Portuguese mortality indicators from INE.
 
-Observed Mortality
-Beginner Forecasting (Guided)
-Advanced Forecasting (Full Modelling Framework)
+The app supports observed mortality analysis, guided forecasting, advanced model comparison, diagnostics, and structural break exploration. Results are intended for exploration, decision support, and research workflows, and should be interpreted with appropriate epidemiological and statistical caution.
 
-All computations are performed dynamically from INE data, with caching mechanisms to improve performance.
+## What changed in v5
 
-1. Observed Mortality
+- Replaced `ineptR` with the CRAN package `ineptr2`.
+- Uses INE indicators `0008273` and `0003182` for population.
+- Uses INE indicators `0008206` and `0013166` for deaths by cause.
+- Detects available years and causes from INE metadata instead of hard-coding them.
+- Keeps the app geography list based on the original manual `local_area` vector.
+- Requests only the years needed from each source indicator.
+- Adds persistent local caching for INE metadata and data queries.
+- Downloads data in small year/area/cause slices so interrupted or failed runs can reuse data already fetched.
+- Uses a large INE client timeout for long indicator calls.
 
-This module allows users to explore historical mortality data.
+## Running The App
 
-Features
-Selection of:
-Geographic area (single or multiple municipalities)
-Cause of death
-Sex
-Population scope:
-Total population
-Population under 75 years
-Rate type:
-Crude mortality rate
-Age-standardised rate (ESP 2013)
-Automatic computation of:
-Mortality rates (per 100,000)
-Poisson 95% confidence intervals (crude rates)
-Directly standardised rates (DSR) using ESP 2013
-Outputs:
-Summary table
-Time series plot
-Annual data table
+Install `pacman` once if needed:
 
-2. Beginner Forecasting (Guided)
+```r
+install.packages("pacman")
+```
 
-This module provides a simplified, user-friendly forecasting workflow.
+Then run the app from this repository:
 
-Features
-Uses the series already loaded in Observed Mortality
-Minimal configuration required:
-Forecast horizon
-Training window:
-Full history
-Last 10 / 15 / 20 years
-Mode:
-Recommended model
-Model comparison
-Outputs:
-Forecast plot
-Summary interpretation
-Reliability feedback (based on data characteristics)
-Purpose
+```r
+shiny::runApp("mortality-shiny-app.R")
+```
 
-Designed for users who want:
+`pacman::p_load()` will load or install the required runtime packages, including:
 
-Quick projections
-Reasonable defaults
-Minimal statistical configuration
+- `glue`
+- `PHEindicatormethods`
+- `tidyverse`
+- `shiny`
+- `forecast`
+- `ineptr2`
+- `strucchange`
+- `memoise`
 
-3. Advanced Forecasting
+## App Modules
 
-This is a full modelling framework for time series analysis and evaluation.
+### Observed Mortality
 
-It is divided into multiple sub-modules:
+Explore historical mortality rates by geography, cause of death, sex, and population scope.
 
-3.1. Model Specification
+Outputs include:
 
-Users define the full forecasting setup:
+- mortality rates per 100,000
+- Poisson 95% confidence intervals for crude rates
+- directly standardised rates using ESP 2013
+- time-series plots
+- summary and annual data tables
 
-Model families:
-ARIMA (auto or manual)
-ETS (auto or manual)
-Random Walk with Drift
-Naive
-Theta
-TBATS
-Holt / Holt (damped)
-Additional controls:
-Training window (custom years)
-Forecast horizon
-Confidence level
-Data transformation:
-Log with offset
-None
-Manual parameter specification available for:
-ARIMA (p, d, q, seasonal terms)
-ETS (error, trend, seasonality)
+### Beginner Forecasting
 
-3.2. Forecast Results
+Provides a guided forecasting workflow with simpler controls and reasonable defaults.
 
-Visualisation of:
-Observed vs forecasted values
-Prediction intervals
-Two modes:
-Single model
-Model comparison
-Outputs:
-Forecast table
-Summary metrics
-Download options:
-CSV (data)
-PNG (plot)
+The user can choose:
 
-3.3. Diagnostics
+- forecast horizon
+- training window
+- recommended model or model comparison mode
 
-Model validation tools:
+### Advanced Forecasting
 
-Residual analysis:
-Time series of residuals
-ACF / PACF plots
-Statistical testing:
-Ljung–Box test
-Model summaries:
-Full statistical output
+Provides a fuller modelling workflow, including:
 
-3.4. Backtesting and Model Comparison
+- ARIMA, ETS, random walk with drift, naive, Theta, TBATS, Holt, and damped Holt models
+- custom training windows
+- confidence interval controls
+- optional log transform
+- forecast tables and downloadable outputs
+- residual diagnostics
+- backtesting and model comparison
+- structural break analysis
 
-Two validation approaches:
+## Data Sources
 
-In-sample performance
-Holdout validation (last k years)
-Metrics
-ME
-RMSE
-MAE
-MAPE
-MASE
-Outputs
-Model ranking
-Accuracy tables
-Comparative plots
+All data is fetched from INE through `ineptr2`.
 
-3.5. Structural Break Analysis
+Population indicators:
 
-Detection of structural changes in mortality trends:
+- `0008273`
+- `0003182`
 
-Uses breakpoint detection methods
-Identifies:
-Break years
-Segmented periods
-Changes in mean level
-Outputs
-Breakpoint plot
-Segment summary table
-Interpretation text
-Data Sources
+Deaths by cause indicators:
 
-All data is fetched dynamically from INE using the ineptR package:
+- `0008206`
+- `0013166`
 
-Population
-Indicators:
-0008273
-0003182
-Deaths by cause
-Indicators:
-0008206
-0013166
-Adjustments applied
-Harmonisation of age bands
-Infant mortality recoded as 0–4 years
-Exclusion of:
-“Total”
-“Idade ignorada”
-Optional exclusion of older age bands (≥75 years)
-Performance and Architecture
-Controlled Data Loading
+The app harmonises age bands, recodes infant mortality into the `0-4` age group, excludes total or ignored age categories where needed, and can compute rates for the full population or the population under 75 years.
 
-Data is only fetched when explicitly requested:
+## Caching And Performance
 
-“Carregar dados”
-“Carregar projecções”
-Caching
-INE queries cached using memoise
-Separate caches for:
-Dimension metadata
-Data queries
-Benefits
-Avoids repeated API calls
-Improves responsiveness
-Reduces INE rate-limit issues
-Limitations
-INE API:
-Can be slow
-May temporarily fail or rate-limit requests
-Small-area data:
-Some municipalities have sparse counts
-Leads to instability in rates and forecasts
-Forecasting:
-Sensitive to:
-Short time series
-Structural breaks
-Low counts
-Breakpoint detection:
-Requires sufficient data length
-May produce unstable results in noisy series
-Data revisions:
-Historical INE updates are not version-controlled within the app
-Notes
-This is an unofficial tool (“não oficial”)
-Intended for:
-Exploration
-Decision support
-Research workflows
-Results should be interpreted with appropriate epidemiological and statistical caution
+The first request for a new area, cause, and year range can still take time, especially when it needs historical deaths from indicator `0008206`.
+
+To reduce repeated delays, the app uses:
+
+- in-memory caching during the Shiny session
+- persistent RDS files on disk
+- separate metadata and data cache expiry windows
+- granular data slices so partial downloads survive interruptions
+
+By default, cache files are written to `.mortality-shiny-cache` next to the app file.
+
+Optional environment variables:
+
+- `MORTALITY_APP_CACHE_DIR`: custom cache directory
+- `MORTALITY_METADATA_CACHE_MAX_AGE`: metadata cache age in seconds, default 24 hours
+- `MORTALITY_DATA_CACHE_MAX_AGE`: data cache age in seconds, default 7 days
+
+If an INE request fails but a stale cached file exists, the app will use the stale file and show a warning.
+
+## Limitations
+
+- INE API calls can be slow or temporarily unavailable.
+- Indicator `0008206` is particularly slow for some historical mortality requests.
+- Small municipalities and rare causes can produce sparse counts and unstable rates.
+- Forecasts are sensitive to short time series, low counts, and structural breaks.
+- Historical INE data revisions are not versioned inside the app.
+
+This is a non-official tool.

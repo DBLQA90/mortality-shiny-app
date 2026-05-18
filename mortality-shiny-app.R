@@ -13,19 +13,26 @@ pacman::p_load(
   tidyverse,
   shiny,
   forecast,
+  ineptr2,       # for INE data
   strucchange,   # for breakpoints
   memoise        # for caching INE queries
 )
-
-pacman::p_load_gh("c-matos/ineptR")
 
 # =========================================================
 # Parameters
 # =========================================================
 
-year_of_interest <- 1991:2023
+population_indicator_current <- "0008273"
+population_indicator_legacy  <- "0003182"
+death_indicator_legacy       <- "0008206"
+death_indicator_current      <- "0013166"
 
-local_area <- c(
+population_indicators <- c(population_indicator_current, population_indicator_legacy)
+death_indicators <- c(death_indicator_legacy, death_indicator_current)
+
+fallback_year_of_interest <- 1991:2023
+
+fallback_local_area <- c(
   "Portugal",
   "Abrantes", "Águeda", "Aguiar da Beira", "Alandroal", "Albergaria-a-Velha",
   "Albufeira", "Alcácer do Sal", "Alcanena", "Alcobaça", "Alcochete",
@@ -90,7 +97,7 @@ local_area <- c(
   "Vila Viçosa", "Vimioso", "Vinhais", "Viseu", "Vizela", "Vouzela"
 )
 
-diseases <- c(
+fallback_diseases <- c(
   "Todas as causas de morte",
   "Doenças do aparelho circulatório",
   "Doenças cérebro-vasculares",
@@ -135,23 +142,166 @@ esp2013_df <- tibble(
 # Helpers for INE dimensions
 # =========================================================
 
-get_cat_id <- function(value, dimension_values, dim_name = "unknown") {
-  requested <- as.character(value)
+ine_client <- ineptr2::INEClient$new(lang = "PT", timeout = 3600)
 
-  ids <- dimension_values %>%
-    dplyr::mutate(categ_dsg_chr = as.character(categ_dsg)) %>%
-    dplyr::filter(categ_dsg_chr %in% requested) %>%
-    dplyr::pull(cat_id) %>%
+normalize_ine_label <- function(x) {
+  x <- tolower(trimws(as.character(x)))
+  x <- gsub("[[:punct:]]+", " ", x)
+  x <- gsub("\\s+", " ", x)
+  trimws(x)
+}
+
+get_default_area_selection <- function() {
+  "Portugal"
+}
+
+get_app_dir <- function() {
+  ofiles <- vapply(
+    sys.frames(),
+    function(frame) {
+      if (!is.null(frame$ofile)) frame$ofile else NA_character_
+    },
+    character(1)
+  )
+  ofiles <- ofiles[!is.na(ofiles)]
+
+  if (length(ofiles) > 0) {
+    return(dirname(normalizePath(utils::tail(ofiles, 1), mustWork = FALSE)))
+  }
+
+  getwd()
+}
+
+persistent_cache_root <- Sys.getenv(
+  "MORTALITY_APP_CACHE_DIR",
+  file.path(get_app_dir(), ".mortality-shiny-cache")
+)
+persistent_metadata_cache_max_age <- as.numeric(Sys.getenv(
+  "MORTALITY_METADATA_CACHE_MAX_AGE",
+  24 * 60 * 60
+))
+persistent_data_cache_max_age <- as.numeric(Sys.getenv(
+  "MORTALITY_DATA_CACHE_MAX_AGE",
+  7 * 24 * 60 * 60
+))
+
+cache_file_token <- function(key) {
+  key_file <- tempfile(fileext = ".rds")
+  on.exit(unlink(key_file), add = TRUE)
+  saveRDS(key, key_file, version = 2)
+  unname(tools::md5sum(key_file))
+}
+
+ensure_cache_dir <- function(path) {
+  dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  path
+}
+
+read_persistent_cache <- function(path, max_age = NULL) {
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+
+  if (!is.null(max_age) && is.finite(max_age)) {
+    age <- as.numeric(difftime(Sys.time(), file.info(path)$mtime, units = "secs"))
+    if (is.na(age) || age > max_age) {
+      return(NULL)
+    }
+  }
+
+  tryCatch(readRDS(path), error = function(e) NULL)
+}
+
+write_persistent_cache <- function(value, path) {
+  ensure_cache_dir(dirname(path))
+  tmp <- tempfile(tmpdir = dirname(path), fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(value, tmp, version = 2)
+  file.rename(tmp, path)
+  value
+}
+
+with_persistent_cache <- function(path, max_age, label, expr) {
+  cached <- read_persistent_cache(path, max_age = max_age)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+
+  tryCatch(
+    write_persistent_cache(force(expr), path),
+    error = function(e) {
+      stale <- read_persistent_cache(path, max_age = NULL)
+      if (!is.null(stale)) {
+        warning(
+          glue::glue("Using stale cached {label} because INE could not be reached: {conditionMessage(e)}"),
+          call. = FALSE
+        )
+        return(stale)
+      }
+      stop(e)
+    }
+  )
+}
+
+metadata_cache_file <- function(indicator) {
+  file.path(
+    persistent_cache_root,
+    "metadata",
+    paste0(cache_file_token(list(lang = ine_client$lang, indicator = indicator)), ".rds")
+  )
+}
+
+data_cache_file <- function(indicator, cats, has_cause) {
+  file.path(
+    persistent_cache_root,
+    "data",
+    indicator,
+    paste0(cache_file_token(list(
+      lang = ine_client$lang,
+      indicator = indicator,
+      cats = cats,
+      has_cause = has_cause
+    )), ".rds")
+  )
+}
+
+get_cat_code <- function(value, dimension_values, dim_name = "unknown") {
+  requested <- as.character(value)
+  requested_norm <- normalize_ine_label(requested)
+  dim_number <- suppressWarnings(as.integer(sub("^dim", "", dim_name)))
+  code_col <- if ("categ_cod" %in% names(dimension_values)) "categ_cod" else "cat_id"
+
+  dimension_values_for_dim <- dimension_values
+  if (!is.na(dim_number) && "dim_num" %in% names(dimension_values_for_dim)) {
+    dimension_values_for_dim <- dimension_values_for_dim %>%
+      dplyr::filter(as.integer(.data$dim_num) == dim_number)
+  }
+
+  codes <- dimension_values_for_dim %>%
+    dplyr::mutate(
+      categ_dsg_chr = as.character(categ_dsg),
+      categ_dsg_norm = normalize_ine_label(categ_dsg_chr),
+      categ_cod_chr = if ("categ_cod" %in% names(.)) as.character(categ_cod) else NA_character_,
+      cat_id_chr = if ("cat_id" %in% names(.)) as.character(cat_id) else NA_character_
+    ) %>%
+    dplyr::filter(
+      categ_dsg_chr %in% requested |
+        categ_dsg_norm %in% requested_norm |
+        categ_cod_chr %in% requested |
+        cat_id_chr %in% requested
+    ) %>%
+    dplyr::pull(dplyr::all_of(code_col)) %>%
+    as.character() %>%
     unique()
 
-  if (length(ids) == 0) {
+  if (length(codes) == 0) {
     stop(
       glue::glue("Não foi possível mapear categorias para {dim_name}: {paste(requested, collapse = ', ')}"),
       call. = FALSE
     )
   }
 
-  ids
+  codes
 }
 
 # Bounded cache for INE dimension metadata (per indicator)
@@ -161,53 +311,255 @@ dim_values_cache <- cachem::cache_mem(
 )
 
 get_dim_values_cached <- memoise::memoise(
-  ineptR::get_dim_values,
+  function(indicator) {
+    with_persistent_cache(
+      path = metadata_cache_file(indicator),
+      max_age = persistent_metadata_cache_max_age,
+      label = glue::glue("metadata for indicator {indicator}"),
+      ine_client$get_dim_values(indicator)
+    )
+  },
   cache = dim_values_cache
 )
 
+get_dimension_categories <- function(indicators, target_dim_num) {
+  purrr::map_dfr(indicators, function(indicator) {
+    dv <- get_dim_values_cached(indicator)
+
+    if (!"categ_cod" %in% names(dv)) {
+      dv$categ_cod <- dv$cat_id
+    }
+    if (!"categ_ord" %in% names(dv)) {
+      dv$categ_ord <- seq_len(nrow(dv))
+    }
+    if (!"categ_nivel" %in% names(dv)) {
+      dv$categ_nivel <- NA_character_
+    }
+
+    dv %>%
+      dplyr::filter(as.integer(.data$dim_num) == .env$target_dim_num) %>%
+      dplyr::mutate(
+        indicator = indicator,
+        categ_cod = as.character(.data$categ_cod),
+        cat_id = as.character(.data$cat_id),
+        categ_dsg = as.character(.data$categ_dsg),
+        categ_ord_num = suppressWarnings(as.numeric(.data$categ_ord)),
+        categ_nivel_num = suppressWarnings(as.numeric(.data$categ_nivel))
+      )
+  })
+}
+
+get_indicator_years <- function(indicators) {
+  get_dimension_categories(indicators, target_dim_num = 1) %>%
+    dplyr::transmute(year = suppressWarnings(as.integer(.data$categ_dsg))) %>%
+    dplyr::filter(!is.na(.data$year)) %>%
+    dplyr::pull(.data$year) %>%
+    unique()
+}
+
+get_source_year_plan <- function(indicators, priorities, requested_years) {
+  requested_years <- sort(unique(as.integer(requested_years)))
+  plan <- tibble(
+    indicator = indicators,
+    source_priority = priorities
+  ) %>%
+    dplyr::arrange(dplyr::desc(.data$source_priority))
+
+  covered_years <- integer(0)
+  plan$years <- vector("list", nrow(plan))
+
+  for (i in seq_len(nrow(plan))) {
+    available_years <- intersect(requested_years, get_indicator_years(plan$indicator[[i]]))
+    source_years <- setdiff(available_years, covered_years)
+    plan$years[[i]] <- sort(source_years)
+    covered_years <- union(covered_years, source_years)
+  }
+
+  plan %>%
+    dplyr::filter(lengths(.data$years) > 0)
+}
+
+get_available_cause_choices <- function() {
+  cause_categories <- get_dimension_categories(death_indicators, target_dim_num = 5)
+  cause_codes_by_indicator <- split(cause_categories$categ_cod, cause_categories$indicator)
+  available_cause_codes <- Reduce(intersect, cause_codes_by_indicator)
+
+  cause_categories %>%
+    dplyr::filter(.data$categ_cod %in% available_cause_codes) %>%
+    dplyr::mutate(
+      source_priority = dplyr::case_when(
+        .data$indicator == death_indicator_current ~ 1L,
+        .data$indicator == death_indicator_legacy ~ 2L,
+        TRUE ~ 3L
+      )
+    ) %>%
+    dplyr::arrange(.data$source_priority, .data$categ_ord_num, .data$categ_dsg) %>%
+    dplyr::group_by(.data$categ_cod) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(.data$categ_ord_num, .data$categ_dsg) %>%
+    dplyr::pull(.data$categ_dsg)
+}
+
+get_metadata_or_fallback <- function(label, fallback, expr) {
+  tryCatch(
+    {
+      value <- force(expr)
+      if (length(value) == 0) {
+        stop(glue::glue("A metadata query returned no {label}."), call. = FALSE)
+      }
+      value
+    },
+    error = function(e) {
+      warning(
+        glue::glue("Using fallback {label} because INE metadata could not be read: {conditionMessage(e)}"),
+        call. = FALSE
+      )
+      fallback
+    }
+  )
+}
+
+year_of_interest <- get_metadata_or_fallback(
+  "years",
+  fallback_year_of_interest,
+  {
+    sort(intersect(
+      get_indicator_years(population_indicators),
+      get_indicator_years(death_indicators)
+    ))
+  }
+)
+
+local_area <- fallback_local_area
+
+diseases <- get_metadata_or_fallback(
+  "causes",
+  fallback_diseases,
+  get_available_cause_choices()
+)
+
 # General downloader: can include or exclude cause (dim5)
-# ---- replace the whole previous download_data() with this ----
 download_data <- function(indicator, dims, has_cause = FALSE) {
   dv   <- get_dim_values_cached(indicator)
-  cats <- purrr::imap(dims, ~ get_cat_id(.x, dv, dim_name = .y))
+  cats <- purrr::imap(dims, ~ get_cat_code(.x, dv, dim_name = .y))
   names(cats) <- names(dims)
   
-  # Build argument list without dim5 by default
-  args <- list(
-    indicator = indicator,
-    dim1      = cats$dim1,
-    dim2      = cats$dim2
+  args <- c(list(indicator), cats)
+
+  with_persistent_cache(
+    path = data_cache_file(indicator, cats, has_cause),
+    max_age = persistent_data_cache_max_age,
+    label = glue::glue("data for indicator {indicator}"),
+    {
+      raw <- do.call(ine_client$get_data, args)
+
+      out <- raw %>%
+        dplyr::transmute(
+          year     = as.integer(dim_1),
+          area     = geodsg,
+          sex_raw  = dim_3_t,
+          sex      = dplyr::recode(
+            as.character(dim_3),
+            "T" = "HM",
+            "1" = "H",
+            "2" = "M",
+            .default = dplyr::recode(
+              as.character(sex_raw),
+              "MF"       = "HM",
+              "Total"    = "HM",
+              "Homens"   = "H",
+              "Mulheres" = "M",
+              .default   = as.character(sex_raw)
+            )
+          ),
+          age_band = dim_4_t,
+          value    = as.numeric(valor)
+        )
+
+      if (has_cause) {
+        out <- out %>%
+          dplyr::mutate(cause = raw$dim_5_t)
+      }
+
+      out
+    }
   )
-  # Only add dim5 if we actually have it
-  if ("dim5" %in% names(cats)) {
-    args$dim5 <- cats$dim5
+}
+
+expand_download_slices <- function(years, areas, cause = NULL) {
+  slices <- tidyr::expand_grid(
+    year = sort(unique(as.integer(years))),
+    area = sort(unique(as.character(areas)))
+  )
+
+  if (!is.null(cause)) {
+    slices$cause <- as.character(cause)
   }
-  
-  # Call get_ine_data with only the arguments we need
-  raw <- do.call(ineptR::get_ine_data, args)
-  
-  out <- raw %>%
-    dplyr::transmute(
-      year     = dim_1,
-      area     = geodsg,
-      sex_raw  = dim_3_t,
-      sex      = dplyr::recode(
-        sex_raw,
-        "Total"    = "HM",
-        "Homens"   = "H",
-        "Mulheres" = "M",
-        .default   = sex_raw
-      ),
-      age_band = dim_4_t,
-      value    = as.numeric(valor)
-    )
-  
+
+  slices
+}
+
+empty_download_data <- function(has_cause = FALSE) {
+  out <- tibble(
+    year = integer(),
+    area = character(),
+    sex_raw = character(),
+    sex = character(),
+    age_band = character(),
+    value = numeric()
+  )
+
   if (has_cause) {
-    out <- out %>%
-      dplyr::mutate(cause = raw$dim_5_t)
+    out$cause <- character()
   }
-  
+
   out
+}
+
+download_data_slices <- function(indicator, years, areas, cause = NULL, has_cause = FALSE) {
+  slices <- expand_download_slices(years, areas, cause)
+  if (nrow(slices) == 0) {
+    return(empty_download_data(has_cause = has_cause))
+  }
+
+  failures <- list()
+  out <- purrr::pmap(slices, function(year, area, cause = NULL) {
+    tryCatch(
+      {
+        dims <- list(dim1 = year, dim2 = area)
+        if (has_cause) {
+          dims$dim5 <- cause
+        }
+        download_data(indicator, dims = dims, has_cause = has_cause)
+      },
+      error = function(e) {
+        failures[[length(failures) + 1L]] <<- glue::glue(
+          "{indicator} / {year} / {area}{if (has_cause) paste0(' / ', cause) else ''}: {conditionMessage(e)}"
+        )
+        NULL
+      }
+    )
+  })
+
+  out <- purrr::compact(out)
+  if (length(failures) > 0) {
+    warning(
+      glue::glue(
+        "Some INE slices could not be loaded and will be omitted from this run: {paste(unlist(failures), collapse = '; ')}"
+      ),
+      call. = FALSE
+    )
+  }
+  if (length(out) == 0) {
+    warning(
+      glue::glue("No cached or live INE slices were available for indicator {indicator}; this source will be omitted from this run."),
+      call. = FALSE
+    )
+    return(empty_download_data(has_cause = has_cause))
+  }
+
+  dplyr::bind_rows(out)
 }
 
 
@@ -261,73 +613,73 @@ compute_metrics <- function(df) {
 # Lazy INE loader: get data only for selected area + cause
 # =========================================================
 
-get_data_for <- function(area, cause) {
-  # Population (no cause)
-  df_pop1 <- download_data(
-    "0008273",
-    dims      = list(dim1 = year_of_interest, dim2 = area),
+prepare_population_data <- function(indicator, years, area, source_priority) {
+  download_data_slices(
+    indicator,
+    years     = years,
+    areas     = area,
     has_cause = FALSE
   ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
     dplyr::rename(pop = value) %>%
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = 1L)
-  
-  df_pop2 <- download_data(
-    "0003182",
-    dims      = list(dim1 = year_of_interest, dim2 = area),
-    has_cause = FALSE
+    dplyr::mutate(source_priority = source_priority)
+}
+
+prepare_death_data <- function(indicator, years, area, cause, source_priority) {
+  download_data_slices(
+    indicator,
+    years     = years,
+    areas     = area,
+    cause     = cause,
+    has_cause = TRUE
   ) %>%
+    dplyr::rename(deaths = value) %>%
+    dplyr::mutate(
+      age_band = dplyr::case_when(
+        age_band %in% c("Menos de 1 ano", "1 - 4 anos") ~ "0 - 4 anos",
+        TRUE ~ age_band
+      )
+    ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-    dplyr::rename(pop = value) %>%
-    dplyr::group_by(year, area, sex, age_band) %>%
-    dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = 2L)
-  
-  df_pop <- dplyr::bind_rows(df_pop1, df_pop2) %>%
+    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(source_priority = source_priority)
+}
+
+get_data_for <- function(area, cause, years = year_of_interest) {
+  years <- sort(unique(as.integer(years)))
+
+  population_plan <- get_source_year_plan(
+    indicators = c(population_indicator_current, population_indicator_legacy),
+    priorities = c(1L, 2L),
+    requested_years = years
+  )
+  death_plan <- get_source_year_plan(
+    indicators = c(death_indicator_legacy, death_indicator_current),
+    priorities = c(1L, 2L),
+    requested_years = years
+  )
+
+  df_pop <- purrr::pmap_dfr(
+    population_plan,
+    function(indicator, source_priority, years) {
+      prepare_population_data(indicator, years, area, source_priority)
+    }
+  ) %>%
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     dplyr::select(-source_priority)
-  
-  # Deaths (with cause)
-  df_death1 <- download_data(
-    "0008206",
-    dims      = list(dim1 = year_of_interest, dim2 = area, dim5 = cause),
-    has_cause = TRUE
+
+  df_death <- purrr::pmap_dfr(
+    death_plan,
+    function(indicator, source_priority, years) {
+      prepare_death_data(indicator, years, area, cause, source_priority)
+    }
   ) %>%
-    dplyr::rename(deaths = value) %>%
-    dplyr::mutate(
-      age_band = dplyr::case_when(
-        age_band %in% c("Menos de 1 ano", "1 - 4 anos") ~ "0 - 4 anos",
-        TRUE ~ age_band
-      )
-    ) %>%
-    dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-    dplyr::group_by(year, area, sex, cause, age_band) %>%
-    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = 1L)
-  
-  df_death2 <- download_data(
-    "0013166",
-    dims      = list(dim1 = year_of_interest, dim2 = area, dim5 = cause),
-    has_cause = TRUE
-  ) %>%
-    dplyr::rename(deaths = value) %>%
-    dplyr::mutate(
-      age_band = dplyr::case_when(
-        age_band %in% c("Menos de 1 ano", "1 - 4 anos") ~ "0 - 4 anos",
-        TRUE ~ age_band
-      )
-    ) %>%
-    dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-    dplyr::group_by(year, area, sex, cause, age_band) %>%
-    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = 2L)
-  
-  df_death <- dplyr::bind_rows(df_death1, df_death2) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
     dplyr::slice(1) %>%
@@ -339,6 +691,7 @@ get_data_for <- function(area, cause) {
     dplyr::right_join(df_death,
                       by = c("year", "area", "sex", "age_band")) %>%
     tidyr::replace_na(list(deaths = 0)) %>%
+    dplyr::filter(!is.na(pop)) %>%
     dplyr::mutate(
       age_band = factor(age_band, levels = age_levels, ordered = TRUE)
     )
@@ -349,7 +702,7 @@ get_data_for <- function(area, cause) {
   list(full = df_full, trunc = df_trunc)
 }
 
-# Bounded cache to avoid repeated downloads for same (area, cause)
+# Bounded in-memory cache to avoid repeated processing for same (area, cause, years)
 data_query_cache <- cachem::cache_mem(
   max_size = 300 * 1024^2,
   max_age  = 6 * 60 * 60
@@ -386,7 +739,7 @@ get_model_labels <- function(model_ids) {
 
 forecast_controls_panel <- function() {
   tagList(
-    selectInput("area2", "Local de residência:", choices = local_area, multiple = TRUE, selected = "Portugal"),
+    selectInput("area2", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
     textInput("area_label2", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
     selectInput("cause2", "Causa de Morte:", choices = diseases),
     selectInput("sex2", "Sexo:", choices = sex_levels, selected = "HM"),
@@ -492,7 +845,7 @@ observed_mortality_tab_ui <- function() {
     "Mortalidade Observada",
     sidebarLayout(
       sidebarPanel(
-        selectInput("area", "Local de residência:", choices = local_area, multiple = TRUE, selected = "Portugal"),
+        selectInput("area", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
         textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
         selectInput("cause", "Causa de Morte:", choices = diseases),
         selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM"),
@@ -689,7 +1042,7 @@ advanced_forecasting_tab_ui <- function() {
 # =========================================================
 
 ui <- navbarPage(
-  title = "Mortalidades e Projecções",
+  title = "PNS Monitorização não oficial",
 
   observed_mortality_tab_ui(),
   beginner_forecasting_tab_ui(),
@@ -767,13 +1120,18 @@ server <- function(input, output, session) {
     )
   }
 
-  load_metric_bundle <- function(query_spec, kind, token) {
+  load_metric_bundle <- function(query_spec, kind, token, year_range = range(year_of_interest)) {
     validate(need(length(query_spec$area_key) > 0, "Selecione pelo menos um local de residência."))
 
     abort_if_cancelled(kind, token)
     incProgress(0.1)
 
-    dat <- get_data_for_cached(query_spec$area_key, query_spec$cause)
+    years_to_load <- seq.int(
+      from = min(year_range, na.rm = TRUE),
+      to = max(year_range, na.rm = TRUE)
+    )
+
+    dat <- get_data_for_cached(query_spec$area_key, query_spec$cause, years_to_load)
 
     abort_if_cancelled(kind, token)
     incProgress(0.5)
@@ -2550,7 +2908,7 @@ server <- function(input, output, session) {
     query_spec <- make_query_spec(input$area2, input$area_label2, input$cause2, input$sex2)
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
-      metric_bundle <- load_metric_bundle(query_spec, "forecast", token)
+      metric_bundle <- load_metric_bundle(query_spec, "forecast", token, year_range = input$years_fit)
       build_historical_series(
         metric_bundle = metric_bundle,
         series_spec = make_series_spec(
