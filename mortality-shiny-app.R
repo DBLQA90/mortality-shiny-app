@@ -735,6 +735,18 @@ get_model_labels <- function(model_ids) {
 # UI Helpers
 # =========================================================
 
+year_range_slider <- function(input_id, label, value = range(year_of_interest)) {
+  sliderInput(
+    input_id,
+    label,
+    min   = min(year_of_interest),
+    max   = max(year_of_interest),
+    value = value,
+    step  = 1,
+    sep   = ""
+  )
+}
+
 # Shared control panels ----------------------------------------------------
 
 forecast_controls_panel <- function() {
@@ -753,14 +765,9 @@ forecast_controls_panel <- function() {
       "Taxa:",
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
-    sliderInput(
+    year_range_slider(
       "years_fit",
-      "Janela de ajuste:",
-      min   = min(year_of_interest),
-      max   = max(year_of_interest),
-      value = range(year_of_interest),
-      step  = 1,
-      sep   = ""
+      "Anos a importar / ajustar:"
     ),
     checkboxGroupInput(
       "models",
@@ -858,6 +865,10 @@ observed_mortality_tab_ui <- function() {
           "rate_type",
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+        ),
+        year_range_slider(
+          "years_import",
+          "Anos a importar:"
         ),
         actionButton("go_rates", "Carregar dados"),
         br(), br(),
@@ -1109,13 +1120,57 @@ server <- function(input, output, session) {
     )
   }
 
+  get_years_in_selected_range <- function(year_range) {
+    selected_bounds <- suppressWarnings(as.integer(year_range))
+    selected_bounds <- selected_bounds[!is.na(selected_bounds)]
+
+    validate(
+      need(length(selected_bounds) >= 2, "Seleccione um intervalo de anos para importar.")
+    )
+
+    lower_year <- min(selected_bounds)
+    upper_year <- max(selected_bounds)
+
+    validate(
+      need(lower_year <= upper_year, "O ano inicial não pode ser posterior ao ano final.")
+    )
+
+    selected_years <- year_of_interest[
+      year_of_interest >= lower_year &
+        year_of_interest <= upper_year
+    ]
+
+    validate(
+      need(length(selected_years) > 0, "O intervalo seleccionado não contém anos disponíveis nos indicadores.")
+    )
+
+    sort(unique(as.integer(selected_years)))
+  }
+
+  format_year_selection <- function(years) {
+    years <- sort(unique(as.integer(years)))
+
+    if (length(years) == 0) {
+      return("Nenhum")
+    }
+
+    if (identical(years, seq.int(min(years), max(years)))) {
+      return(glue::glue("{min(years)} - {max(years)}"))
+    }
+
+    paste(years, collapse = ", ")
+  }
+
   make_series_spec <- function(query_spec, population, rate_type, year_range = range(year_of_interest)) {
+    selected_years <- get_years_in_selected_range(year_range)
+
     c(
       query_spec,
       list(
         population = population,
         rate_type = rate_type,
-        year_range = range(year_range)
+        years = selected_years,
+        year_range = range(selected_years)
       )
     )
   }
@@ -1126,10 +1181,7 @@ server <- function(input, output, session) {
     abort_if_cancelled(kind, token)
     incProgress(0.1)
 
-    years_to_load <- seq.int(
-      from = min(year_range, na.rm = TRUE),
-      to = max(year_range, na.rm = TRUE)
-    )
+    years_to_load <- get_years_in_selected_range(year_range)
 
     dat <- get_data_for_cached(query_spec$area_key, query_spec$cause, years_to_load)
 
@@ -1152,7 +1204,8 @@ server <- function(input, output, session) {
 
     list(
       query_spec = query_spec,
-      metrics = metrics
+      metrics = metrics,
+      years = years_to_load
     )
   }
 
@@ -1162,8 +1215,7 @@ server <- function(input, output, session) {
     series <- metric_bundle$metrics %>%
       dplyr::filter(
         População == series_spec$population,
-        year >= series_spec$year_range[1],
-        year <= series_spec$year_range[2]
+        year %in% series_spec$years
       ) %>%
       dplyr::arrange(year) %>%
       dplyr::transmute(
@@ -2744,7 +2796,7 @@ server <- function(input, output, session) {
     query_spec <- make_query_spec(input$area, input$area_label, input$cause, input$sex)
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
-      load_metric_bundle(query_spec, "rates", token)
+      load_metric_bundle(query_spec, "rates", token, year_range = input$years_import)
     })
   })
 
@@ -2756,7 +2808,7 @@ server <- function(input, output, session) {
       query_spec = observed_metric_bundle()$query_spec,
       population = input$population,
       rate_type = input$rate_type,
-      year_range = range(year_of_interest)
+      year_range = input$years_import
     )
   })
 
@@ -3000,7 +3052,7 @@ server <- function(input, output, session) {
           spec$sex,
           spec$population,
           dat$history$rate_label,
-          glue::glue("{spec$year_range[1]} - {spec$year_range[2]}"),
+          format_year_selection(spec$years),
           glue::glue("{dat$conf_level}%"),
           dat$transform_label,
           paste(get_model_labels(dat$selected_model_ids), collapse = ", "),

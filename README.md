@@ -11,6 +11,7 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 - Uses INE indicators `0008206` and `0013166` for deaths by cause.
 - Detects available years and causes from INE metadata instead of hard-coding them.
 - Keeps the app geography list based on the original manual `local_area` vector.
+- Lets users select the year range to import from the years available in the source indicators.
 - Requests only the years needed from each source indicator.
 - Adds persistent local caching for INE metadata and data queries.
 - Downloads data in small year/area/cause slices so interrupted or failed runs can reuse data already fetched.
