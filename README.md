@@ -4,6 +4,8 @@ Unofficial Shiny app for exploring Portuguese mortality indicators from INE.
 
 The app supports observed mortality analysis, guided forecasting, advanced model comparison, diagnostics, and structural break exploration. Results are intended for exploration, decision support, and research workflows, and should be interpreted with appropriate epidemiological and statistical caution.
 
+For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md](METHODOLOGY.md).
+
 ## What changed in v5
 
 - Replaced `ineptR` with the CRAN package `ineptr2`.
@@ -111,6 +113,20 @@ Deaths by cause indicators:
 - `0013166`
 
 The app harmonises age bands, recodes infant mortality into the `0-4` age group, excludes total or ignored age categories where needed, and can compute rates for the full population or the population under 75 years.
+
+## Methods Summary
+
+The app sums deaths and population over the selected geography before calculating rates, so multiple selected areas are interpreted as one combined area.
+
+Main calculations:
+
+- crude mortality: deaths divided by population, multiplied by 100,000
+- crude confidence intervals: exact Poisson intervals scaled to the selected population
+- standardised mortality: direct standardisation with European Standard Population 2013 weights
+- proportional mortality: selected-cause deaths divided by all-cause deaths for the same year, sex, and geography
+- AVPP: years of potential life lost before age 70, approximated from age-band midpoints
+
+Forecasts are exploratory extrapolations of annual mortality-rate series using models from the `forecast` package. Model comparison uses common forecast accuracy metrics such as RMSE, MAE, MAPE, and MASE.
 
 ## Caching And Performance
 
