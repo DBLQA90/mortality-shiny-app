@@ -15,6 +15,7 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 - Requests only the years needed from each source indicator.
 - Adds persistent local caching for INE metadata and data queries.
 - Downloads data in small year/area/cause slices so interrupted or failed runs can reuse data already fetched.
+- Prioritises year loading based on the latest slider movement, so leftward changes load recent-to-older and rightward changes load older-to-newer.
 - Uses a large INE client timeout for long indicator calls.
 
 ## Running The App
@@ -41,6 +42,7 @@ shiny::runApp("mortality-shiny-app.R")
 - `ineptr2`
 - `strucchange`
 - `memoise`
+- `later`
 
 ## App Modules
 
@@ -105,6 +107,7 @@ To reduce repeated delays, the app uses:
 - persistent RDS files on disk
 - separate metadata and data cache expiry windows
 - granular data slices so partial downloads survive interruptions
+- pending Shiny event servicing between slices, so cancellation is checked before the next INE request
 
 By default, cache files are written to `.mortality-shiny-cache` next to the app file.
 

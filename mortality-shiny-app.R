@@ -15,7 +15,8 @@ pacman::p_load(
   forecast,
   ineptr2,       # for INE data
   strucchange,   # for breakpoints
-  memoise        # for caching INE queries
+  memoise,       # for caching INE queries
+  later          # for servicing pending Shiny events between INE slices
 )
 
 # =========================================================
@@ -357,8 +358,27 @@ get_indicator_years <- function(indicators) {
     unique()
 }
 
-get_source_year_plan <- function(indicators, priorities, requested_years) {
-  requested_years <- sort(unique(as.integer(requested_years)))
+normalize_year_order <- function(year_order = "asc") {
+  if (is.null(year_order) || length(year_order) == 0 || is.na(year_order[[1]])) {
+    return("asc")
+  }
+
+  year_order <- as.character(year_order[[1]])
+  if (!year_order %in% c("asc", "desc")) {
+    return("asc")
+  }
+  year_order
+}
+
+order_years <- function(years, year_order = "asc") {
+  years <- unique(as.integer(years))
+  years <- years[!is.na(years)]
+
+  sort(years, decreasing = identical(normalize_year_order(year_order), "desc"))
+}
+
+get_source_year_plan <- function(indicators, priorities, requested_years, year_order = "asc") {
+  requested_years <- order_years(requested_years, year_order)
   plan <- tibble(
     indicator = indicators,
     source_priority = priorities
@@ -369,10 +389,10 @@ get_source_year_plan <- function(indicators, priorities, requested_years) {
   plan$years <- vector("list", nrow(plan))
 
   for (i in seq_len(nrow(plan))) {
-    available_years <- intersect(requested_years, get_indicator_years(plan$indicator[[i]]))
-    source_years <- setdiff(available_years, covered_years)
-    plan$years[[i]] <- sort(source_years)
-    covered_years <- union(covered_years, source_years)
+    available_years <- requested_years[requested_years %in% get_indicator_years(plan$indicator[[i]])]
+    source_years <- available_years[!available_years %in% covered_years]
+    plan$years[[i]] <- source_years
+    covered_years <- unique(c(covered_years, source_years))
   }
 
   plan %>%
@@ -447,7 +467,7 @@ download_data <- function(indicator, dims, has_cause = FALSE) {
   
   args <- c(list(indicator), cats)
 
-  with_persistent_cache(
+  out <- with_persistent_cache(
     path = data_cache_file(indicator, cats, has_cause),
     max_age = persistent_data_cache_max_age,
     label = glue::glue("data for indicator {indicator}"),
@@ -493,11 +513,17 @@ download_data <- function(indicator, dims, has_cause = FALSE) {
       out
     }
   )
+
+  if (is.null(out) || nrow(out) == 0) {
+    stop("Cached or live INE query returned no usable rows.", call. = FALSE)
+  }
+
+  out
 }
 
-expand_download_slices <- function(years, areas, cause = NULL) {
+expand_download_slices <- function(years, areas, cause = NULL, year_order = "asc") {
   slices <- tidyr::expand_grid(
-    year = sort(unique(as.integer(years))),
+    year = order_years(years, year_order),
     area = sort(unique(as.character(areas)))
   )
 
@@ -529,7 +555,17 @@ data_load_control <- new.env(parent = emptyenv())
 data_load_control$cancel_checker <- NULL
 data_load_control$cancelled <- FALSE
 
+service_pending_shiny_events <- function() {
+  tryCatch(
+    later::run_now(timeoutSecs = 0),
+    error = function(e) NULL
+  )
+  invisible(NULL)
+}
+
 is_data_load_cancelled <- function() {
+  service_pending_shiny_events()
+
   checker <- data_load_control$cancel_checker
   if (!is.function(checker)) {
     return(FALSE)
@@ -559,8 +595,8 @@ with_data_load_cancel_checker <- function(cancel_checker, expr) {
   value
 }
 
-download_data_slices <- function(indicator, years, areas, cause = NULL, has_cause = FALSE) {
-  slices <- expand_download_slices(years, areas, cause)
+download_data_slices <- function(indicator, years, areas, cause = NULL, has_cause = FALSE, year_order = "asc") {
+  slices <- expand_download_slices(years, areas, cause, year_order = year_order)
   if (nrow(slices) == 0) {
     return(empty_download_data(has_cause = has_cause))
   }
@@ -682,12 +718,13 @@ compute_metrics <- function(df) {
 # Lazy INE loader: get data only for selected area + cause
 # =========================================================
 
-prepare_population_data <- function(indicator, years, area, source_priority) {
+prepare_population_data <- function(indicator, years, area, source_priority, year_order = "asc") {
   download_data_slices(
     indicator,
     years     = years,
     areas     = area,
-    has_cause = FALSE
+    has_cause = FALSE,
+    year_order = year_order
   ) %>%
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
     dplyr::rename(pop = value) %>%
@@ -696,13 +733,14 @@ prepare_population_data <- function(indicator, years, area, source_priority) {
     dplyr::mutate(source_priority = source_priority)
 }
 
-prepare_death_data <- function(indicator, years, area, cause, source_priority) {
+prepare_death_data <- function(indicator, years, area, cause, source_priority, year_order = "asc") {
   download_data_slices(
     indicator,
     years     = years,
     areas     = area,
     cause     = cause,
-    has_cause = TRUE
+    has_cause = TRUE,
+    year_order = year_order
   ) %>%
     dplyr::rename(deaths = value) %>%
     dplyr::mutate(
@@ -717,24 +755,27 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority) {
     dplyr::mutate(source_priority = source_priority)
 }
 
-get_data_for <- function(area, cause, years = year_of_interest) {
-  years <- sort(unique(as.integer(years)))
+get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc") {
+  year_order <- normalize_year_order(year_order)
+  years <- order_years(years, year_order)
 
   population_plan <- get_source_year_plan(
     indicators = c(population_indicator_current, population_indicator_legacy),
     priorities = c(1L, 2L),
-    requested_years = years
+    requested_years = years,
+    year_order = year_order
   )
   death_plan <- get_source_year_plan(
     indicators = c(death_indicator_legacy, death_indicator_current),
     priorities = c(1L, 2L),
-    requested_years = years
+    requested_years = years,
+    year_order = year_order
   )
 
   df_pop_sources <- purrr::pmap_dfr(
     population_plan,
     function(indicator, source_priority, years) {
-      prepare_population_data(indicator, years, area, source_priority)
+      prepare_population_data(indicator, years, area, source_priority, year_order = year_order)
     }
   )
 
@@ -755,7 +796,7 @@ get_data_for <- function(area, cause, years = year_of_interest) {
   df_death_sources <- purrr::pmap_dfr(
     death_plan,
     function(indicator, source_priority, years) {
-      prepare_death_data(indicator, years, area, cause, source_priority)
+      prepare_death_data(indicator, years, area, cause, source_priority, year_order = year_order)
     }
   )
 
@@ -795,14 +836,6 @@ get_data_for <- function(area, cause, years = year_of_interest) {
   
   list(full = df_full, trunc = df_trunc)
 }
-
-# Bounded in-memory cache to avoid repeated processing for same (area, cause, years)
-data_query_cache <- cachem::cache_mem(
-  max_size = 300 * 1024^2,
-  max_age  = 6 * 60 * 60
-)
-
-get_data_for_cached <- memoise::memoise(get_data_for, cache = data_query_cache)
 
 get_selection_label <- function(selected_areas, custom_label = NULL) {
   label <- if (is.null(custom_label)) "" else trimws(custom_label)
@@ -1177,6 +1210,63 @@ server <- function(input, output, session) {
     }
   }
 
+  year_load_state <- reactiveValues(
+    rates_range = NULL,
+    rates_order = "desc",
+    forecast_range = NULL,
+    forecast_order = "desc"
+  )
+
+  clean_year_range <- function(year_range) {
+    year_range <- suppressWarnings(as.integer(year_range))
+    year_range <- year_range[!is.na(year_range)]
+
+    if (length(year_range) < 2) {
+      return(NULL)
+    }
+
+    range(year_range)
+  }
+
+  detect_year_load_order <- function(previous_range, current_range) {
+    current_range <- clean_year_range(current_range)
+    previous_range <- clean_year_range(previous_range)
+
+    if (is.null(current_range) || is.null(previous_range)) {
+      return("desc")
+    }
+
+    current_mid <- mean(current_range)
+    previous_mid <- mean(previous_range)
+
+    if (current_mid < previous_mid) {
+      return("desc")
+    }
+    if (current_mid > previous_mid) {
+      return("asc")
+    }
+    if (current_range[[2]] < previous_range[[2]]) {
+      return("desc")
+    }
+    if (current_range[[1]] > previous_range[[1]]) {
+      return("asc")
+    }
+
+    "desc"
+  }
+
+  observeEvent(input$years_import, {
+    current_range <- clean_year_range(input$years_import)
+    year_load_state$rates_order <- detect_year_load_order(year_load_state$rates_range, current_range)
+    year_load_state$rates_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+  observeEvent(input$years_fit, {
+    current_range <- clean_year_range(input$years_fit)
+    year_load_state$forecast_order <- detect_year_load_order(year_load_state$forecast_range, current_range)
+    year_load_state$forecast_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
   get_rate_mapping <- function(rate_type) {
     if (identical(rate_type, "crude")) {
       list(
@@ -1214,7 +1304,7 @@ server <- function(input, output, session) {
     )
   }
 
-  get_years_in_selected_range <- function(year_range) {
+  get_years_in_selected_range <- function(year_range, year_order = "asc") {
     selected_bounds <- suppressWarnings(as.integer(year_range))
     selected_bounds <- selected_bounds[!is.na(selected_bounds)]
 
@@ -1238,7 +1328,7 @@ server <- function(input, output, session) {
       need(length(selected_years) > 0, "O intervalo seleccionado não contém anos disponíveis nos indicadores.")
     )
 
-    sort(unique(as.integer(selected_years)))
+    order_years(selected_years, year_order)
   }
 
   format_year_selection <- function(years) {
@@ -1269,17 +1359,18 @@ server <- function(input, output, session) {
     )
   }
 
-  load_metric_bundle <- function(query_spec, kind, token, year_range = range(year_of_interest)) {
+  load_metric_bundle <- function(query_spec, kind, token, year_range = range(year_of_interest), year_order = "asc") {
     validate(need(length(query_spec$area_key) > 0, "Selecione pelo menos um local de residência."))
 
     abort_if_cancelled(kind, token)
     incProgress(0.1)
 
-    years_to_load <- get_years_in_selected_range(year_range)
+    year_order <- normalize_year_order(year_order)
+    years_to_load <- get_years_in_selected_range(year_range, year_order = year_order)
 
     dat <- with_data_load_cancel_checker(
       cancel_checker = function() !identical(cancel_seq[[kind]], token),
-      get_data_for(query_spec$area_key, query_spec$cause, years_to_load)
+      get_data_for(query_spec$area_key, query_spec$cause, years_to_load, year_order = year_order)
     )
 
     if (isTRUE(attr(dat, "cancelled"))) {
@@ -2900,10 +2991,17 @@ server <- function(input, output, session) {
   # -------------------------
   observed_metric_bundle <- eventReactive(input$go_rates, {
     token <- isolate(cancel_seq$rates)
+    year_order <- isolate(year_load_state$rates_order)
     query_spec <- make_query_spec(input$area, input$area_label, input$cause, input$sex)
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
-      load_metric_bundle(query_spec, "rates", token, year_range = input$years_import)
+      load_metric_bundle(
+        query_spec,
+        "rates",
+        token,
+        year_range = input$years_import,
+        year_order = year_order
+      )
     })
   })
 
@@ -3064,10 +3162,17 @@ server <- function(input, output, session) {
   # reflect the same technical specification until the user reruns the model.
   forecast_history <- eventReactive(input$go_forecast, {
     token <- isolate(cancel_seq$forecast)
+    year_order <- isolate(year_load_state$forecast_order)
     query_spec <- make_query_spec(input$area2, input$area_label2, input$cause2, input$sex2)
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
-      metric_bundle <- load_metric_bundle(query_spec, "forecast", token, year_range = input$years_fit)
+      metric_bundle <- load_metric_bundle(
+        query_spec,
+        "forecast",
+        token,
+        year_range = input$years_fit,
+        year_order = year_order
+      )
       build_historical_series(
         metric_bundle = metric_bundle,
         series_spec = make_series_spec(
