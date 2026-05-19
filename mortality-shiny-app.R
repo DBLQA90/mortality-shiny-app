@@ -35,6 +35,7 @@ fallback_year_of_interest <- 1991:2023
 
 fallback_local_area <- c(
   "Portugal",
+  "Norte",
   "Abrantes", "Águeda", "Aguiar da Beira", "Alandroal", "Albergaria-a-Velha",
   "Albufeira", "Alcácer do Sal", "Alcanena", "Alcobaça", "Alcochete",
   "Alcoutim", "Alenquer", "Alfândega da Fé", "Alijó", "Aljezur", "Aljustrel",
@@ -121,6 +122,14 @@ forecast_model_choices <- c(
   "TBATS" = "tbats",
   "Holt" = "holt",
   "Holt (amortecido)" = "holt_damped"
+)
+
+annual_metric_choices <- c(
+  "Óbitos" = "deaths",
+  "Mortalidade Bruta" = "crude",
+  "Mortalidade Padronizada" = "dsr",
+  "Mortalidade Proporcional" = "proportional",
+  "AVPP" = "ypll"
 )
 
 age_levels <- c(
@@ -673,8 +682,16 @@ download_data_slices <- function(indicator, years, areas, cause = NULL, has_caus
 # =========================================================
 
 compute_metrics <- function(df) {
+  df_age <- df %>%
+    dplyr::group_by(year, sex, cause, age_band) %>%
+    dplyr::summarise(
+      deaths = sum(deaths, na.rm = TRUE),
+      pop = sum(pop, na.rm = TRUE),
+      .groups = "drop"
+    )
+
   # Crude rates and Poisson CIs
-  crude <- df %>%
+  crude <- df_age %>%
     dplyr::group_by(year, sex, cause) %>%
     dplyr::summarise(
       deaths_total = sum(deaths),
@@ -693,7 +710,7 @@ compute_metrics <- function(df) {
     dplyr::select(-ci)
   
   # Age-standardised (DSR)
-  dsr <- df %>%
+  dsr <- df_age %>%
     dplyr::left_join(esp2013_df, by = "age_band") %>%
     dplyr::group_by(year, sex, cause) %>%
     PHEindicatormethods::calculate_dsr(
@@ -711,6 +728,31 @@ compute_metrics <- function(df) {
     )
   
   dplyr::left_join(crude, dsr, by = c("year", "sex", "cause"))
+}
+
+get_age_midpoint <- function(age_band) {
+  age_band <- as.character(age_band)
+
+  dplyr::case_when(
+    age_band == "0 - 4 anos" ~ 2.5,
+    grepl("^[0-9]+\\s*-\\s*[0-9]+", age_band) ~ {
+      lower <- suppressWarnings(as.numeric(sub("^([0-9]+).*", "\\1", age_band)))
+      upper <- suppressWarnings(as.numeric(sub("^[0-9]+\\s*-\\s*([0-9]+).*", "\\1", age_band)))
+      (lower + upper) / 2
+    },
+    TRUE ~ NA_real_
+  )
+}
+
+compute_ypll <- function(df, cutoff = 70) {
+  df %>%
+    dplyr::mutate(
+      age_midpoint = get_age_midpoint(age_band),
+      years_lost = pmax(cutoff - age_midpoint, 0)
+    ) %>%
+    dplyr::filter(!is.na(years_lost)) %>%
+    dplyr::summarise(AVPP = sum(deaths * years_lost, na.rm = TRUE)) %>%
+    dplyr::pull(AVPP)
 }
 
 
@@ -753,6 +795,39 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority, y
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
     dplyr::mutate(source_priority = source_priority)
+}
+
+get_death_data_for <- function(area, cause, years = year_of_interest, year_order = "asc") {
+  year_order <- normalize_year_order(year_order)
+  years <- order_years(years, year_order)
+
+  death_plan <- get_source_year_plan(
+    indicators = c(death_indicator_legacy, death_indicator_current),
+    priorities = c(1L, 2L),
+    requested_years = years,
+    year_order = year_order
+  )
+
+  df_death_sources <- purrr::pmap_dfr(
+    death_plan,
+    function(indicator, source_priority, years) {
+      prepare_death_data(indicator, years, area, cause, source_priority, year_order = year_order)
+    }
+  )
+
+  if (nrow(df_death_sources) == 0) {
+    stop(
+      "Não foi possível carregar dados de óbitos para a selecção actual.",
+      call. = FALSE
+    )
+  }
+
+  df_death_sources %>%
+    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
 }
 
 get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc") {
@@ -997,11 +1072,15 @@ observed_mortality_tab_ui <- function() {
       mainPanel(
         h4("Resumo"),
         tableOutput("rateSummaryTable"),
+        downloadButton("downloadRateSummaryCSV", "Descarregar resumo (CSV)"),
         br(),
         plotOutput("ratePlot", height = "400px"),
         br(),
+        downloadButton("downloadRatePlot", "Descarregar gráfico (PNG)"),
+        br(),
         h4("Série anual observada"),
-        tableOutput("rateTable")
+        tableOutput("rateTable"),
+        downloadButton("downloadRateTableCSV", "Descarregar tabela (CSV)")
       )
     )
   )
@@ -1017,9 +1096,59 @@ beginner_forecasting_tab_ui <- function() {
       mainPanel(
         plotOutput("beginnerForecastPlot", height = "400px"),
         br(),
+        downloadButton("downloadBeginnerForecastPlot", "Descarregar gráfico (PNG)"),
+        br(),
         uiOutput("beginnerForecastSummary"),
         br(),
-        uiOutput("beginnerForecastReliability")
+        uiOutput("beginnerForecastReliability"),
+        br(),
+        h4("Tabela da previsão"),
+        tableOutput("beginnerForecastTable"),
+        downloadButton("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)")
+      )
+    )
+  )
+}
+
+annual_metrics_tab_ui <- function() {
+  tabPanel(
+    "Métricas Anuais",
+    sidebarLayout(
+      sidebarPanel(
+        selectInput(
+          "annual_year",
+          "Ano:",
+          choices = sort(year_of_interest),
+          selected = max(year_of_interest)
+        ),
+        selectInput("annual_cause", "Causa de Morte:", choices = diseases),
+        selectInput("annual_sex", "Sexo:", choices = sex_levels, selected = "HM"),
+        selectInput(
+          "annual_area",
+          "Local adicional:",
+          choices = setdiff(local_area, c("Portugal", "Norte")),
+          multiple = TRUE,
+          selected = character(0)
+        ),
+        textInput("annual_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ACES / ULS"),
+        checkboxGroupInput(
+          "annual_metrics",
+          "Métricas:",
+          choices = annual_metric_choices,
+          selected = unname(annual_metric_choices)
+        ),
+        actionButton("go_annual_metrics", "Carregar métricas"),
+        br(), br(),
+        actionButton("cancel_annual_metrics", "Interromper carregamento")
+      ),
+      mainPanel(
+        tableOutput("annualMetricsTable"),
+        br(),
+        downloadButton("downloadAnnualMetricsCSV", "Descarregar tabela (CSV)"),
+        br(), br(),
+        plotOutput("annualMetricsPlot", height = "420px"),
+        br(),
+        downloadButton("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)")
       )
     )
   )
@@ -1038,7 +1167,8 @@ advanced_model_spec_tab_ui <- function() {
       column(
         width = 8,
         forecast_selection_note_ui(),
-        tableOutput("forecastSpecTable")
+        tableOutput("forecastSpecTable"),
+        downloadButton("downloadForecastSpecCSV", "Descarregar especificação (CSV)")
       )
     )
   )
@@ -1070,6 +1200,7 @@ advanced_forecast_output_tab_ui <- function() {
     uiOutput("forecastWarnings"),
     br(),
     tableOutput("forecastSummaryTable"),
+    downloadButton("downloadForecastSummaryCSV", "Descarregar resumo (CSV)"),
     br(),
     plotOutput("forecastPlot", height = "400px"),
     br(),
@@ -1088,23 +1219,28 @@ advanced_diagnostics_tab_ui <- function() {
     uiOutput("diagnosticModelSelector"),
     br(),
     plotOutput("diagnosticResidualPlot", height = "260px"),
+    downloadButton("downloadDiagnosticResidualPlot", "Descarregar resíduos (PNG)"),
     br(),
     fluidRow(
       column(
         width = 6,
-        plotOutput("diagnosticAcfPlot", height = "260px")
+        plotOutput("diagnosticAcfPlot", height = "260px"),
+        downloadButton("downloadDiagnosticAcfPlot", "Descarregar ACF (PNG)")
       ),
       column(
         width = 6,
-        plotOutput("diagnosticPacfPlot", height = "260px")
+        plotOutput("diagnosticPacfPlot", height = "260px"),
+        downloadButton("downloadDiagnosticPacfPlot", "Descarregar PACF (PNG)")
       )
     ),
     br(),
     h4("Teste de Ljung-Box"),
     tableOutput("diagnosticLjungBoxTable"),
+    downloadButton("downloadDiagnosticLjungCSV", "Descarregar Ljung-Box (CSV)"),
     br(),
     h4("Resumo do Modelo"),
-    verbatimTextOutput("diagnosticModelSummary")
+    verbatimTextOutput("diagnosticModelSummary"),
+    downloadButton("downloadDiagnosticSummaryTXT", "Descarregar resumo (TXT)")
   )
 }
 
@@ -1135,11 +1271,14 @@ advanced_backtesting_tab_ui <- function() {
     br(),
     h4("Classificação"),
     tableOutput("comparisonRankingTable"),
+    downloadButton("downloadComparisonRankingCSV", "Descarregar classificação (CSV)"),
     br(),
     h4("Valores das Métricas"),
     tableOutput("accuracyTable"),
+    downloadButton("downloadAccuracyCSV", "Descarregar métricas (CSV)"),
     br(),
-    plotOutput("comparisonPlot", height = "360px")
+    plotOutput("comparisonPlot", height = "360px"),
+    downloadButton("downloadComparisonPlot", "Descarregar gráfico (PNG)")
   )
 }
 
@@ -1150,8 +1289,10 @@ advanced_breaks_tab_ui <- function() {
     uiOutput("breakInterpretation"),
     br(),
     plotOutput("breakPlot", height = "400px"),
+    downloadButton("downloadBreakPlot", "Descarregar gráfico (PNG)"),
     br(),
-    tableOutput("breakTable")
+    tableOutput("breakTable"),
+    downloadButton("downloadBreakTableCSV", "Descarregar tabela (CSV)")
   )
 }
 
@@ -1177,6 +1318,7 @@ ui <- navbarPage(
 
   observed_mortality_tab_ui(),
   beginner_forecasting_tab_ui(),
+  annual_metrics_tab_ui(),
   advanced_forecasting_tab_ui()
 )
 
@@ -1185,7 +1327,7 @@ ui <- navbarPage(
 # =========================================================
 
 server <- function(input, output, session) {
-  cancel_seq <- reactiveValues(rates = 0L, forecast = 0L)
+  cancel_seq <- reactiveValues(rates = 0L, forecast = 0L, annual = 0L)
 
   observeEvent(input$cancel_rates, {
     cancel_seq$rates <- cancel_seq$rates + 1L
@@ -1195,6 +1337,11 @@ server <- function(input, output, session) {
   observeEvent(input$cancel_forecast, {
     cancel_seq$forecast <- cancel_seq$forecast + 1L
     showNotification("Pedido de interrupção recebido (Projecções).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cancel_annual_metrics, {
+    cancel_seq$annual <- cancel_seq$annual + 1L
+    showNotification("Pedido de interrupção recebido (Métricas anuais).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
 
   abort_if_cancelled <- function(kind, token) {
@@ -1278,6 +1425,27 @@ server <- function(input, output, session) {
         rate_label = "Padronizada"
       )
     }
+  }
+
+  write_csv_utf8 <- function(x, file) {
+    utils::write.csv(
+      x,
+      file,
+      row.names = FALSE,
+      fileEncoding = "UTF-8"
+    )
+  }
+
+  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150) {
+    grDevices::png(file, width = width, height = height, res = res)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    print(plot_obj)
+  }
+
+  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150) {
+    grDevices::png(file, width = width, height = height, res = res)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    force(plot_expr)
   }
 
   # Shared historical-series pipeline:
@@ -1609,7 +1777,7 @@ server <- function(input, output, session) {
 
     ggplot(resid_df, aes(x = time, y = resid)) +
       geom_hline(yintercept = 0, color = "grey60", linetype = "dashed") +
-      geom_line(color = "#0b2e4f", size = 0.8) +
+      geom_line(color = "#0b2e4f", linewidth = 0.8) +
       geom_point(color = "#0b2e4f", size = 1.5) +
       labs(
         title = paste("Gráfico Temporal dos Resíduos -", diag_fit$model_label),
@@ -1865,13 +2033,13 @@ server <- function(input, output, session) {
             data = comparison_dat$training_obs,
             aes(x = year, y = value),
             color = "grey75",
-            size = 0.8
+            linewidth = 0.8
           ) +
           geom_line(
             data = comparison_dat$holdout_actual,
             aes(x = year, y = value),
             color = "black",
-            size = 1
+            linewidth = 1
           ) +
           geom_point(
             data = comparison_dat$holdout_actual,
@@ -1883,7 +2051,7 @@ server <- function(input, output, session) {
             data = comparison_dat$forecast_df,
             aes(x = year, y = mean, color = model),
             linetype = "dashed",
-            size = 1
+            linewidth = 1
           ) +
           geom_point(
             data = comparison_dat$forecast_df,
@@ -1914,7 +2082,7 @@ server <- function(input, output, session) {
         data = comparison_dat$obs,
         aes(x = year, y = value),
         color = "black",
-        size = 1
+        linewidth = 1
       ) +
       geom_line(
         data = fitted_df,
@@ -1995,7 +2163,7 @@ server <- function(input, output, session) {
     df <- break_info$series
 
     p <- ggplot(df, aes(x = year, y = value)) +
-      geom_line(color = "#0b2e4f", size = 1) +
+      geom_line(color = "#0b2e4f", linewidth = 1) +
       geom_point(color = "#0b2e4f", size = 2) +
       labs(
         title = paste("Possíveis Quebras Estruturais -", break_info$history$area_label),
@@ -2168,7 +2336,7 @@ server <- function(input, output, session) {
 
       return(
         ggplot() +
-          geom_line(data = obs, aes(x = year, y = value), size = 1) +
+          geom_line(data = obs, aes(x = year, y = value), linewidth = 1) +
           geom_point(data = obs, aes(x = year, y = value), size = 2) +
           geom_ribbon(
             data = fc,
@@ -2181,7 +2349,7 @@ server <- function(input, output, session) {
             aes(x = year, y = mean),
             color = "#0b2e4f",
             linetype = "dashed",
-            size = 1
+            linewidth = 1
           ) +
           labs(
             title = paste("Resultados da Projecção -", dat$area_label),
@@ -2195,7 +2363,7 @@ server <- function(input, output, session) {
     }
 
     ggplot() +
-      geom_line(data = obs, aes(x = year, y = value), size = 1) +
+      geom_line(data = obs, aes(x = year, y = value), linewidth = 1) +
       geom_point(data = obs, aes(x = year, y = value), size = 2) +
       geom_ribbon(
         data = fc,
@@ -2206,7 +2374,7 @@ server <- function(input, output, session) {
         data = fc,
         aes(x = year, y = mean, color = model),
         linetype = "dashed",
-        size = 1
+        linewidth = 1
       ) +
       labs(
         title = paste("Resultados da Projecção -", dat$area_label),
@@ -2799,13 +2967,13 @@ server <- function(input, output, session) {
         data = full_obs,
         aes(x = year, y = value),
         color = "grey75",
-        size = 0.8
+        linewidth = 0.8
       ) +
       geom_line(
         data = train_obs,
         aes(x = year, y = value),
         color = "#1f4e79",
-        size = 1
+        linewidth = 1
       ) +
       geom_point(
         data = train_obs,
@@ -2824,7 +2992,7 @@ server <- function(input, output, session) {
         aes(x = year, y = mean),
         color = "#0b2e4f",
         linetype = "dashed",
-        size = 1.1
+        linewidth = 1.1
       ) +
       labs(
         title = paste("Previsão Guiada -", dat$area_label),
@@ -2977,6 +3145,121 @@ server <- function(input, output, session) {
       }
     )
   }
+
+  get_annual_area_specs <- function(selected_areas, custom_label = NULL) {
+    selected_areas <- setdiff(sort(unique(as.character(selected_areas))), c("Portugal", "Norte"))
+
+    validate(
+      need(length(selected_areas) > 0, "Seleccione pelo menos um local adicional para a terceira coluna.")
+    )
+
+    list(
+      list(label = "Portugal", areas = "Portugal"),
+      list(label = "Norte", areas = "Norte"),
+      list(label = get_selection_label(selected_areas, custom_label), areas = selected_areas)
+    )
+  }
+
+  calculate_annual_metric_values <- function(area_spec, cause, sex, year, token) {
+    abort_if_cancelled("annual", token)
+
+    cause_data <- get_data_for(
+      area = area_spec$areas,
+      cause = cause,
+      years = year,
+      year_order = "desc"
+    )$full %>%
+      dplyr::filter(sex == .env$sex)
+
+    validate(
+      need(nrow(cause_data) > 0, glue::glue("Sem dados para {area_spec$label}."))
+    )
+
+    metric_row <- compute_metrics(cause_data) %>%
+      dplyr::filter(year == .env$year, sex == .env$sex) %>%
+      dplyr::slice(1)
+
+    deaths <- sum(cause_data$deaths, na.rm = TRUE)
+
+    all_cause_deaths <- if (identical(cause, "Todas as causas de morte")) {
+      deaths
+    } else {
+      all_cause_data <- get_death_data_for(
+        area = area_spec$areas,
+        cause = "Todas as causas de morte",
+        years = year,
+        year_order = "desc"
+      ) %>%
+        dplyr::filter(sex == .env$sex)
+
+      sum(all_cause_data$deaths, na.rm = TRUE)
+    }
+
+    proportional <- if (is.finite(all_cause_deaths) && all_cause_deaths > 0) {
+      deaths / all_cause_deaths * 100
+    } else {
+      NA_real_
+    }
+
+    first_numeric_or_na <- function(x) {
+      if (length(x) == 0) {
+        return(NA_real_)
+      }
+      as.numeric(x[[1]])
+    }
+
+    tibble(
+      location = area_spec$label,
+      metric_id = unname(annual_metric_choices),
+      metric = names(annual_metric_choices),
+      value = c(
+        deaths,
+        first_numeric_or_na(metric_row$crude_rate),
+        first_numeric_or_na(metric_row$dsr),
+        proportional,
+        compute_ypll(cause_data, cutoff = 70)
+      )
+    )
+  }
+
+  round_annual_metric_value <- function(metric_id, value) {
+    dplyr::case_when(
+      metric_id %in% c("deaths", "ypll") ~ round(value, 0),
+      metric_id == "proportional" ~ round(value, 1),
+      TRUE ~ round(value, 2)
+    )
+  }
+
+  build_annual_metrics_table <- function(metric_long, selected_metrics) {
+    metric_long %>%
+      dplyr::filter(metric_id %in% selected_metrics) %>%
+      dplyr::mutate(value = round_annual_metric_value(metric_id, value)) %>%
+      dplyr::select(Métrica = metric, location, value) %>%
+      tidyr::pivot_wider(names_from = location, values_from = value)
+  }
+
+  build_annual_metrics_plot <- function(metric_long, selected_metrics) {
+    plot_df <- metric_long %>%
+      dplyr::filter(metric_id %in% selected_metrics) %>%
+      dplyr::mutate(value = round_annual_metric_value(metric_id, value))
+
+    validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma métrica para apresentar."))
+
+    ggplot(plot_df, aes(x = location, y = value, fill = location)) +
+      geom_col(width = 0.68) +
+      facet_wrap(~ metric, scales = "free_y") +
+      labs(
+        title = "Métricas anuais por local",
+        x = NULL,
+        y = NULL
+      ) +
+      scale_fill_brewer(palette = "Set2", guide = "none") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 25, hjust = 1)
+      )
+  }
   
   # -------------------------
   # Observed Mortality
@@ -3045,20 +3328,15 @@ server <- function(input, output, session) {
     )
   })
 
-  output$rateSummaryTable <- renderTable({
-    observed_summary()
-  }, bordered = TRUE, spacing = "s")
-  
-  output$ratePlot <- renderPlot({
-    dat <- observed_history()
+  build_observed_rate_plot <- function(dat) {
     df <- dat$series
-    
+
     ggplot(df, aes(x = year, group = 1)) +
       geom_ribbon(
         aes(ymin = lower, ymax = upper),
         fill = "grey80", alpha = 0.4
       ) +
-      geom_line(aes(y = value), size = 1) +
+      geom_line(aes(y = value), linewidth = 1) +
       geom_point(aes(y = value), size = 2) +
       labs(
         title = paste(dat$area_label, "-", dat$spec$cause, dat$spec$sex, "(", dat$spec$population, ")"),
@@ -3067,19 +3345,56 @@ server <- function(input, output, session) {
       ) +
       theme_minimal() +
       theme(plot.title = element_text(hjust = 0.5))
-  })
-  
-  output$rateTable <- renderTable({
-    df <- observed_history()$series
-    
-    df %>%
+  }
+
+  build_observed_rate_table <- function(dat) {
+    dat$series %>%
       dplyr::transmute(
         Ano = year,
         `Taxa (Intervalo de Confiança 95%)` = glue::glue(
           "{round(value, 2)} ({round(lower, 2)}; {round(upper, 2)})"
         )
       )
+  }
+
+  output$rateSummaryTable <- renderTable({
+    observed_summary()
+  }, bordered = TRUE, spacing = "s")
+
+  output$downloadRateSummaryCSV <- downloadHandler(
+    filename = function() {
+      paste0("observed_summary_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(observed_summary(), file)
+    }
+  )
+  
+  output$ratePlot <- renderPlot({
+    build_observed_rate_plot(observed_history())
+  })
+
+  output$downloadRatePlot <- downloadHandler(
+    filename = function() {
+      paste0("observed_plot_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(file, build_observed_rate_plot(observed_history()))
+    }
+  )
+  
+  output$rateTable <- renderTable({
+    build_observed_rate_table(observed_history())
   }, sanitize.text.function = identity)
+
+  output$downloadRateTableCSV <- downloadHandler(
+    filename = function() {
+      paste0("observed_series_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(build_observed_rate_table(observed_history()), file)
+    }
+  )
   
   # -------------------------
   # Beginner Forecasting
@@ -3134,6 +3449,15 @@ server <- function(input, output, session) {
     build_beginner_forecast_plot(beginner_forecast())
   })
 
+  output$downloadBeginnerForecastPlot <- downloadHandler(
+    filename = function() {
+      paste0("guided_forecast_plot_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(file, build_beginner_forecast_plot(beginner_forecast()))
+    }
+  )
+
   output$beginnerForecastSummary <- renderUI({
     req(input$go_beginner_forecast > 0)
     build_beginner_summary_ui(beginner_forecast())
@@ -3143,6 +3467,103 @@ server <- function(input, output, session) {
     req(input$go_beginner_forecast > 0)
     build_beginner_reliability_ui(beginner_forecast())
   })
+
+  beginner_forecast_table <- reactive({
+    dat <- beginner_forecast()
+    if (identical(dat$mode, "recommended")) {
+      build_forecast_display_table(
+        dat,
+        view_mode = "single",
+        selected_model = dat$recommended_model
+      )
+    } else {
+      build_forecast_display_table(dat, view_mode = "compare")
+    }
+  })
+
+  output$beginnerForecastTable <- renderTable({
+    req(input$go_beginner_forecast > 0)
+    beginner_forecast_table()
+  }, sanitize.text.function = identity)
+
+  output$downloadBeginnerForecastCSV <- downloadHandler(
+    filename = function() {
+      paste0("guided_forecast_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(beginner_forecast_table(), file)
+    }
+  )
+
+  # -------------------------
+  # Annual Metrics
+  # -------------------------
+  annual_metrics_long <- eventReactive(input$go_annual_metrics, {
+    token <- isolate(cancel_seq$annual)
+    year <- as.integer(input$annual_year)
+    selected_metrics <- input$annual_metrics
+
+    validate(need(length(selected_metrics) > 0, "Seleccione pelo menos uma métrica."))
+
+    area_specs <- get_annual_area_specs(input$annual_area, input$annual_area_label)
+
+    shiny::withProgress(message = "A obter métricas anuais do INE...", value = 0, {
+      with_data_load_cancel_checker(
+        cancel_checker = function() !identical(cancel_seq$annual, token),
+        {
+          out <- dplyr::bind_rows(lapply(seq_along(area_specs), function(i) {
+            incProgress(0.2 / length(area_specs))
+            calculate_annual_metric_values(
+              area_spec = area_specs[[i]],
+              cause = input$annual_cause,
+              sex = input$annual_sex,
+              year = year,
+              token = token
+            )
+          }))
+
+          incProgress(0.8)
+          out
+        }
+      )
+    })
+  }, ignoreNULL = TRUE)
+
+  annual_metrics_table <- reactive({
+    req(input$go_annual_metrics > 0)
+    build_annual_metrics_table(annual_metrics_long(), input$annual_metrics)
+  })
+
+  annual_metrics_plot <- reactive({
+    req(input$go_annual_metrics > 0)
+    build_annual_metrics_plot(annual_metrics_long(), input$annual_metrics)
+  })
+
+  output$annualMetricsTable <- renderTable({
+    annual_metrics_table()
+  }, striped = TRUE, bordered = TRUE, spacing = "s", digits = 2)
+
+  output$annualMetricsPlot <- renderPlot({
+    annual_metrics_plot()
+  })
+
+  output$downloadAnnualMetricsCSV <- downloadHandler(
+    filename = function() {
+      paste0("annual_metrics_", input$annual_year, "_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(annual_metrics_table(), file)
+    }
+  )
+
+  output$downloadAnnualMetricsPlot <- downloadHandler(
+    filename = function() {
+      paste0("annual_metrics_", input$annual_year, "_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(file, annual_metrics_plot())
+    }
+  )
 
   # -------------------------
   # Advanced Forecasting: Shared Frozen Specification
@@ -3219,7 +3640,7 @@ server <- function(input, output, session) {
   # -------------------------
   # Advanced Forecasting: Model Specification
   # -------------------------
-  output$forecastSpecTable <- renderTable({
+  forecast_spec_table <- reactive({
     dat <- advanced_forecast_result()
     spec <- dat$history$spec
     model_rows <- tibble(
@@ -3264,7 +3685,20 @@ server <- function(input, output, session) {
       ),
       model_rows
     )
+  })
+
+  output$forecastSpecTable <- renderTable({
+    forecast_spec_table()
   }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$downloadForecastSpecCSV <- downloadHandler(
+    filename = function() {
+      paste0("forecast_spec_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(forecast_spec_table(), file)
+    }
+  )
 
   # -------------------------
   # Advanced Forecasting: Forecast Output
@@ -3304,6 +3738,22 @@ server <- function(input, output, session) {
       selected_model = advanced_forecast_focus_model()
     )
   }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$downloadForecastSummaryCSV <- downloadHandler(
+    filename = function() {
+      paste0("forecast_summary_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(
+        build_forecast_summary_table(
+          dat = advanced_forecast_result(),
+          view_mode = input$forecast_output_view,
+          selected_model = advanced_forecast_focus_model()
+        ),
+        file
+      )
+    }
+  )
 
   output$forecastPlot <- renderPlot({
     build_advanced_forecast_plot(
@@ -3407,6 +3857,21 @@ server <- function(input, output, session) {
     )
   })
 
+  output$downloadDiagnosticResidualPlot <- downloadHandler(
+    filename = function() {
+      paste0("diagnostic_residuals_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(
+        file,
+        build_diagnostic_residual_plot(
+          dat = advanced_forecast_result(),
+          model_id = advanced_diagnostic_model()
+        )
+      )
+    }
+  )
+
   output$diagnosticAcfPlot <- renderPlot({
     plot_diagnostic_correlation(
       dat = advanced_forecast_result(),
@@ -3414,6 +3879,22 @@ server <- function(input, output, session) {
       partial = FALSE
     )
   })
+
+  output$downloadDiagnosticAcfPlot <- downloadHandler(
+    filename = function() {
+      paste0("diagnostic_acf_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_base_plot_png(
+        file,
+        plot_diagnostic_correlation(
+          dat = advanced_forecast_result(),
+          model_id = advanced_diagnostic_model(),
+          partial = FALSE
+        )
+      )
+    }
+  )
 
   output$diagnosticPacfPlot <- renderPlot({
     plot_diagnostic_correlation(
@@ -3423,19 +3904,61 @@ server <- function(input, output, session) {
     )
   })
 
-  output$diagnosticLjungBoxTable <- renderTable({
+  output$downloadDiagnosticPacfPlot <- downloadHandler(
+    filename = function() {
+      paste0("diagnostic_pacf_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_base_plot_png(
+        file,
+        plot_diagnostic_correlation(
+          dat = advanced_forecast_result(),
+          model_id = advanced_diagnostic_model(),
+          partial = TRUE
+        )
+      )
+    }
+  )
+
+  diagnostic_ljung_table <- reactive({
     build_ljung_box_table(
       dat = advanced_forecast_result(),
       model_id = advanced_diagnostic_model()
     )
+  })
+
+  output$diagnosticLjungBoxTable <- renderTable({
+    diagnostic_ljung_table()
   }, digits = 4, striped = TRUE, bordered = TRUE, spacing = "s")
 
-  output$diagnosticModelSummary <- renderText({
+  output$downloadDiagnosticLjungCSV <- downloadHandler(
+    filename = function() {
+      paste0("diagnostic_ljung_box_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(diagnostic_ljung_table(), file)
+    }
+  )
+
+  diagnostic_summary_text <- reactive({
     build_diagnostic_model_summary(
       dat = advanced_forecast_result(),
       model_id = advanced_diagnostic_model()
     )
   })
+
+  output$diagnosticModelSummary <- renderText({
+    diagnostic_summary_text()
+  })
+
+  output$downloadDiagnosticSummaryTXT <- downloadHandler(
+    filename = function() {
+      paste0("diagnostic_model_summary_", Sys.Date(), ".txt")
+    },
+    content = function(file) {
+      writeLines(diagnostic_summary_text(), file, useBytes = TRUE)
+    }
+  )
 
   # -------------------------
   # Advanced Forecasting: Backtesting & Comparison
@@ -3528,16 +4051,29 @@ server <- function(input, output, session) {
     build_forecast_warning_ui(advanced_comparison())
   })
 
-  output$comparisonRankingTable <- renderTable({
+  comparison_ranking_table <- reactive({
     comparison_dat <- advanced_comparison()
     validate(need(nrow(comparison_dat$ranking) > 0, "Nenhum modelo foi estimado com sucesso para a configuração de comparação seleccionada."))
 
     comparison_dat$ranking %>%
       dplyr::mutate(Model = get_model_labels(Model)) %>%
       dplyr::rename(Modelo = Model)
+  })
+
+  output$comparisonRankingTable <- renderTable({
+    comparison_ranking_table()
   }, striped = TRUE, bordered = TRUE, spacing = "s")
 
-  output$accuracyTable <- renderTable({
+  output$downloadComparisonRankingCSV <- downloadHandler(
+    filename = function() {
+      paste0("comparison_ranking_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(comparison_ranking_table(), file)
+    }
+  )
+
+  accuracy_display_table <- reactive({
     comparison_dat <- advanced_comparison()
     validate(need(nrow(comparison_dat$metrics) > 0, "Nenhum modelo foi estimado com sucesso para a configuração de comparação seleccionada."))
 
@@ -3547,11 +4083,33 @@ server <- function(input, output, session) {
       dplyr::rename(Modelo = Model) %>%
       dplyr::select(Classificação, Modelo, dplyr::everything()) %>%
       dplyr::arrange(Classificação)
+  })
+
+  output$accuracyTable <- renderTable({
+    accuracy_display_table()
   }, digits = 3)
+
+  output$downloadAccuracyCSV <- downloadHandler(
+    filename = function() {
+      paste0("comparison_metrics_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(accuracy_display_table(), file)
+    }
+  )
 
   output$comparisonPlot <- renderPlot({
     build_comparison_plot(advanced_comparison())
   })
+
+  output$downloadComparisonPlot <- downloadHandler(
+    filename = function() {
+      paste0("comparison_plot_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(file, build_comparison_plot(advanced_comparison()))
+    }
+  )
   
   # -------------------------
   # Advanced Forecasting: Breaks & Structure
@@ -3576,9 +4134,27 @@ server <- function(input, output, session) {
     build_break_plot(advanced_break_analysis())
   })
 
+  output$downloadBreakPlot <- downloadHandler(
+    filename = function() {
+      paste0("break_plot_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      save_ggplot_png(file, build_break_plot(advanced_break_analysis()))
+    }
+  )
+
   output$breakTable <- renderTable({
     advanced_break_analysis()$segments
   }, striped = TRUE, bordered = TRUE, spacing = "s", digits = 2)
+
+  output$downloadBreakTableCSV <- downloadHandler(
+    filename = function() {
+      paste0("break_segments_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(advanced_break_analysis()$segments, file)
+    }
+  )
 }
 
 # =========================================================

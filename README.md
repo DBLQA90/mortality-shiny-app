@@ -10,9 +10,11 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 - Uses INE indicators `0008273` and `0003182` for population.
 - Uses INE indicators `0008206` and `0013166` for deaths by cause.
 - Detects available years and causes from INE metadata instead of hard-coding them.
-- Keeps the app geography list based on the original manual `local_area` vector.
+- Keeps the app geography list based on the original manual `local_area` vector, with `Norte` also available.
 - Lets users select the year range to import from the years available in the source indicators.
 - Uses year-range sliders for the observed, guided forecast, and advanced forecast windows.
+- Adds a one-year annual metrics comparison tab for Portugal, Norte, and one selected local aggregation.
+- Adds CSV and PNG exports for the app's tables and plots.
 - Requests only the years needed from each source indicator.
 - Adds persistent local caching for INE metadata and data queries.
 - Downloads data in small year/area/cause slices so interrupted or failed runs can reuse data already fetched.
@@ -68,6 +70,18 @@ The user can choose:
 - forecast horizon
 - training window
 - recommended model or model comparison mode
+
+### Annual Metrics
+
+Compares one selected year across Portugal, Norte, and a selected local aggregation.
+
+Available metrics:
+
+- deaths
+- crude mortality
+- standardised mortality
+- proportional mortality, using all-cause deaths as the denominator for each location
+- years of potential life lost before age 70
 
 ### Advanced Forecasting
 
