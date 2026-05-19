@@ -943,16 +943,9 @@ beginner_forecast_controls_panel <- function() {
       max = 8,
       value = 5
     ),
-    selectInput(
-      "beginner_training_window",
-      "Janela de ajuste:",
-      choices = c(
-        "Histórico completo" = "full",
-        "Últimos 10 anos" = "10",
-        "Últimos 15 anos" = "15",
-        "Últimos 20 anos" = "20"
-      ),
-      selected = "full"
+    year_range_slider(
+      "beginner_years_fit",
+      "Janela de ajuste:"
     ),
     radioButtons(
       "beginner_mode",
@@ -2777,23 +2770,22 @@ server <- function(input, output, session) {
     )
   }
 
-  get_beginner_training_range <- function(years, training_window) {
-    year_end <- max(years)
+  get_beginner_training_range <- function(years, year_range) {
+    selected_years <- get_years_in_selected_range(year_range)
+    training_years <- sort(intersect(as.integer(years), selected_years))
 
-    if (identical(training_window, "full")) {
-      return(range(years))
-    }
+    validate(
+      need(
+        length(training_years) >= 3,
+        "Seleccione pelo menos 3 anos de ajuste que já estejam carregados em 'Mortalidade Observada'."
+      )
+    )
 
-    window_n <- as.integer(training_window)
-    c(max(min(years), year_end - window_n + 1L), year_end)
+    range(training_years)
   }
 
-  get_beginner_training_label <- function(training_window, training_history) {
-    if (identical(training_window, "full")) {
-      "todo o histórico observado"
-    } else {
-      paste0("os últimos ", nrow(training_history$series), " anos observados")
-    }
+  get_beginner_training_label <- function(training_history) {
+    paste0("os anos ", format_year_selection(training_history$series$year))
   }
 
   build_beginner_forecast_plot <- function(dat) {
@@ -3101,7 +3093,7 @@ server <- function(input, output, session) {
     base_history <- observed_history()
     training_range <- get_beginner_training_range(
       years = base_history$series$year,
-      training_window = input$beginner_training_window
+      year_range = input$beginner_years_fit
     )
 
     build_historical_series(
@@ -3132,10 +3124,7 @@ server <- function(input, output, session) {
         full_history = observed_history(),
         horizon = input$beginner_horizon,
         mode = input$beginner_mode,
-        training_label = get_beginner_training_label(
-          training_window = input$beginner_training_window,
-          training_history = beginner_training_history()
-        )
+        training_label = get_beginner_training_label(beginner_training_history())
       )
     )
   }, ignoreNULL = TRUE)
