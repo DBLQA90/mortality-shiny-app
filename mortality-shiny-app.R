@@ -1121,7 +1121,13 @@ annual_metrics_tab_ui <- function() {
           choices = sort(year_of_interest),
           selected = max(year_of_interest)
         ),
-        selectInput("annual_cause", "Causa de Morte:", choices = diseases),
+        selectInput(
+          "annual_cause",
+          "Causa de Morte:",
+          choices = diseases,
+          selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
+          multiple = TRUE
+        ),
         selectInput("annual_sex", "Sexo:", choices = sex_levels, selected = "HM"),
         selectInput(
           "annual_area",
@@ -1131,11 +1137,11 @@ annual_metrics_tab_ui <- function() {
           selected = character(0)
         ),
         textInput("annual_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ACES / ULS"),
-        checkboxGroupInput(
-          "annual_metrics",
-          "Métricas:",
+        selectInput(
+          "annual_metric",
+          "Métrica:",
           choices = annual_metric_choices,
-          selected = unname(annual_metric_choices)
+          selected = "deaths"
         ),
         actionButton("go_annual_metrics", "Carregar métricas"),
         br(), br(),
@@ -1317,9 +1323,9 @@ ui <- navbarPage(
   title = "PNS Monitorização não oficial",
 
   observed_mortality_tab_ui(),
-  beginner_forecasting_tab_ui(),
   annual_metrics_tab_ui(),
-  advanced_forecasting_tab_ui()
+  advanced_forecasting_tab_ui(),
+  beginner_forecasting_tab_ui()
 )
 
 # =========================================================
@@ -3160,30 +3166,48 @@ server <- function(input, output, session) {
     )
   }
 
-  calculate_annual_metric_values <- function(area_spec, cause, sex, year, token) {
+  get_annual_metric_label <- function(metric_id) {
+    metric_label <- names(annual_metric_choices)[match(metric_id, unname(annual_metric_choices))]
+    ifelse(is.na(metric_label), NA_character_, metric_label)
+  }
+
+  first_numeric_or_na <- function(x) {
+    if (length(x) == 0) {
+      return(NA_real_)
+    }
+    as.numeric(x[[1]])
+  }
+
+  load_annual_cause_data <- function(area_spec, cause, sex, year, metric_id) {
+    data <- if (metric_id %in% c("crude", "dsr")) {
+      get_data_for(
+        area = area_spec$areas,
+        cause = cause,
+        years = year,
+        year_order = "desc"
+      )$full
+    } else {
+      get_death_data_for(
+        area = area_spec$areas,
+        cause = cause,
+        years = year,
+        year_order = "desc"
+      )
+    }
+
+    data %>%
+      dplyr::filter(sex == .env$sex)
+  }
+
+  calculate_annual_metric_values <- function(area_spec, causes, metric_id, sex, year, token) {
     abort_if_cancelled("annual", token)
 
-    cause_data <- get_data_for(
-      area = area_spec$areas,
-      cause = cause,
-      years = year,
-      year_order = "desc"
-    )$full %>%
-      dplyr::filter(sex == .env$sex)
-
     validate(
-      need(nrow(cause_data) > 0, glue::glue("Sem dados para {area_spec$label}."))
+      need(!is.na(get_annual_metric_label(metric_id)), "Seleccione uma métrica válida.")
     )
 
-    metric_row <- compute_metrics(cause_data) %>%
-      dplyr::filter(year == .env$year, sex == .env$sex) %>%
-      dplyr::slice(1)
-
-    deaths <- sum(cause_data$deaths, na.rm = TRUE)
-
-    all_cause_deaths <- if (identical(cause, "Todas as causas de morte")) {
-      deaths
-    } else {
+    all_cause_deaths <- NA_real_
+    if (identical(metric_id, "proportional")) {
       all_cause_data <- get_death_data_for(
         area = area_spec$areas,
         cause = "Todas as causas de morte",
@@ -3192,34 +3216,63 @@ server <- function(input, output, session) {
       ) %>%
         dplyr::filter(sex == .env$sex)
 
-      sum(all_cause_data$deaths, na.rm = TRUE)
-    }
+      all_cause_deaths <- sum(all_cause_data$deaths, na.rm = TRUE)
 
-    proportional <- if (is.finite(all_cause_deaths) && all_cause_deaths > 0) {
-      deaths / all_cause_deaths * 100
-    } else {
-      NA_real_
-    }
-
-    first_numeric_or_na <- function(x) {
-      if (length(x) == 0) {
-        return(NA_real_)
-      }
-      as.numeric(x[[1]])
-    }
-
-    tibble(
-      location = area_spec$label,
-      metric_id = unname(annual_metric_choices),
-      metric = names(annual_metric_choices),
-      value = c(
-        deaths,
-        first_numeric_or_na(metric_row$crude_rate),
-        first_numeric_or_na(metric_row$dsr),
-        proportional,
-        compute_ypll(cause_data, cutoff = 70)
+      validate(
+        need(
+          is.finite(all_cause_deaths) && all_cause_deaths > 0,
+          glue::glue("Sem denominador válido de todas as causas para {area_spec$label}.")
+        )
       )
-    )
+    }
+
+    metric_label <- get_annual_metric_label(metric_id)
+
+    dplyr::bind_rows(lapply(causes, function(cause) {
+      abort_if_cancelled("annual", token)
+
+      cause_data <- load_annual_cause_data(
+        area_spec = area_spec,
+        cause = cause,
+        sex = sex,
+        year = year,
+        metric_id = metric_id
+      )
+
+      validate(
+        need(nrow(cause_data) > 0, glue::glue("Sem dados para {area_spec$label} / {cause}."))
+      )
+
+      deaths <- sum(cause_data$deaths, na.rm = TRUE)
+
+      value <- switch(
+        metric_id,
+        deaths = deaths,
+        crude = {
+          metric_row <- compute_metrics(cause_data) %>%
+            dplyr::filter(year == .env$year, sex == .env$sex) %>%
+            dplyr::slice(1)
+          first_numeric_or_na(metric_row$crude_rate)
+        },
+        dsr = {
+          metric_row <- compute_metrics(cause_data) %>%
+            dplyr::filter(year == .env$year, sex == .env$sex) %>%
+            dplyr::slice(1)
+          first_numeric_or_na(metric_row$dsr)
+        },
+        proportional = deaths / all_cause_deaths * 100,
+        ypll = compute_ypll(cause_data, cutoff = 70),
+        NA_real_
+      )
+
+      tibble(
+        location = area_spec$label,
+        cause = cause,
+        metric_id = metric_id,
+        metric = metric_label,
+        value = value
+      )
+    }))
   }
 
   round_annual_metric_value <- function(metric_id, value) {
@@ -3230,34 +3283,62 @@ server <- function(input, output, session) {
     )
   }
 
-  build_annual_metrics_table <- function(metric_long, selected_metrics) {
-    metric_long %>%
-      dplyr::filter(metric_id %in% selected_metrics) %>%
-      dplyr::mutate(value = round_annual_metric_value(metric_id, value)) %>%
-      dplyr::select(Métrica = metric, location, value) %>%
-      tidyr::pivot_wider(names_from = location, values_from = value)
+  get_annual_sort_location <- function(metric_long) {
+    unique(metric_long$sort_location)[[1]]
   }
 
-  build_annual_metrics_plot <- function(metric_long, selected_metrics) {
+  get_annual_cause_order <- function(metric_long) {
+    sort_location <- get_annual_sort_location(metric_long)
+
+    metric_long %>%
+      dplyr::filter(location == .env$sort_location) %>%
+      dplyr::arrange(dplyr::desc(value)) %>%
+      dplyr::pull(cause)
+  }
+
+  build_annual_metrics_table <- function(metric_long, selected_metric) {
+    cause_order <- get_annual_cause_order(metric_long)
+    sort_location <- get_annual_sort_location(metric_long)
+    location_order <- unique(metric_long$location)
+
+    metric_long %>%
+      dplyr::filter(metric_id == selected_metric) %>%
+      dplyr::mutate(
+        cause = factor(cause, levels = cause_order),
+        value = round_annual_metric_value(metric_id, value)
+      ) %>%
+      dplyr::arrange(cause) %>%
+      dplyr::select(`Causa de Morte` = cause, location, value) %>%
+      tidyr::pivot_wider(names_from = location, values_from = value) %>%
+      dplyr::mutate(`Causa de Morte` = as.character(`Causa de Morte`)) %>%
+      dplyr::select(`Causa de Morte`, dplyr::all_of(location_order)) %>%
+      dplyr::arrange(dplyr::desc(.data[[sort_location]]))
+  }
+
+  build_annual_metrics_plot <- function(metric_long, selected_metric) {
+    cause_order <- get_annual_cause_order(metric_long)
     plot_df <- metric_long %>%
-      dplyr::filter(metric_id %in% selected_metrics) %>%
-      dplyr::mutate(value = round_annual_metric_value(metric_id, value))
+      dplyr::filter(metric_id == selected_metric) %>%
+      dplyr::mutate(
+        cause = factor(cause, levels = rev(cause_order)),
+        value = round_annual_metric_value(metric_id, value)
+      )
 
-    validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma métrica para apresentar."))
+    validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma causa de morte para apresentar."))
 
-    ggplot(plot_df, aes(x = location, y = value, fill = location)) +
-      geom_col(width = 0.68) +
-      facet_wrap(~ metric, scales = "free_y") +
+    ggplot(plot_df, aes(x = cause, y = value, fill = location)) +
+      geom_col(position = position_dodge(width = 0.72), width = 0.65) +
+      coord_flip() +
       labs(
-        title = "Métricas anuais por local",
+        title = paste(unique(plot_df$metric), "por causa de morte"),
         x = NULL,
-        y = NULL
+        y = unique(plot_df$metric)
       ) +
-      scale_fill_brewer(palette = "Set2", guide = "none") +
+      scale_fill_brewer(palette = "Set2", name = "Local") +
       theme_minimal() +
       theme(
         plot.title = element_text(hjust = 0.5),
-        axis.text.x = element_text(angle = 25, hjust = 1)
+        legend.position = "bottom"
       )
   }
   
@@ -3501,9 +3582,13 @@ server <- function(input, output, session) {
   annual_metrics_long <- eventReactive(input$go_annual_metrics, {
     token <- isolate(cancel_seq$annual)
     year <- as.integer(input$annual_year)
-    selected_metrics <- input$annual_metrics
+    selected_causes <- input$annual_cause
+    selected_metric <- input$annual_metric
 
-    validate(need(length(selected_metrics) > 0, "Seleccione pelo menos uma métrica."))
+    validate(
+      need(length(selected_causes) > 0, "Seleccione pelo menos uma causa de morte."),
+      need(length(selected_metric) == 1, "Seleccione uma métrica.")
+    )
 
     area_specs <- get_annual_area_specs(input$annual_area, input$annual_area_label)
 
@@ -3515,12 +3600,14 @@ server <- function(input, output, session) {
             incProgress(0.2 / length(area_specs))
             calculate_annual_metric_values(
               area_spec = area_specs[[i]],
-              cause = input$annual_cause,
+              causes = selected_causes,
+              metric_id = selected_metric,
               sex = input$annual_sex,
               year = year,
               token = token
             )
-          }))
+          })) %>%
+            dplyr::mutate(sort_location = area_specs[[3]]$label)
 
           incProgress(0.8)
           out
@@ -3531,12 +3618,12 @@ server <- function(input, output, session) {
 
   annual_metrics_table <- reactive({
     req(input$go_annual_metrics > 0)
-    build_annual_metrics_table(annual_metrics_long(), input$annual_metrics)
+    build_annual_metrics_table(annual_metrics_long(), input$annual_metric)
   })
 
   annual_metrics_plot <- reactive({
     req(input$go_annual_metrics > 0)
-    build_annual_metrics_plot(annual_metrics_long(), input$annual_metrics)
+    build_annual_metrics_plot(annual_metrics_long(), input$annual_metric)
   })
 
   output$annualMetricsTable <- renderTable({
@@ -3549,7 +3636,7 @@ server <- function(input, output, session) {
 
   output$downloadAnnualMetricsCSV <- downloadHandler(
     filename = function() {
-      paste0("annual_metrics_", input$annual_year, "_", Sys.Date(), ".csv")
+      paste0("annual_", input$annual_metric, "_", input$annual_year, "_", Sys.Date(), ".csv")
     },
     content = function(file) {
       write_csv_utf8(annual_metrics_table(), file)
@@ -3558,7 +3645,7 @@ server <- function(input, output, session) {
 
   output$downloadAnnualMetricsPlot <- downloadHandler(
     filename = function() {
-      paste0("annual_metrics_", input$annual_year, "_", Sys.Date(), ".png")
+      paste0("annual_", input$annual_metric, "_", input$annual_year, "_", Sys.Date(), ".png")
     },
     content = function(file) {
       save_ggplot_png(file, annual_metrics_plot())

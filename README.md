@@ -13,7 +13,7 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 - Keeps the app geography list based on the original manual `local_area` vector, with `Norte` also available.
 - Lets users select the year range to import from the years available in the source indicators.
 - Uses year-range sliders for the observed, guided forecast, and advanced forecast windows.
-- Adds a one-year annual metrics comparison tab for Portugal, Norte, and one selected local aggregation.
+- Adds a one-year annual metrics comparison tab for Portugal, Norte, and one selected local aggregation, with multiple causes sorted by the selected local value.
 - Adds CSV and PNG exports for the app's tables and plots.
 - Requests only the years needed from each source indicator.
 - Adds persistent local caching for INE metadata and data queries.
@@ -61,19 +61,9 @@ Outputs include:
 - time-series plots
 - summary and annual data tables
 
-### Beginner Forecasting
-
-Provides a guided forecasting workflow with simpler controls and reasonable defaults.
-
-The user can choose:
-
-- forecast horizon
-- training window
-- recommended model or model comparison mode
-
 ### Annual Metrics
 
-Compares one selected year across Portugal, Norte, and a selected local aggregation.
+Compares one selected year across Portugal, Norte, and a selected local aggregation. The tab shows one metric at a time for one or more causes of death, ordered from highest to lowest by the selected local aggregation.
 
 Available metrics:
 
@@ -95,6 +85,16 @@ Provides a fuller modelling workflow, including:
 - residual diagnostics
 - backtesting and model comparison
 - structural break analysis
+
+### Beginner Forecasting
+
+Provides a guided forecasting workflow with simpler controls and reasonable defaults.
+
+The user can choose:
+
+- forecast horizon
+- training window
+- recommended model or model comparison mode
 
 ## Data Sources
 
