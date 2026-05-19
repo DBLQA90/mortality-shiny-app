@@ -269,7 +269,7 @@ get_cat_code <- function(value, dimension_values, dim_name = "unknown") {
   requested <- as.character(value)
   requested_norm <- normalize_ine_label(requested)
   dim_number <- suppressWarnings(as.integer(sub("^dim", "", dim_name)))
-  code_col <- if ("categ_cod" %in% names(dimension_values)) "categ_cod" else "cat_id"
+  code_col <- if ("cat_id" %in% names(dimension_values)) "cat_id" else "categ_cod"
 
   dimension_values_for_dim <- dimension_values
   if (!is.na(dim_number) && "dim_num" %in% names(dimension_values_for_dim)) {
@@ -454,6 +454,10 @@ download_data <- function(indicator, dims, has_cause = FALSE) {
     {
       raw <- do.call(ine_client$get_data, args)
 
+      if (is.null(raw) || nrow(raw) == 0) {
+        stop("API returned no data. Check that the indicator and dimension filters are correct.", call. = FALSE)
+      }
+
       out <- raw %>%
         dplyr::transmute(
           year     = as.integer(dim_1),
@@ -480,6 +484,10 @@ download_data <- function(indicator, dims, has_cause = FALSE) {
       if (has_cause) {
         out <- out %>%
           dplyr::mutate(cause = raw$dim_5_t)
+      }
+
+      if (nrow(out) == 0) {
+        stop("API returned no rows after normalisation.", call. = FALSE)
       }
 
       out
@@ -517,6 +525,40 @@ empty_download_data <- function(has_cause = FALSE) {
   out
 }
 
+data_load_control <- new.env(parent = emptyenv())
+data_load_control$cancel_checker <- NULL
+data_load_control$cancelled <- FALSE
+
+is_data_load_cancelled <- function() {
+  checker <- data_load_control$cancel_checker
+  if (!is.function(checker)) {
+    return(FALSE)
+  }
+
+  cancelled <- isTRUE(tryCatch(checker(), error = function(e) FALSE))
+  if (cancelled) {
+    data_load_control$cancelled <- TRUE
+  }
+  cancelled
+}
+
+with_data_load_cancel_checker <- function(cancel_checker, expr) {
+  old_checker <- data_load_control$cancel_checker
+  old_cancelled <- data_load_control$cancelled
+
+  data_load_control$cancel_checker <- cancel_checker
+  data_load_control$cancelled <- FALSE
+
+  on.exit({
+    data_load_control$cancel_checker <- old_checker
+    data_load_control$cancelled <- old_cancelled
+  }, add = TRUE)
+
+  value <- force(expr)
+  attr(value, "cancelled") <- isTRUE(data_load_control$cancelled)
+  value
+}
+
 download_data_slices <- function(indicator, years, areas, cause = NULL, has_cause = FALSE) {
   slices <- expand_download_slices(years, areas, cause)
   if (nrow(slices) == 0) {
@@ -524,25 +566,52 @@ download_data_slices <- function(indicator, years, areas, cause = NULL, has_caus
   }
 
   failures <- list()
-  out <- purrr::pmap(slices, function(year, area, cause = NULL) {
-    tryCatch(
+  out <- list()
+  cancelled <- FALSE
+
+  for (i in seq_len(nrow(slices))) {
+    if (is_data_load_cancelled()) {
+      cancelled <- TRUE
+      break
+    }
+
+    year <- slices$year[[i]]
+    area <- slices$area[[i]]
+    cause_value <- if (has_cause) slices$cause[[i]] else NULL
+
+    result <- tryCatch(
       {
         dims <- list(dim1 = year, dim2 = area)
         if (has_cause) {
-          dims$dim5 <- cause
+          dims$dim5 <- cause_value
         }
         download_data(indicator, dims = dims, has_cause = has_cause)
       },
       error = function(e) {
         failures[[length(failures) + 1L]] <<- glue::glue(
-          "{indicator} / {year} / {area}{if (has_cause) paste0(' / ', cause) else ''}: {conditionMessage(e)}"
+          "{indicator} / {year} / {area}{if (has_cause) paste0(' / ', cause_value) else ''}: {conditionMessage(e)}"
         )
         NULL
       }
     )
-  })
 
-  out <- purrr::compact(out)
+    if (!is.null(result) && nrow(result) > 0) {
+      out[[length(out) + 1L]] <- result
+    }
+
+    if (is_data_load_cancelled()) {
+      cancelled <- TRUE
+      break
+    }
+  }
+
+  if (cancelled) {
+    warning(
+      glue::glue("INE loading was interrupted after {length(out)} completed slice{if (length(out) == 1) '' else 's'} for indicator {indicator}. Completed slices remain cached."),
+      call. = FALSE
+    )
+  }
+
   if (length(failures) > 0) {
     warning(
       glue::glue(
@@ -662,24 +731,42 @@ get_data_for <- function(area, cause, years = year_of_interest) {
     requested_years = years
   )
 
-  df_pop <- purrr::pmap_dfr(
+  df_pop_sources <- purrr::pmap_dfr(
     population_plan,
     function(indicator, source_priority, years) {
       prepare_population_data(indicator, years, area, source_priority)
     }
-  ) %>%
+  )
+
+  if (nrow(df_pop_sources) == 0) {
+    stop(
+      "Não foi possível carregar dados de população para a selecção actual. Tente novamente ou escolha menos anos/locais.",
+      call. = FALSE
+    )
+  }
+
+  df_pop <- df_pop_sources %>%
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     dplyr::select(-source_priority)
 
-  df_death <- purrr::pmap_dfr(
+  df_death_sources <- purrr::pmap_dfr(
     death_plan,
     function(indicator, source_priority, years) {
       prepare_death_data(indicator, years, area, cause, source_priority)
     }
-  ) %>%
+  )
+
+  if (nrow(df_death_sources) == 0) {
+    stop(
+      "Não foi possível carregar dados de óbitos para a selecção actual. Nada foi guardado na cache final; tente novamente ou escolha menos anos.",
+      call. = FALSE
+    )
+  }
+
+  df_death <- df_death_sources %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
     dplyr::slice(1) %>%
@@ -695,6 +782,13 @@ get_data_for <- function(area, cause, years = year_of_interest) {
     dplyr::mutate(
       age_band = factor(age_band, levels = age_levels, ordered = TRUE)
     )
+
+  if (nrow(df_full) == 0) {
+    stop(
+      "Os dados de população e óbitos carregados não têm anos/idades compatíveis para a selecção actual.",
+      call. = FALSE
+    )
+  }
   
   df_trunc <- df_full %>%
     dplyr::filter(!age_band %in% exclude_bands)
@@ -1183,15 +1277,28 @@ server <- function(input, output, session) {
 
     years_to_load <- get_years_in_selected_range(year_range)
 
-    dat <- get_data_for_cached(query_spec$area_key, query_spec$cause, years_to_load)
+    dat <- with_data_load_cancel_checker(
+      cancel_checker = function() !identical(cancel_seq[[kind]], token),
+      get_data_for(query_spec$area_key, query_spec$cause, years_to_load)
+    )
 
-    abort_if_cancelled(kind, token)
+    if (isTRUE(attr(dat, "cancelled"))) {
+      showNotification(
+        "Carregamento interrompido. As fatias já concluídas foram preservadas; os resultados usam apenas os dados disponíveis.",
+        type = "warning",
+        duration = 6
+      )
+    }
     incProgress(0.5)
 
     df_full <- dat$full %>%
       dplyr::filter(sex == query_spec$sex)
     df_trunc <- dat$trunc %>%
       dplyr::filter(sex == query_spec$sex)
+
+    validate(
+      need(nrow(df_full) > 0, "Não existem dados carregados para a selecção actual.")
+    )
 
     metrics <- dplyr::bind_rows(
       compute_metrics(df_full) %>% dplyr::mutate(População = "Total"),
