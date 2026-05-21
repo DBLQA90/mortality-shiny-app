@@ -52,7 +52,7 @@ shiny::runApp("mortality-shiny-app.R")
 
 ## Optional RDS Snapshots
 
-The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`.
+The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`; choose `INE em directo` to query INE instead. This selector is available in the observed mortality, annual metrics, and advanced model specification loading controls. Guided forecasts reuse the source from the observed mortality series already loaded.
 
 By default, the app looks for:
 
@@ -65,6 +65,7 @@ You can also point to another location with environment variables:
 - `MORTALITY_POPULATION_SNAPSHOT_RDS`
 - `MORTALITY_DEATHS_SNAPSHOT_RDS`
 - `MORTALITY_SNAPSHOT_RDS` for one combined RDS list containing `population` and `deaths`
+- `MORTALITY_DEFAULT_DATA_SOURCE=snapshot` if you want the app to open with `Ficheiros RDS` selected by default
 
 To build separate snapshot files from INE:
 
@@ -80,7 +81,7 @@ For the slow historical deaths indicator `0008206`, the repository also includes
 Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 ```
 
-This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
+This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. By default, the chunk builder fills `Portugal` first (`priority_areas=Portugal`) so national RDS results become usable before every local area has been downloaded. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
 
 ## App Modules
 

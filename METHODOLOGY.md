@@ -205,7 +205,7 @@ The deaths table must contain:
 - `age_band`
 - `deaths`
 
-When `Ficheiros RDS` is selected in the app, the same downstream metric calculations are used. The only difference is that rows are filtered from the snapshot files instead of requested from INE.
+When `Ficheiros RDS` is selected in the app, the same downstream metric calculations are used. The only difference is that rows are filtered from the snapshot files instead of requested from INE. `INE em directo` keeps the live INE path. The selector is available in the loading controls for observed mortality, annual metrics, and the advanced model specification; guided forecasts reuse the observed series that was already loaded.
 
 The helper script `tools/build_ine_snapshot.R` can build these files from INE. Snapshot files should be rebuilt when INE updates the underlying indicators or when the app needs years, areas, or causes not present in the existing snapshot.
 
@@ -214,7 +214,7 @@ For the slow historical death indicator `0008206`, the app can also read chunked
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/0008206/year_<year>/cause_<cause-token>.rds`
 
-The helper script `tools/build_0008206_snapshot_chunks.R` creates these files incrementally. The accompanying GitHub Actions workflow can run on a schedule, build a limited number of missing chunks per run, and commit new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
+The helper script `tools/build_0008206_snapshot_chunks.R` creates these files incrementally. It prioritises `Portugal` by default before expanding chunks to the full area list, so national results become available early while the remaining local-area data continue to fill in. The accompanying GitHub Actions workflow can run on a schedule, build a limited number of missing chunks per run, and commit new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
 
 ## Interpretation Notes
 

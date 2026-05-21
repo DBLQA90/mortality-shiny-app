@@ -246,6 +246,15 @@ get_data_source_label <- function(data_source = "ine") {
   ifelse(is.na(label), data_source, label)
 }
 
+get_data_source_progress_message <- function(data_source = "ine", context = "data") {
+  data_source <- normalize_data_source(data_source)
+  if (identical(data_source, "snapshot")) {
+    return(if (identical(context, "annual")) "A obter métricas anuais dos ficheiros RDS..." else "A obter dados dos ficheiros RDS...")
+  }
+
+  if (identical(context, "annual")) "A obter métricas anuais do INE..." else "A obter dados do INE..."
+}
+
 snapshot_file_token <- function(x) {
   x <- iconv(as.character(x), to = "ASCII//TRANSLIT")
   x <- tolower(x)
@@ -1249,7 +1258,7 @@ data_source_input <- function(input_id) {
     input_id,
     "Fonte de dados:",
     choices = data_source_choices,
-    selected = "ine"
+    selected = normalize_data_source(Sys.getenv("MORTALITY_DEFAULT_DATA_SOURCE", "ine"))
   )
 }
 
@@ -3674,7 +3683,7 @@ server <- function(input, output, session) {
       input$data_source
     )
 
-    shiny::withProgress(message = "A obter dados do INE...", value = 0, {
+    shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
       load_metric_bundle(
         query_spec,
         "rates",
@@ -3705,7 +3714,8 @@ server <- function(input, output, session) {
   })
 
   observed_summary <- reactive({
-    df <- observed_history()$series
+    dat <- observed_history()
+    df <- dat$series
     req(nrow(df) > 0)
     first_row <- dplyr::slice(df, 1)
     last_row <- dplyr::slice(df, nrow(df))
@@ -3719,12 +3729,14 @@ server <- function(input, output, session) {
 
     tibble(
       Métrica = c(
+        "Fonte de dados",
         "Último ano",
         "Última taxa",
         "Variação absoluta no período observado",
         "Variação percentual no período observado"
       ),
       Valor = c(
+        get_data_source_label(dat$spec$data_source),
         as.character(last_row$year),
         sprintf("%.2f", last_row$value),
         sprintf("%+.2f", absolute_change),
@@ -3916,7 +3928,7 @@ server <- function(input, output, session) {
 
     area_specs <- get_annual_area_specs(input$annual_area, input$annual_area_label)
 
-    shiny::withProgress(message = "A obter métricas anuais do INE...", value = 0, {
+    shiny::withProgress(message = get_data_source_progress_message(input$annual_data_source, context = "annual"), value = 0, {
       with_data_load_cancel_checker(
         cancel_checker = function() !identical(cancel_seq$annual, token),
         {
@@ -3993,7 +4005,7 @@ server <- function(input, output, session) {
       input$data_source2
     )
 
-    shiny::withProgress(message = "A obter dados do INE...", value = 0, {
+    shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
       metric_bundle <- load_metric_bundle(
         query_spec,
         "forecast",
