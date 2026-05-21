@@ -209,6 +209,13 @@ When `Ficheiros RDS` is selected in the app, the same downstream metric calculat
 
 The helper script `tools/build_ine_snapshot.R` can build these files from INE. Snapshot files should be rebuilt when INE updates the underlying indicators or when the app needs years, areas, or causes not present in the existing snapshot.
 
+For the slow historical death indicator `0008206`, the app can also read chunked files:
+
+- `data/snapshots/population/year_<year>.rds`
+- `data/snapshots/deaths/0008206/year_<year>/cause_<cause-token>.rds`
+
+The helper script `tools/build_0008206_snapshot_chunks.R` creates these files incrementally. The accompanying GitHub Actions workflow can run on a schedule, build a limited number of missing chunks per run, and commit new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
+
 ## Interpretation Notes
 
 - Small local areas and rare causes can produce unstable rates and wide confidence intervals.

@@ -74,6 +74,14 @@ Rscript tools/build_ine_snapshot.R out=data/snapshots years=2022:2023 areas=Port
 
 Use `ALL` for years, areas, or causes when you intentionally want a broad snapshot. Large snapshots can take a long time to build and may be too large for normal GitHub commits, so consider GitHub Releases or another file host for production-size files.
 
+For the slow historical deaths indicator `0008206`, the repository also includes a resumable chunk builder:
+
+```sh
+Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
+```
+
+This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
+
 ## App Modules
 
 ### Observed Mortality

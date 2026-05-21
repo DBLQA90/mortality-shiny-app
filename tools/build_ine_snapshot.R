@@ -80,6 +80,11 @@ out_dir <- value_or_default(cli$out, file.path(dirname(app_file), "data", "snaps
 year_batch_size <- as.integer(value_or_default(cli$year_batch_size, "5"))
 area_batch_size <- as.integer(value_or_default(cli$area_batch_size, "25"))
 cause_batch_size <- as.integer(value_or_default(cli$cause_batch_size, "5"))
+population_year_batch_size <- as.integer(value_or_default(cli$population_year_batch_size, as.character(year_batch_size)))
+population_area_batch_size <- as.integer(value_or_default(cli$population_area_batch_size, as.character(area_batch_size)))
+death_year_batch_size <- as.integer(value_or_default(cli$death_year_batch_size, as.character(year_batch_size)))
+death_area_batch_size <- as.integer(value_or_default(cli$death_area_batch_size, as.character(area_batch_size)))
+death_cause_batch_size <- as.integer(value_or_default(cli$death_cause_batch_size, as.character(cause_batch_size)))
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -157,8 +162,8 @@ death_plan <- app$get_source_year_plan(
 
 population_parts <- list()
 for (plan_i in seq_len(nrow(population_plan))) {
-  for (year_batch in chunk_vector(population_plan$years[[plan_i]], year_batch_size)) {
-    for (area_batch in chunk_vector(areas, area_batch_size)) {
+  for (year_batch in chunk_vector(population_plan$years[[plan_i]], population_year_batch_size)) {
+    for (area_batch in chunk_vector(areas, population_area_batch_size)) {
       message(
         "Population ",
         population_plan$indicator[[plan_i]],
@@ -177,9 +182,9 @@ for (plan_i in seq_len(nrow(population_plan))) {
 
 death_parts <- list()
 for (plan_i in seq_len(nrow(death_plan))) {
-  for (year_batch in chunk_vector(death_plan$years[[plan_i]], year_batch_size)) {
-    for (area_batch in chunk_vector(areas, area_batch_size)) {
-      for (cause_batch in chunk_vector(causes, cause_batch_size)) {
+  for (year_batch in chunk_vector(death_plan$years[[plan_i]], death_year_batch_size)) {
+    for (area_batch in chunk_vector(areas, death_area_batch_size)) {
+      for (cause_batch in chunk_vector(causes, death_cause_batch_size)) {
         message(
           "Deaths ",
           death_plan$indicator[[plan_i]],

@@ -1,0 +1,83 @@
+name: Build 0008206 Snapshot Chunks
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_chunks:
+        description: "Maximum missing death chunks to build in this run"
+        required: false
+        default: "20"
+      years:
+        description: "Years to consider, for example 2018:2021 or ALL"
+        required: false
+        default: "ALL"
+      causes:
+        description: "Pipe-separated causes, or ALL"
+        required: false
+        default: "ALL"
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-0008206-snapshot-chunks
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+
+      - name: Install R packages
+        run: |
+          install.packages("pacman", repos = "https://cloud.r-project.org")
+          pacman::p_load(
+            glue,
+            PHEindicatormethods,
+            tidyverse,
+            shiny,
+            forecast,
+            ineptr2,
+            strucchange,
+            memoise,
+            later
+          )
+        shell: Rscript {0}
+
+      - name: Build missing 0008206 chunks
+        run: |
+          Rscript tools/build_0008206_snapshot_chunks.R \
+            out=data/snapshots \
+            max_chunks="${{ github.event.inputs.max_chunks || '20' }}" \
+            years="${{ github.event.inputs.years || 'ALL' }}" \
+            causes="${{ github.event.inputs.causes || 'ALL' }}" \
+            population_area_batch_size=50 \
+            death_area_batch_size=50
+
+      - name: Commit generated chunks
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/snapshots
+          if git diff --cached --quiet; then
+            echo "No new snapshot chunks to commit."
+          else
+            git commit -m "Update 0008206 snapshot chunks"
+            git push
+          fi

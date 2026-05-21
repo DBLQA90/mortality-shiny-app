@@ -246,6 +246,14 @@ get_data_source_label <- function(data_source = "ine") {
   ifelse(is.na(label), data_source, label)
 }
 
+snapshot_file_token <- function(x) {
+  x <- iconv(as.character(x), to = "ASCII//TRANSLIT")
+  x <- tolower(x)
+  x <- gsub("[^a-z0-9]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  ifelse(nzchar(x), x, "unknown")
+}
+
 read_snapshot_object <- memoise::memoise(function(path) {
   readRDS(path)
 })
@@ -894,8 +902,83 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority, y
     dplyr::mutate(source_priority = source_priority)
 }
 
+read_chunked_population_snapshot <- function(years) {
+  years <- sort(unique(as.integer(years)))
+  paths <- file.path(get_snapshot_dir(), "population", paste0("year_", years, ".rds"))
+
+  if (!any(file.exists(paths))) {
+    return(NULL)
+  }
+
+  missing_paths <- paths[!file.exists(paths)]
+  if (length(missing_paths) > 0) {
+    stop(
+      glue::glue("Missing population snapshot chunk(s): {paste(missing_paths, collapse = ', ')}."),
+      call. = FALSE
+    )
+  }
+
+  dplyr::bind_rows(lapply(paths, read_snapshot_object))
+}
+
+read_chunked_death_snapshot <- function(years, causes) {
+  years <- sort(unique(as.integer(years)))
+  causes <- sort(unique(as.character(causes)))
+  grid <- tidyr::expand_grid(year = years, cause = causes) %>%
+    dplyr::mutate(
+      cause_token = snapshot_file_token(.data$cause),
+      path = file.path(
+        get_snapshot_dir(),
+        "deaths",
+        "0008206",
+        paste0("year_", .data$year),
+        paste0("cause_", .data$cause_token, ".rds")
+      )
+    )
+
+  if (!any(file.exists(grid$path))) {
+    return(NULL)
+  }
+
+  missing_paths <- grid$path[!file.exists(grid$path)]
+  if (length(missing_paths) > 0) {
+    stop(
+      glue::glue("Missing deaths snapshot chunk(s): {paste(missing_paths, collapse = ', ')}."),
+      call. = FALSE
+    )
+  }
+
+  dplyr::bind_rows(lapply(grid$path, read_snapshot_object))
+}
+
+get_flat_or_chunked_population_snapshot <- function(years) {
+  tryCatch(
+    get_snapshot_dataset("population"),
+    error = function(e) read_chunked_population_snapshot(years)
+  )
+}
+
+get_flat_or_chunked_death_snapshot <- function(years, causes) {
+  tryCatch(
+    get_snapshot_dataset("deaths"),
+    error = function(e) read_chunked_death_snapshot(years, causes)
+  )
+}
+
 get_snapshot_population_data <- function(years, area) {
-  pop <- get_snapshot_dataset("population") %>%
+  year_filter <- as.integer(years)
+  area_filter <- as.character(area)
+  pop_snapshot <- get_flat_or_chunked_population_snapshot(years)
+  if (is.null(pop_snapshot)) {
+    stop(
+      glue::glue(
+        "Snapshot RDS file not found for 'population'. Expected '{get_snapshot_file('population')}', combined snapshot '{get_combined_snapshot_file()}', or chunked files in '{file.path(get_snapshot_dir(), 'population')}'."
+      ),
+      call. = FALSE
+    )
+  }
+
+  pop <- pop_snapshot %>%
     validate_snapshot_columns(
       required_cols = c("year", "area", "sex", "age_band", "pop"),
       label = "Population"
@@ -908,8 +991,8 @@ get_snapshot_population_data <- function(years, area) {
       pop = as.numeric(pop)
     ) %>%
     dplyr::filter(
-      year %in% as.integer(years),
-      area %in% as.character(area)
+      .data$year %in% .env$year_filter,
+      .data$area %in% .env$area_filter
     ) %>%
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
@@ -925,7 +1008,20 @@ get_snapshot_population_data <- function(years, area) {
 }
 
 get_snapshot_death_data <- function(years, area, cause) {
-  deaths <- get_snapshot_dataset("deaths") %>%
+  year_filter <- as.integer(years)
+  area_filter <- as.character(area)
+  cause_filter <- as.character(cause)
+  death_snapshot <- get_flat_or_chunked_death_snapshot(years, cause)
+  if (is.null(death_snapshot)) {
+    stop(
+      glue::glue(
+        "Snapshot RDS file not found for 'deaths'. Expected '{get_snapshot_file('deaths')}', combined snapshot '{get_combined_snapshot_file()}', or chunked files in '{file.path(get_snapshot_dir(), 'deaths', '0008206')}'."
+      ),
+      call. = FALSE
+    )
+  }
+
+  deaths <- death_snapshot %>%
     validate_snapshot_columns(
       required_cols = c("year", "area", "sex", "cause", "age_band", "deaths"),
       label = "Deaths"
@@ -939,9 +1035,9 @@ get_snapshot_death_data <- function(years, area, cause) {
       deaths = as.numeric(deaths)
     ) %>%
     dplyr::filter(
-      year %in% as.integer(years),
-      area %in% as.character(area),
-      cause %in% as.character(cause)
+      .data$year %in% .env$year_filter,
+      .data$area %in% .env$area_filter,
+      .data$cause %in% .env$cause_filter
     ) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
