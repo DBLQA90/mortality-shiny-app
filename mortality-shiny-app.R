@@ -132,6 +132,11 @@ annual_metric_choices <- c(
   "AVPP" = "ypll"
 )
 
+data_source_choices <- c(
+  "INE em directo" = "ine",
+  "Ficheiros RDS" = "snapshot"
+)
+
 age_levels <- c(
   "0 - 4 anos","5 - 9 anos","10 - 14 anos","15 - 19 anos",
   "20 - 24 anos","25 - 29 anos","30 - 34 anos","35 - 39 anos",
@@ -194,6 +199,98 @@ persistent_data_cache_max_age <- as.numeric(Sys.getenv(
   "MORTALITY_DATA_CACHE_MAX_AGE",
   7 * 24 * 60 * 60
 ))
+
+get_snapshot_dir <- function() {
+  Sys.getenv(
+    "MORTALITY_SNAPSHOT_DIR",
+    file.path(get_app_dir(), "data", "snapshots")
+  )
+}
+
+get_combined_snapshot_file <- function() {
+  Sys.getenv(
+    "MORTALITY_SNAPSHOT_RDS",
+    file.path(get_snapshot_dir(), "mortality_ine_snapshot.rds")
+  )
+}
+
+get_snapshot_file <- function(kind) {
+  env_name <- switch(
+    kind,
+    population = "MORTALITY_POPULATION_SNAPSHOT_RDS",
+    deaths = "MORTALITY_DEATHS_SNAPSHOT_RDS",
+    stop("Unknown snapshot kind: ", kind, call. = FALSE)
+  )
+
+  Sys.getenv(
+    env_name,
+    file.path(get_snapshot_dir(), paste0(kind, ".rds"))
+  )
+}
+
+normalize_data_source <- function(data_source = "ine") {
+  if (is.null(data_source) || length(data_source) == 0 || is.na(data_source[[1]])) {
+    return("ine")
+  }
+
+  data_source <- as.character(data_source[[1]])
+  if (!data_source %in% unname(data_source_choices)) {
+    return("ine")
+  }
+  data_source
+}
+
+get_data_source_label <- function(data_source = "ine") {
+  data_source <- normalize_data_source(data_source)
+  label <- names(data_source_choices)[match(data_source, unname(data_source_choices))]
+  ifelse(is.na(label), data_source, label)
+}
+
+read_snapshot_object <- memoise::memoise(function(path) {
+  readRDS(path)
+})
+
+read_snapshot_dataset <- memoise::memoise(function(kind, separate_path, combined_path) {
+  if (file.exists(separate_path)) {
+    return(read_snapshot_object(separate_path))
+  }
+
+  if (file.exists(combined_path)) {
+    snapshot <- read_snapshot_object(combined_path)
+    if (is.list(snapshot) && !is.null(snapshot[[kind]])) {
+      return(snapshot[[kind]])
+    }
+  }
+
+  stop(
+    glue::glue(
+      "Snapshot RDS file not found for '{kind}'. Expected '{separate_path}' or combined snapshot '{combined_path}'."
+    ),
+    call. = FALSE
+  )
+})
+
+get_snapshot_dataset <- function(kind) {
+  read_snapshot_dataset(
+    kind = kind,
+    separate_path = get_snapshot_file(kind),
+    combined_path = get_combined_snapshot_file()
+  )
+}
+
+validate_snapshot_columns <- function(data, required_cols, label) {
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(
+      glue::glue(
+        "{label} snapshot is missing required column(s): {paste(missing_cols, collapse = ', ')}."
+      ),
+      call. = FALSE
+    )
+  }
+
+  data
+}
 
 cache_file_token <- function(key) {
   key_file <- tempfile(fileext = ".rds")
@@ -797,7 +894,103 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority, y
     dplyr::mutate(source_priority = source_priority)
 }
 
-get_death_data_for <- function(area, cause, years = year_of_interest, year_order = "asc") {
+get_snapshot_population_data <- function(years, area) {
+  pop <- get_snapshot_dataset("population") %>%
+    validate_snapshot_columns(
+      required_cols = c("year", "area", "sex", "age_band", "pop"),
+      label = "Population"
+    ) %>%
+    dplyr::mutate(
+      year = as.integer(year),
+      area = as.character(area),
+      sex = as.character(sex),
+      age_band = as.character(age_band),
+      pop = as.numeric(pop)
+    ) %>%
+    dplyr::filter(
+      year %in% as.integer(years),
+      area %in% as.character(area)
+    ) %>%
+    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+
+  if (nrow(pop) == 0) {
+    stop(
+      "The population snapshot has no rows for the selected years/areas. Choose INE or rebuild the snapshot.",
+      call. = FALSE
+    )
+  }
+
+  pop
+}
+
+get_snapshot_death_data <- function(years, area, cause) {
+  deaths <- get_snapshot_dataset("deaths") %>%
+    validate_snapshot_columns(
+      required_cols = c("year", "area", "sex", "cause", "age_band", "deaths"),
+      label = "Deaths"
+    ) %>%
+    dplyr::mutate(
+      year = as.integer(year),
+      area = as.character(area),
+      sex = as.character(sex),
+      cause = as.character(cause),
+      age_band = as.character(age_band),
+      deaths = as.numeric(deaths)
+    ) %>%
+    dplyr::filter(
+      year %in% as.integer(years),
+      area %in% as.character(area),
+      cause %in% as.character(cause)
+    ) %>%
+    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
+
+  if (nrow(deaths) == 0) {
+    stop(
+      "The deaths snapshot has no rows for the selected years/areas/causes. Choose INE or rebuild the snapshot.",
+      call. = FALSE
+    )
+  }
+
+  deaths
+}
+
+get_data_for_snapshot <- function(area, cause, years = year_of_interest) {
+  df_pop <- get_snapshot_population_data(years, area)
+  df_death <- get_snapshot_death_data(years, area, cause)
+
+  df_full <- df_pop %>%
+    dplyr::right_join(
+      df_death,
+      by = c("year", "area", "sex", "age_band")
+    ) %>%
+    tidyr::replace_na(list(deaths = 0)) %>%
+    dplyr::filter(!is.na(pop)) %>%
+    dplyr::mutate(
+      age_band = factor(age_band, levels = age_levels, ordered = TRUE)
+    )
+
+  if (nrow(df_full) == 0) {
+    stop(
+      "The snapshot population and death files do not have compatible rows for the selected filters.",
+      call. = FALSE
+    )
+  }
+
+  df_trunc <- df_full %>%
+    dplyr::filter(!age_band %in% exclude_bands)
+
+  list(full = df_full, trunc = df_trunc)
+}
+
+get_death_data_for <- function(area, cause, years = year_of_interest, year_order = "asc", data_source = "ine") {
+  data_source <- normalize_data_source(data_source)
+  if (identical(data_source, "snapshot")) {
+    years <- order_years(years, year_order)
+    return(get_snapshot_death_data(years, area, cause))
+  }
+
   year_order <- normalize_year_order(year_order)
   years <- order_years(years, year_order)
 
@@ -830,7 +1023,13 @@ get_death_data_for <- function(area, cause, years = year_of_interest, year_order
     dplyr::select(-source_priority)
 }
 
-get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc") {
+get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc", data_source = "ine") {
+  data_source <- normalize_data_source(data_source)
+  if (identical(data_source, "snapshot")) {
+    years <- order_years(years, year_order)
+    return(get_data_for_snapshot(area, cause, years))
+  }
+
   year_order <- normalize_year_order(year_order)
   years <- order_years(years, year_order)
 
@@ -949,6 +1148,15 @@ year_range_slider <- function(input_id, label, value = range(year_of_interest)) 
   )
 }
 
+data_source_input <- function(input_id) {
+  selectInput(
+    input_id,
+    "Fonte de dados:",
+    choices = data_source_choices,
+    selected = "ine"
+  )
+}
+
 # Shared control panels ----------------------------------------------------
 
 forecast_controls_panel <- function() {
@@ -971,6 +1179,7 @@ forecast_controls_panel <- function() {
       "years_fit",
       "Anos a importar / ajustar:"
     ),
+    data_source_input("data_source2"),
     checkboxGroupInput(
       "models",
       "Famílias de modelos:",
@@ -1065,6 +1274,7 @@ observed_mortality_tab_ui <- function() {
           "years_import",
           "Anos a importar:"
         ),
+        data_source_input("data_source"),
         actionButton("go_rates", "Carregar dados"),
         br(), br(),
         actionButton("cancel_rates", "Interromper carregamento")
@@ -1143,6 +1353,7 @@ annual_metrics_tab_ui <- function() {
           choices = annual_metric_choices,
           selected = "deaths"
         ),
+        data_source_input("annual_data_source"),
         actionButton("go_annual_metrics", "Carregar métricas"),
         br(), br(),
         actionButton("cancel_annual_metrics", "Interromper carregamento")
@@ -1460,14 +1671,15 @@ server <- function(input, output, session) {
   # 2) Load one metric bundle (both population scopes, both rate outputs) for
   #    that query.
   # 3) Apply the final population/rate/year filter to get a reusable series.
-  make_query_spec <- function(area, area_label, cause, sex) {
+  make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
     area_key <- sort(unique(area))
 
     list(
       area_key = area_key,
       area_label = get_selection_label(area_key, area_label),
       cause = cause,
-      sex = sex
+      sex = sex,
+      data_source = normalize_data_source(data_source)
     )
   }
 
@@ -1537,7 +1749,13 @@ server <- function(input, output, session) {
 
     dat <- with_data_load_cancel_checker(
       cancel_checker = function() !identical(cancel_seq[[kind]], token),
-      get_data_for(query_spec$area_key, query_spec$cause, years_to_load, year_order = year_order)
+      get_data_for(
+        query_spec$area_key,
+        query_spec$cause,
+        years_to_load,
+        year_order = year_order,
+        data_source = query_spec$data_source
+      )
     )
 
     if (isTRUE(attr(dat, "cancelled"))) {
@@ -3178,20 +3396,22 @@ server <- function(input, output, session) {
     as.numeric(x[[1]])
   }
 
-  load_annual_cause_data <- function(area_spec, cause, sex, year, metric_id) {
+  load_annual_cause_data <- function(area_spec, cause, sex, year, metric_id, data_source = "ine") {
     data <- if (metric_id %in% c("crude", "dsr")) {
       get_data_for(
         area = area_spec$areas,
         cause = cause,
         years = year,
-        year_order = "desc"
+        year_order = "desc",
+        data_source = data_source
       )$full
     } else {
       get_death_data_for(
         area = area_spec$areas,
         cause = cause,
         years = year,
-        year_order = "desc"
+        year_order = "desc",
+        data_source = data_source
       )
     }
 
@@ -3199,7 +3419,7 @@ server <- function(input, output, session) {
       dplyr::filter(sex == .env$sex)
   }
 
-  calculate_annual_metric_values <- function(area_spec, causes, metric_id, sex, year, token) {
+  calculate_annual_metric_values <- function(area_spec, causes, metric_id, sex, year, token, data_source = "ine") {
     abort_if_cancelled("annual", token)
 
     validate(
@@ -3212,7 +3432,8 @@ server <- function(input, output, session) {
         area = area_spec$areas,
         cause = "Todas as causas de morte",
         years = year,
-        year_order = "desc"
+        year_order = "desc",
+        data_source = data_source
       ) %>%
         dplyr::filter(sex == .env$sex)
 
@@ -3236,7 +3457,8 @@ server <- function(input, output, session) {
         cause = cause,
         sex = sex,
         year = year,
-        metric_id = metric_id
+        metric_id = metric_id,
+        data_source = data_source
       )
 
       validate(
@@ -3348,7 +3570,13 @@ server <- function(input, output, session) {
   observed_metric_bundle <- eventReactive(input$go_rates, {
     token <- isolate(cancel_seq$rates)
     year_order <- isolate(year_load_state$rates_order)
-    query_spec <- make_query_spec(input$area, input$area_label, input$cause, input$sex)
+    query_spec <- make_query_spec(
+      input$area,
+      input$area_label,
+      input$cause,
+      input$sex,
+      input$data_source
+    )
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
       load_metric_bundle(
@@ -3604,7 +3832,8 @@ server <- function(input, output, session) {
               metric_id = selected_metric,
               sex = input$annual_sex,
               year = year,
-              token = token
+              token = token,
+              data_source = input$annual_data_source
             )
           })) %>%
             dplyr::mutate(sort_location = area_specs[[3]]$label)
@@ -3660,7 +3889,13 @@ server <- function(input, output, session) {
   forecast_history <- eventReactive(input$go_forecast, {
     token <- isolate(cancel_seq$forecast)
     year_order <- isolate(year_load_state$forecast_order)
-    query_spec <- make_query_spec(input$area2, input$area_label2, input$cause2, input$sex2)
+    query_spec <- make_query_spec(
+      input$area2,
+      input$area_label2,
+      input$cause2,
+      input$sex2,
+      input$data_source2
+    )
 
     shiny::withProgress(message = "A obter dados do INE...", value = 0, {
       metric_bundle <- load_metric_bundle(
@@ -3745,6 +3980,7 @@ server <- function(input, output, session) {
           "Local de residência",
           "Causa de morte",
           "Sexo",
+          "Fonte de dados",
           "População",
           "Taxa",
           "Anos para ajuste",
@@ -3759,6 +3995,7 @@ server <- function(input, output, session) {
           spec$area_label,
           spec$cause,
           spec$sex,
+          get_data_source_label(spec$data_source),
           spec$population,
           dat$history$rate_label,
           format_year_selection(spec$years),

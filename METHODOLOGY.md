@@ -177,6 +177,38 @@ The app uses both in-memory and persistent RDS caching. Metadata and data have s
 
 Data requests are intentionally granular. If a long request is interrupted or an INE call fails, completed slices remain cached and can be reused in later runs. If a stale cached slice exists and a live request fails, the app may use the stale slice and show a warning.
 
+## RDS Snapshot Source
+
+The app can use prebuilt RDS files as an alternative to live INE requests. This is intended for faster app use when the relevant INE data have already been downloaded and normalised.
+
+The snapshot source expects either separate files:
+
+- `population.rds`
+- `deaths.rds`
+
+or one combined RDS file containing a list with `population` and `deaths` elements.
+
+The population table must contain:
+
+- `year`
+- `area`
+- `sex`
+- `age_band`
+- `pop`
+
+The deaths table must contain:
+
+- `year`
+- `area`
+- `sex`
+- `cause`
+- `age_band`
+- `deaths`
+
+When `Ficheiros RDS` is selected in the app, the same downstream metric calculations are used. The only difference is that rows are filtered from the snapshot files instead of requested from INE.
+
+The helper script `tools/build_ine_snapshot.R` can build these files from INE. Snapshot files should be rebuilt when INE updates the underlying indicators or when the app needs years, areas, or causes not present in the existing snapshot.
+
 ## Interpretation Notes
 
 - Small local areas and rare causes can produce unstable rates and wide confidence intervals.

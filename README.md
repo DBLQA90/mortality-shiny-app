@@ -22,6 +22,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Downloads data in small year/area/cause slices so interrupted or failed runs can reuse data already fetched.
 - Prioritises year loading based on the latest slider movement, so leftward changes load recent-to-older and rightward changes load older-to-newer.
 - Uses a large INE client timeout for long indicator calls.
+- Adds an optional RDS snapshot data source so users can load prebuilt data files instead of querying INE live.
 
 ## Running The App
 
@@ -48,6 +49,30 @@ shiny::runApp("mortality-shiny-app.R")
 - `strucchange`
 - `memoise`
 - `later`
+
+## Optional RDS Snapshots
+
+The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`.
+
+By default, the app looks for:
+
+- `data/snapshots/population.rds`
+- `data/snapshots/deaths.rds`
+
+You can also point to another location with environment variables:
+
+- `MORTALITY_SNAPSHOT_DIR`
+- `MORTALITY_POPULATION_SNAPSHOT_RDS`
+- `MORTALITY_DEATHS_SNAPSHOT_RDS`
+- `MORTALITY_SNAPSHOT_RDS` for one combined RDS list containing `population` and `deaths`
+
+To build separate snapshot files from INE:
+
+```sh
+Rscript tools/build_ine_snapshot.R out=data/snapshots years=2022:2023 areas=Portugal\|Norte causes="Todas as causas de morte|Diabetes mellitus"
+```
+
+Use `ALL` for years, areas, or causes when you intentionally want a broad snapshot. Large snapshots can take a long time to build and may be too large for normal GitHub commits, so consider GitHub Releases or another file host for production-size files.
 
 ## App Modules
 
