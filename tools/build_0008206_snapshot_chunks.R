@@ -53,6 +53,15 @@ parse_values <- function(value, default_values) {
   trimws(strsplit(value, "\\|")[[1]])
 }
 
+prioritize_values <- function(values, preferred) {
+  unique(c(preferred[preferred %in% values], values))
+}
+
+prioritize_causes <- function(causes) {
+  preferred <- c("Todas as causas de morte")
+  prioritize_values(causes, preferred)
+}
+
 chunk_vector <- function(x, size) {
   size <- max(1L, as.integer(size))
   split(x, ceiling(seq_along(x) / size))
@@ -97,10 +106,14 @@ all_death_years <- app$get_source_year_plan(
 years <- parse_years(cli$years, all_death_years)
 areas <- parse_values(cli$areas, app$local_area)
 causes <- parse_values(cli$causes, app$diseases)
+priority_areas <- parse_values(value_or_default(cli$priority_areas, "Portugal"), character())
 
-years <- sort(unique(as.integer(years)))
+years <- sort(unique(as.integer(years)), decreasing = TRUE)
 areas <- sort(unique(as.character(areas)))
-causes <- sort(unique(as.character(causes)))
+priority_areas <- unique(as.character(priority_areas))
+areas <- prioritize_values(areas, priority_areas)
+causes <- prioritize_causes(sort(unique(as.character(causes))))
+priority_areas <- priority_areas[priority_areas %in% areas]
 
 if (length(years) == 0 || length(areas) == 0 || length(causes) == 0) {
   stop("Chunked snapshot requires at least one year, area, and cause.", call. = FALSE)
@@ -164,13 +177,73 @@ save_rds_atomic <- function(x, path) {
   invisible(file.rename(tmp, path))
 }
 
-build_population_year <- function(year) {
-  path <- population_path(year)
+read_existing_rows <- function(path, source_priority = 0L) {
   if (file.exists(path)) {
-    message("Population year ", year, " already exists")
+    existing <- readRDS(path)
+    if (!"source_priority" %in% names(existing)) {
+      existing <- dplyr::mutate(existing, source_priority = source_priority)
+    }
+    return(existing)
+  }
+
+  NULL
+}
+
+missing_areas_for_path <- function(path, required_areas) {
+  required_areas <- unique(as.character(required_areas))
+  if (length(required_areas) == 0) {
+    return(character())
+  }
+  if (!file.exists(path)) {
+    return(required_areas)
+  }
+
+  existing_areas <- tryCatch(
+    {
+      existing <- readRDS(path)
+      if (!"area" %in% names(existing)) {
+        character()
+      } else {
+        unique(as.character(existing$area))
+      }
+    },
+    error = function(e) character()
+  )
+
+  setdiff(required_areas, existing_areas)
+}
+
+chunk_needs_areas <- function(path, required_areas) {
+  length(missing_areas_for_path(path, required_areas)) > 0
+}
+
+collapse_population <- function(parts) {
+  dplyr::bind_rows(parts) %>%
+    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
+}
+
+collapse_deaths <- function(parts) {
+  dplyr::bind_rows(parts) %>%
+    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
+}
+
+build_population_year <- function(year, target_areas = areas) {
+  path <- population_path(year)
+  missing_areas <- missing_areas_for_path(path, target_areas)
+  if (length(missing_areas) == 0) {
+    message("Population year ", year, " already has requested area coverage")
     return(invisible(FALSE))
   }
 
+  existing <- read_existing_rows(path, source_priority = 0L)
   population_plan <- app$get_source_year_plan(
     indicators = c(app$population_indicator_current, app$population_indicator_legacy),
     priorities = c(1L, 2L),
@@ -180,7 +253,7 @@ build_population_year <- function(year) {
 
   parts <- list()
   for (plan_i in seq_len(nrow(population_plan))) {
-    for (area_batch in chunk_vector(areas, population_area_batch_size)) {
+    for (area_batch in chunk_vector(missing_areas, population_area_batch_size)) {
       message(
         "Population ",
         population_plan$indicator[[plan_i]],
@@ -193,30 +266,29 @@ build_population_year <- function(year) {
         areas = area_batch,
         source_priority = population_plan$source_priority[[plan_i]]
       )
+      saved_parts <- c(list(existing), parts)
+      population <- collapse_population(saved_parts[!vapply(saved_parts, is.null, logical(1))])
+      save_rds_atomic(population, path)
+      existing <- dplyr::mutate(population, source_priority = 0L)
     }
   }
 
-  population <- dplyr::bind_rows(parts) %>%
-    dplyr::group_by(year, area, sex, age_band) %>%
-    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-source_priority)
-
-  save_rds_atomic(population, path)
+  population <- readRDS(path)
   message("Saved ", path, " rows ", nrow(population))
   invisible(TRUE)
 }
 
-build_death_chunk <- function(year, cause) {
+build_death_chunk <- function(year, cause, target_areas = areas) {
   path <- death_path(year, cause)
-  if (file.exists(path)) {
-    message("Deaths year ", year, " cause '", cause, "' already exists")
+  missing_areas <- missing_areas_for_path(path, target_areas)
+  if (length(missing_areas) == 0) {
+    message("Deaths year ", year, " cause '", cause, "' already has requested area coverage")
     return(invisible(FALSE))
   }
 
+  existing <- read_existing_rows(path, source_priority = 0L)
   parts <- list()
-  for (area_batch in chunk_vector(areas, death_area_batch_size)) {
+  for (area_batch in chunk_vector(missing_areas, death_area_batch_size)) {
     message(
       "Deaths 0008206 year ", year,
       " cause '", cause,
@@ -229,24 +301,39 @@ build_death_chunk <- function(year, cause) {
       cause = cause,
       source_priority = 1L
     )
+    saved_parts <- c(list(existing), parts)
+    deaths <- collapse_deaths(saved_parts[!vapply(saved_parts, is.null, logical(1))])
+    save_rds_atomic(deaths, path)
+    existing <- dplyr::mutate(deaths, source_priority = 0L)
   }
 
-  deaths <- dplyr::bind_rows(parts) %>%
-    dplyr::group_by(year, area, sex, cause, age_band) %>%
-    dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-source_priority)
-
-  save_rds_atomic(deaths, path)
+  deaths <- readRDS(path)
   message("Saved ", path, " rows ", nrow(deaths))
   invisible(TRUE)
 }
 
-grid <- tidyr::expand_grid(year = years, cause = causes) %>%
-  dplyr::arrange(year, cause) %>%
-  dplyr::mutate(path = vapply(seq_len(dplyr::n()), function(i) death_path(.data$year[[i]], .data$cause[[i]]), character(1))) %>%
-  dplyr::filter(!file.exists(.data$path))
+base_grid <- tidyr::expand_grid(year = years, cause = causes) %>%
+  dplyr::mutate(
+    year_rank = match(.data$year, years),
+    cause_rank = match(.data$cause, causes)
+  ) %>%
+  dplyr::arrange(.data$year_rank, .data$cause_rank) %>%
+  dplyr::mutate(path = vapply(seq_len(dplyr::n()), function(i) death_path(.data$year[[i]], .data$cause[[i]]), character(1)))
+
+priority_missing <- if (length(priority_areas) > 0) {
+  vapply(base_grid$path, chunk_needs_areas, logical(1), required_areas = priority_areas)
+} else {
+  rep(FALSE, nrow(base_grid))
+}
+complete_missing <- vapply(base_grid$path, chunk_needs_areas, logical(1), required_areas = areas)
+
+grid <- dplyr::bind_rows(
+  base_grid[priority_missing, , drop = FALSE] %>%
+    dplyr::mutate(stage = "priority"),
+  base_grid[complete_missing & !priority_missing, , drop = FALSE] %>%
+    dplyr::mutate(stage = "complete")
+) %>%
+  dplyr::select(-dplyr::all_of(c("year_rank", "cause_rank")))
 
 if (nrow(grid) == 0) {
   message("All requested 0008206 chunks already exist.")
@@ -256,14 +343,15 @@ if (nrow(grid) == 0) {
 todo <- utils::head(grid, max_chunks)
 message("Building ", nrow(todo), " missing 0008206 chunk(s) out of ", nrow(grid), " remaining.")
 message("Output directory: ", out_dir)
-
-for (year in sort(unique(todo$year))) {
-  build_population_year(year)
+if (length(priority_areas) > 0) {
+  message("Priority areas: ", paste(priority_areas, collapse = ", "))
 }
 
 built <- 0L
 for (i in seq_len(nrow(todo))) {
-  if (isTRUE(build_death_chunk(todo$year[[i]], todo$cause[[i]]))) {
+  target_areas <- if (identical(todo$stage[[i]], "priority")) priority_areas else areas
+  build_population_year(todo$year[[i]], target_areas = target_areas)
+  if (isTRUE(build_death_chunk(todo$year[[i]], todo$cause[[i]], target_areas = target_areas))) {
     built <- built + 1L
   }
 }
@@ -273,6 +361,7 @@ manifest <- list(
   app_file = normalizePath(app_file, mustWork = FALSE),
   years_requested = years,
   areas_requested = areas,
+  priority_areas = priority_areas,
   causes_requested = causes,
   chunks_built_this_run = built,
   chunks_remaining_after_selection = nrow(grid) - nrow(todo)
