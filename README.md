@@ -83,6 +83,22 @@ Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 
 This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. By default, the chunk builder fills `Portugal` first (`priority_areas=Portugal`) so national RDS results become usable before every local area has been downloaded. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
 
+For faster local backfilling, run the loop helper from the repository root:
+
+```sh
+./tools/run_0008206_snapshot_loop.sh
+```
+
+By default it runs repeated `0008206` batches with `MAX_CHUNKS=50`, prioritises `Portugal`, commits each completed batch, and pushes to `main`. Useful overrides:
+
+```sh
+MAX_CHUNKS=100 ./tools/run_0008206_snapshot_loop.sh
+YEARS=2019:2021 ITERATIONS=3 ./tools/run_0008206_snapshot_loop.sh
+AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
+```
+
+Stop with `Ctrl+C`; completed chunks from the interrupted batch are committed before the script exits.
+
 ## App Modules
 
 ### Observed Mortality
