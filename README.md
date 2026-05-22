@@ -75,13 +75,13 @@ Rscript tools/build_ine_snapshot.R out=data/snapshots years=2022:2023 areas=Port
 
 Use `ALL` for years, areas, or causes when you intentionally want a broad snapshot. Large snapshots can take a long time to build and may be too large for normal GitHub commits, so consider GitHub Releases or another file host for production-size files.
 
-For the slow historical deaths indicator `0008206`, the repository also includes a resumable chunk builder:
+For the slow historical deaths indicator `0008206`, the repository includes a resumable portal exporter. It uses INE's own web table export, then reshapes the CSV into the same chunked RDS layout used by the app:
 
 ```sh
-Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
+Rscript tools/build_0008206_snapshot_from_portal.R out=data/snapshots years=ALL areas=ALL causes=ALL max_batches=26
 ```
 
-This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. By default, the chunk builder fills `Portugal` first (`priority_areas=Portugal`) so national RDS results become usable before every local area has been downloaded. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
+This writes small files under `data/snapshots/deaths/0008206/`. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually. It builds a limited number of missing portal batches per run and commits new chunks back to the repository, so the historical death archive can fill gradually instead of depending on one long download.
 
 Population and API-backed death indicators can also be built directly into the same chunked layout:
 
@@ -98,15 +98,15 @@ data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds
 
 When overlapping years exist, the app prefers the current death indicator `0013166` over the historical `0008206` snapshot for the same year and cause.
 
-An alternate, faster local route for `0008206` uses INE's own web portal CSV export and reshapes the result into the same chunked RDS format:
+The older API-based `0008206` builder is still available as a fallback:
 
 ```sh
-Rscript tools/build_0008206_snapshot_from_portal.R years=2022 areas=Portugal\|Norte causes=ALL out=data/snapshots
+Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 ```
 
-This browser-style exporter is useful when the live API route is too slow. It fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
+The portal exporter fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
 
-The repository currently includes a compact Portugal/Norte snapshot baseline: population chunks for 2019-2023, `0008206` death chunks for 2019-2022, and `0013166` death chunks for 2022-2023, with all causes available in each death year.
+The repository currently includes complete population chunks for the configured app locations, complete `0013166` chunks for 2022-2023 where INE returns location data, and progressively backfilled `0008206` chunks. `0008206` is intentionally incremental because it is the slow historical indicator.
 
 For faster local backfilling, run the loop helper from the repository root:
 
@@ -114,10 +114,10 @@ For faster local backfilling, run the loop helper from the repository root:
 ./tools/run_0008206_snapshot_loop.sh
 ```
 
-By default it runs repeated `0008206` batches with `MAX_CHUNKS=50`, prioritises `Portugal`, commits each completed batch, and pushes to `main`. Useful overrides:
+By default it runs repeated `0008206` portal batches with `MAX_BATCHES=26`, covers all available years, areas, and causes, commits each completed batch, and pushes to `main`. Useful overrides:
 
 ```sh
-MAX_CHUNKS=100 ./tools/run_0008206_snapshot_loop.sh
+MAX_BATCHES=52 ./tools/run_0008206_snapshot_loop.sh
 YEARS=2019:2021 ITERATIONS=3 ./tools/run_0008206_snapshot_loop.sh
 AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
 ```

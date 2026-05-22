@@ -214,9 +214,9 @@ For large or slow indicators, the app can also read chunked files:
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
-The helper script `tools/build_0008206_snapshot_chunks.R` creates these files incrementally. It prioritises `Portugal` by default before expanding chunks to the full area list, so national results become available early while the remaining local-area data continue to fill in. The accompanying GitHub Actions workflow can run on a schedule, build a limited number of missing chunks per run, and commit new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
+`tools/build_0008206_snapshot_from_portal.R` is the preferred route for historical `0008206` death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. The accompanying GitHub Actions workflow uses this portal exporter on a schedule, builds a limited number of missing area batches per run, and commits new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
 
-`tools/build_0008206_snapshot_from_portal.R` provides a second route for the same historical death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. This can reduce the number of live requests substantially for `0008206`, while preserving the same age-band harmonisation and RDS chunk layout.
+`tools/build_0008206_snapshot_chunks.R` remains available as an API-based fallback for the same chunked layout. It is usually slower for `0008206`, but can still be useful if the portal export route is temporarily unavailable.
 
 `tools/build_population_snapshot_chunks.R` creates yearly population chunks. `tools/build_death_snapshot_chunks.R` creates the same per-year/per-cause death chunks for API-backed indicators such as `0013166`. When multiple death indicators contain the same year and cause, the snapshot reader keeps the higher-priority source, so `0013166` is used ahead of `0008206` for overlapping current years.
 

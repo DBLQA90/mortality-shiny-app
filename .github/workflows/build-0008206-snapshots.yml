@@ -3,10 +3,10 @@ name: Build 0008206 Snapshot Chunks
 on:
   workflow_dispatch:
     inputs:
-      max_chunks:
-        description: "Maximum missing death chunks to build in this run"
+      max_batches:
+        description: "Maximum missing portal export batches to build in this run"
         required: false
-        default: "20"
+        default: "26"
       years:
         description: "Years to consider, for example 2018:2021 or ALL"
         required: false
@@ -60,15 +60,16 @@ jobs:
           )
         shell: Rscript {0}
 
-      - name: Build missing 0008206 chunks
+      - name: Build missing 0008206 portal chunks
         run: |
-          Rscript tools/build_0008206_snapshot_chunks.R \
+          Rscript tools/build_0008206_snapshot_from_portal.R \
             out=data/snapshots \
-            max_chunks="${{ github.event.inputs.max_chunks || '20' }}" \
+            max_batches="${{ github.event.inputs.max_batches || '26' }}" \
             years="${{ github.event.inputs.years || 'ALL' }}" \
             causes="${{ github.event.inputs.causes || 'ALL' }}" \
-            population_area_batch_size=50 \
-            death_area_batch_size=50
+            areas=ALL \
+            area_batch_size=12 \
+            timeout=240
 
       - name: Commit generated chunks
         run: |

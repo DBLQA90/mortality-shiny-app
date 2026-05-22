@@ -7,13 +7,13 @@ cd "$repo_root"
 app_file="${APP_FILE:-mortality-shiny-app.R}"
 out_dir="${OUT_DIR:-data/snapshots}"
 branch="${BRANCH:-main}"
-max_chunks="${MAX_CHUNKS:-50}"
+max_batches="${MAX_BATCHES:-${MAX_CHUNKS:-26}}"
 years="${YEARS:-ALL}"
 causes="${CAUSES:-ALL}"
 areas="${AREAS:-ALL}"
-priority_areas="${PRIORITY_AREAS:-Portugal}"
-population_area_batch_size="${POPULATION_AREA_BATCH_SIZE:-50}"
-death_area_batch_size="${DEATH_AREA_BATCH_SIZE:-50}"
+priority_areas="${PRIORITY_AREAS:-Portugal|Norte}"
+area_batch_size="${AREA_BATCH_SIZE:-12}"
+timeout_seconds="${TIMEOUT:-240}"
 iterations="${ITERATIONS:-0}"
 sleep_seconds="${SLEEP_SECONDS:-5}"
 auto_commit="${AUTO_COMMIT:-1}"
@@ -27,8 +27,8 @@ if [[ ! -f "$app_file" ]]; then
   exit 1
 fi
 
-if [[ ! -f tools/build_0008206_snapshot_chunks.R ]]; then
-  echo "Cannot find tools/build_0008206_snapshot_chunks.R" >&2
+if [[ ! -f tools/build_0008206_snapshot_from_portal.R ]]; then
+  echo "Cannot find tools/build_0008206_snapshot_from_portal.R" >&2
   exit 1
 fi
 
@@ -63,20 +63,20 @@ while true; do
   log_file="$log_dir/0008206-batch-$timestamp.log"
 
   echo "Starting 0008206 snapshot batch $batch"
-  echo "  years=$years causes=$causes areas=$areas priority_areas=$priority_areas max_chunks=$max_chunks"
+  echo "  years=$years causes=$causes areas=$areas priority_areas=$priority_areas max_batches=$max_batches"
   echo "  log=$log_file"
 
   set +e
-  Rscript tools/build_0008206_snapshot_chunks.R \
+  Rscript tools/build_0008206_snapshot_from_portal.R \
     "app=$app_file" \
     "out=$out_dir" \
-    "max_chunks=$max_chunks" \
+    "max_batches=$max_batches" \
     "years=$years" \
     "causes=$causes" \
     "areas=$areas" \
     "priority_areas=$priority_areas" \
-    "population_area_batch_size=$population_area_batch_size" \
-    "death_area_batch_size=$death_area_batch_size" 2>&1 | tee "$log_file"
+    "area_batch_size=$area_batch_size" \
+    "timeout=$timeout_seconds" 2>&1 | tee "$log_file"
   status="${PIPESTATUS[0]}"
   set -e
 
@@ -88,7 +88,7 @@ while true; do
     exit "$status"
   fi
 
-  if grep -q "All requested 0008206 chunks already exist" "$log_file"; then
+  if grep -q "Done. Batches built: 0." "$log_file"; then
     echo "All requested chunks already exist. Done."
     break
   fi
