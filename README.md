@@ -83,6 +83,21 @@ Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 
 This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. By default, the chunk builder fills `Portugal` first (`priority_areas=Portugal`) so national RDS results become usable before every local area has been downloaded. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
 
+Population and API-backed death indicators can also be built directly into the same chunked layout:
+
+```sh
+Rscript tools/build_population_snapshot_chunks.R years=2019:2023 areas=Portugal\|Norte out=data/snapshots
+Rscript tools/build_death_snapshot_chunks.R indicator=0013166 years=2022:2023 areas=Portugal\|Norte causes=ALL out=data/snapshots
+```
+
+Chunked death files are stored per indicator:
+
+```text
+data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds
+```
+
+When overlapping years exist, the app prefers the current death indicator `0013166` over the historical `0008206` snapshot for the same year and cause.
+
 An alternate, faster local route for `0008206` uses INE's own web portal CSV export and reshapes the result into the same chunked RDS format:
 
 ```sh
@@ -90,6 +105,8 @@ Rscript tools/build_0008206_snapshot_from_portal.R years=2022 areas=Portugal\|No
 ```
 
 This browser-style exporter is useful when the live API route is too slow. It fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
+
+The repository currently includes a compact Portugal/Norte snapshot baseline: population chunks for 2019-2023, `0008206` death chunks for 2019-2022, and `0013166` death chunks for 2022-2023, with all causes available in each death year.
 
 For faster local backfilling, run the loop helper from the repository root:
 

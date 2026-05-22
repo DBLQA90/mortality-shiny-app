@@ -263,6 +263,23 @@ snapshot_file_token <- function(x) {
   ifelse(nzchar(x), x, "unknown")
 }
 
+get_chunked_death_indicators <- function() {
+  tibble::tibble(
+    indicator = c(death_indicator_legacy, death_indicator_current),
+    source_priority = c(1L, 2L)
+  )
+}
+
+get_chunked_death_snapshot_path <- function(indicator, year, cause) {
+  file.path(
+    get_snapshot_dir(),
+    "deaths",
+    indicator,
+    paste0("year_", year),
+    paste0("cause_", snapshot_file_token(cause), ".rds")
+  )
+}
+
 read_snapshot_object <- memoise::memoise(function(path) {
   readRDS(path)
 })
@@ -933,31 +950,56 @@ read_chunked_population_snapshot <- function(years) {
 read_chunked_death_snapshot <- function(years, causes) {
   years <- sort(unique(as.integer(years)))
   causes <- sort(unique(as.character(causes)))
-  grid <- tidyr::expand_grid(year = years, cause = causes) %>%
+
+  requested <- tidyr::expand_grid(year = years, cause = causes)
+  indicator_priority <- get_chunked_death_indicators()
+  grid <- tidyr::expand_grid(requested, indicator_priority) %>%
     dplyr::mutate(
-      cause_token = snapshot_file_token(.data$cause),
-      path = file.path(
-        get_snapshot_dir(),
-        "deaths",
-        "0008206",
-        paste0("year_", .data$year),
-        paste0("cause_", .data$cause_token, ".rds")
-      )
+      path = purrr::pmap_chr(
+        list(.data$indicator, .data$year, .data$cause),
+        get_chunked_death_snapshot_path
+      ),
+      exists = file.exists(.data$path)
     )
 
-  if (!any(file.exists(grid$path))) {
+  if (!any(grid$exists)) {
     return(NULL)
   }
 
-  missing_paths <- grid$path[!file.exists(grid$path)]
-  if (length(missing_paths) > 0) {
+  selected <- grid %>%
+    dplyr::filter(.data$exists) %>%
+    dplyr::group_by(.data$year, .data$cause) %>%
+    dplyr::arrange(dplyr::desc(.data$source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup()
+
+  missing <- dplyr::anti_join(requested, selected, by = c("year", "cause"))
+  if (nrow(missing) > 0) {
+    missing_labels <- paste0(missing$year, " / ", missing$cause)
     stop(
-      glue::glue("Missing deaths snapshot chunk(s): {paste(missing_paths, collapse = ', ')}."),
+      glue::glue("Missing deaths snapshot chunk(s) for: {paste(missing_labels, collapse = ', ')}."),
       call. = FALSE
     )
   }
 
-  dplyr::bind_rows(lapply(grid$path, read_snapshot_object))
+  rows <- purrr::map2(
+    selected$path,
+    selected$source_priority,
+    function(path, source_priority) {
+      chunk <- read_snapshot_object(path)
+      if (!"source_priority" %in% names(chunk)) {
+        chunk$source_priority <- source_priority
+      }
+      chunk
+    }
+  )
+
+  dplyr::bind_rows(rows) %>%
+    dplyr::group_by(.data$year, .data$area, .data$sex, .data$cause, .data$age_band) %>%
+    dplyr::arrange(dplyr::desc(.data$source_priority), .by_group = TRUE) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_priority)
 }
 
 get_flat_or_chunked_population_snapshot <- function(years) {
@@ -1024,7 +1066,7 @@ get_snapshot_death_data <- function(years, area, cause) {
   if (is.null(death_snapshot)) {
     stop(
       glue::glue(
-        "Snapshot RDS file not found for 'deaths'. Expected '{get_snapshot_file('deaths')}', combined snapshot '{get_combined_snapshot_file()}', or chunked files in '{file.path(get_snapshot_dir(), 'deaths', '0008206')}'."
+        "Snapshot RDS file not found for 'deaths'. Expected '{get_snapshot_file('deaths')}', combined snapshot '{get_combined_snapshot_file()}', or chunked files in '{file.path(get_snapshot_dir(), 'deaths', '<indicator>')}'."
       ),
       call. = FALSE
     )

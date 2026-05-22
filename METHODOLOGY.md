@@ -209,14 +209,16 @@ When `Ficheiros RDS` is selected in the app, the same downstream metric calculat
 
 The helper script `tools/build_ine_snapshot.R` can build these files from INE. Snapshot files should be rebuilt when INE updates the underlying indicators or when the app needs years, areas, or causes not present in the existing snapshot.
 
-For the slow historical death indicator `0008206`, the app can also read chunked files:
+For large or slow indicators, the app can also read chunked files:
 
 - `data/snapshots/population/year_<year>.rds`
-- `data/snapshots/deaths/0008206/year_<year>/cause_<cause-token>.rds`
+- `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
 The helper script `tools/build_0008206_snapshot_chunks.R` creates these files incrementally. It prioritises `Portugal` by default before expanding chunks to the full area list, so national results become available early while the remaining local-area data continue to fill in. The accompanying GitHub Actions workflow can run on a schedule, build a limited number of missing chunks per run, and commit new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
 
 `tools/build_0008206_snapshot_from_portal.R` provides a second route for the same historical death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. This can reduce the number of live requests substantially for `0008206`, while preserving the same age-band harmonisation and RDS chunk layout.
+
+`tools/build_population_snapshot_chunks.R` creates yearly population chunks. `tools/build_death_snapshot_chunks.R` creates the same per-year/per-cause death chunks for API-backed indicators such as `0013166`. When multiple death indicators contain the same year and cause, the snapshot reader keeps the higher-priority source, so `0013166` is used ahead of `0008206` for overlapping current years.
 
 ## Interpretation Notes
 
