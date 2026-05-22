@@ -106,6 +106,14 @@ Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 
 The portal exporter fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
 
+If you already have direct INE Excel exports for `0008206`, Portugal-only chunks can be imported without querying INE:
+
+```sh
+Rscript tools/import_0008206_portugal_excel.R 'files=/path/1991-1995Deaths.xls|/path/1996-2004Deaths.xls' out=data/snapshots
+```
+
+The importer reads the `Quadro` sheet, skips year blocks with no numeric death values, checks that each populated year has 66 causes and the expected sex/age structure, compares against existing Portugal rows when chunks already exist, and then writes the same per-year/per-cause RDS format. If an Excel export has empty boundary years, use the portal exporter for those specific gaps.
+
 The repository currently includes complete population chunks for the configured app locations, complete `0013166` chunks for 2022-2023 where INE returns location data, and progressively backfilled `0008206` chunks. `0008206` is intentionally incremental because it is the slow historical indicator.
 
 For faster local backfilling, run the loop helper from the repository root:
