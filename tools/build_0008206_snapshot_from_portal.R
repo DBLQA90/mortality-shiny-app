@@ -604,7 +604,7 @@ portal_years <- suppressWarnings(as.integer(xml2::xml_attr(
 )))
 portal_years <- portal_years[!is.na(portal_years)]
 
-legacy_years <- sort(intersect(app$year_of_interest, portal_years))
+legacy_years <- sort(portal_years)
 default_year <- max(legacy_years, na.rm = TRUE)
 
 years <- parse_years(value_or_default(cli$years, env_or_default("YEARS", as.character(default_year))), legacy_years)

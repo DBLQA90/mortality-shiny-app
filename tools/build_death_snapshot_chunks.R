@@ -127,13 +127,12 @@ app <- new.env(parent = globalenv())
 source(app_file, local = app)
 
 available_years <- sort(unique(app$get_indicator_years(indicator)))
-default_years <- sort(intersect(app$year_of_interest, available_years))
 cause_values <- app$get_dimension_categories(indicator, target_dim_num = 5) %>%
   dplyr::arrange(.data$categ_ord_num, .data$categ_dsg) %>%
   dplyr::pull(.data$categ_dsg) %>%
   unique()
 
-years <- parse_years(value_or_default(cli$years, env_or_default("YEARS", "ALL")), default_years)
+years <- parse_years(value_or_default(cli$years, env_or_default("YEARS", "ALL")), available_years)
 areas <- parse_values(value_or_default(cli$areas, env_or_default("AREAS", "Portugal|Norte")), app$local_area)
 causes <- parse_values(value_or_default(cli$causes, env_or_default("CAUSES", "ALL")), cause_values)
 

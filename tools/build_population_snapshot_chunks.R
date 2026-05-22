@@ -120,8 +120,7 @@ app <- new.env(parent = globalenv())
 source(app_file, local = app)
 
 available_years <- sort(unique(app$get_indicator_years(app$population_indicators)))
-default_years <- sort(intersect(app$year_of_interest, available_years))
-years <- parse_years(value_or_default(cli$years, env_or_default("YEARS", "ALL")), default_years)
+years <- parse_years(value_or_default(cli$years, env_or_default("YEARS", "ALL")), available_years)
 areas <- parse_values(value_or_default(cli$areas, env_or_default("AREAS", "Portugal|Norte")), app$local_area)
 
 years <- sort(unique(as.integer(years)), decreasing = TRUE)
