@@ -83,6 +83,14 @@ Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
 
 This writes small files under `data/snapshots/deaths/0008206/` and yearly population files under `data/snapshots/population/`. By default, the chunk builder fills `Portugal` first (`priority_areas=Portugal`) so national RDS results become usable before every local area has been downloaded. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually, gradually filling missing chunks and committing them back to the repository.
 
+An alternate, faster local route for `0008206` uses INE's own web portal CSV export and reshapes the result into the same chunked RDS format:
+
+```sh
+Rscript tools/build_0008206_snapshot_from_portal.R years=2022 areas=Portugal\|Norte causes=ALL out=data/snapshots
+```
+
+This browser-style exporter is useful when the live API route is too slow. It fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
+
 For faster local backfilling, run the loop helper from the repository root:
 
 ```sh
