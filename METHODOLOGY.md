@@ -214,11 +214,17 @@ For large or slow indicators, the app can also read chunked files:
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
+When `data/snapshots/snapshot_inventory.rds` is present, the app reads that manifest before loading chunk files. The inventory records the dataset, indicator, year, cause, relative path, row count, available areas, sexes, age bands, and source priority. This lets the app avoid unnecessary chunk discovery and makes missing data easier to identify. The manifest is rebuilt with:
+
+```sh
+Rscript tools/update_snapshot_inventory.R
+```
+
 `tools/build_0008206_snapshot_from_portal.R` is the preferred route for historical `0008206` death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. The accompanying GitHub Actions workflow uses this portal exporter on a schedule, builds a limited number of missing area batches per run, and commits new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
 
 `tools/build_0008206_snapshot_chunks.R` remains available as an API-based fallback for the same chunked layout. It is usually slower for `0008206`, but can still be useful if the portal export route is temporarily unavailable.
 
-`tools/build_population_snapshot_chunks.R` creates yearly population chunks. `tools/build_death_snapshot_chunks.R` creates the same per-year/per-cause death chunks for API-backed indicators such as `0013166`. When multiple death indicators contain the same year and cause, the snapshot reader keeps the higher-priority source, so `0013166` is used ahead of `0008206` for overlapping current years.
+`tools/build_population_snapshot_chunks.R` creates yearly population chunks. `tools/build_death_snapshot_chunks.R` creates the same per-year/per-cause death chunks for API-backed indicators such as `0013166`. When multiple death indicators contain the same year and cause, the snapshot reader resolves priority at row level by year, area, sex, cause, and age band. This means `0013166` is used ahead of `0008206` where it exists, while `0008206` can still fill areas not present in `0013166`.
 
 ## Interpretation Notes
 

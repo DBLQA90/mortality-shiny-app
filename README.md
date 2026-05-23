@@ -23,6 +23,8 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Prioritises year loading based on the latest slider movement, so leftward changes load recent-to-older and rightward changes load older-to-newer.
 - Uses a large INE client timeout for long indicator calls.
 - Adds an optional RDS snapshot data source so users can load prebuilt data files instead of querying INE live.
+- Splits the app internals into smaller `R/` files for configuration, INE access, snapshot access, metrics, data assembly, and UI helpers.
+- Adds a snapshot inventory manifest so the app can discover available chunked RDS files before loading data.
 
 ## Running The App
 
@@ -48,16 +50,40 @@ shiny::runApp("mortality-shiny-app.R")
 - `ineptr2`
 - `strucchange`
 - `memoise`
+- `cachem`
 - `later`
+
+## Code Layout
+
+The app entry point is `mortality-shiny-app.R`. Most helper logic is split into smaller files under `R/`:
+
+- `R/config.R`: indicator IDs, default choices, age groups, standard population weights.
+- `R/cache.R`: persistent metadata/data cache helpers.
+- `R/ine_client.R`: INE metadata and live data download helpers.
+- `R/snapshots.R`: flat/chunked RDS readers, source priority handling, and snapshot inventory helpers.
+- `R/metrics.R`: mortality-rate, direct-standardisation, and AVPP calculations.
+- `R/data_access.R`: shared data assembly for snapshot and live INE sources.
+- `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
 
 ## Optional RDS Snapshots
 
 The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`; choose `INE em directo` to query INE instead. This selector is available in the observed mortality, annual metrics, and advanced model specification loading controls. Guided forecasts reuse the source from the observed mortality series already loaded.
 
-By default, the app looks for:
+By default, the app first supports flat snapshot files:
 
 - `data/snapshots/population.rds`
 - `data/snapshots/deaths.rds`
+
+For larger datasets, the repository uses chunked files:
+
+- `data/snapshots/population/year_<year>.rds`
+- `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
+
+The app also reads `data/snapshots/snapshot_inventory.rds` when present. This manifest lists available chunks, areas, years, causes, row counts, and source priorities, allowing the app to choose relevant RDS files before reading the data itself. After adding or changing snapshot chunks, refresh the manifest with:
+
+```sh
+Rscript tools/update_snapshot_inventory.R
+```
 
 You can also point to another location with environment variables:
 
@@ -65,6 +91,7 @@ You can also point to another location with environment variables:
 - `MORTALITY_POPULATION_SNAPSHOT_RDS`
 - `MORTALITY_DEATHS_SNAPSHOT_RDS`
 - `MORTALITY_SNAPSHOT_RDS` for one combined RDS list containing `population` and `deaths`
+- `MORTALITY_SNAPSHOT_INVENTORY_RDS` for a custom inventory manifest path
 - `MORTALITY_DEFAULT_DATA_SOURCE=snapshot` if you want the app to open with `Ficheiros RDS` selected by default
 
 To build separate snapshot files from INE:
@@ -96,7 +123,7 @@ Chunked death files are stored per indicator:
 data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds
 ```
 
-When overlapping years exist, the app prefers the current death indicator `0013166` over the historical `0008206` snapshot for the same year and cause.
+When overlapping years exist, the app prefers the current death indicator `0013166` over the historical `0008206` snapshot for the same year, cause, area, sex, and age band. If a higher-priority indicator lacks a requested area, lower-priority chunks can still fill those rows.
 
 The older API-based `0008206` builder is still available as a fallback:
 
