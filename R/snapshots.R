@@ -183,6 +183,214 @@ get_snapshot_inventory <- function() {
   read_snapshot_inventory_object(get_snapshot_inventory_file())
 }
 
+format_snapshot_values <- function(values, max_values = 6) {
+  values <- sort(unique(as.character(values)))
+  values <- values[!is.na(values) & nzchar(values)]
+
+  if (length(values) == 0) {
+    return("Nenhum")
+  }
+
+  shown <- utils::head(values, max_values)
+  suffix <- if (length(values) > max_values) {
+    paste0(" +", length(values) - max_values)
+  } else {
+    ""
+  }
+
+  paste0(paste(shown, collapse = ", "), suffix)
+}
+
+format_snapshot_year_span <- function(years) {
+  years <- sort(unique(as.integer(years)))
+  years <- years[!is.na(years)]
+
+  if (length(years) == 0) {
+    return("Nenhum")
+  }
+
+  if (length(years) == 1) {
+    return(as.character(years))
+  }
+
+  paste0(min(years), " - ", max(years), " (", length(years), ")")
+}
+
+build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory()) {
+  inventory_path <- get_snapshot_inventory_file()
+
+  if (is.null(inventory)) {
+    return(tibble::tibble(
+      Item = c("Inventário", "Caminho"),
+      Valor = c("Não encontrado", inventory_path)
+    ))
+  }
+
+  population <- inventory %>%
+    dplyr::filter(.data$dataset == "population")
+  deaths <- inventory %>%
+    dplyr::filter(.data$dataset == "deaths")
+  inventory_mtime <- if (file.exists(inventory_path)) {
+    format(file.info(inventory_path)$mtime, "%Y-%m-%d %H:%M")
+  } else {
+    "N/D"
+  }
+  max_area_count <- if (nrow(inventory) > 0) {
+    max(vapply(inventory$areas, length, integer(1)), na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
+
+  tibble::tibble(
+    Item = c(
+      "Inventário",
+      "Actualizado",
+      "Chunks totais",
+      "Chunks de população",
+      "Anos de população",
+      "Chunks de óbitos",
+      "Indicadores de óbitos",
+      "Anos de óbitos",
+      "Causas de óbito",
+      "Máximo de áreas por chunk"
+    ),
+    Valor = c(
+      inventory_path,
+      inventory_mtime,
+      as.character(nrow(inventory)),
+      as.character(nrow(population)),
+      format_snapshot_year_span(population$year),
+      as.character(nrow(deaths)),
+      format_snapshot_values(deaths$indicator),
+      format_snapshot_year_span(deaths$year),
+      as.character(dplyr::n_distinct(deaths$cause)),
+      as.character(max_area_count)
+    )
+  )
+}
+
+get_snapshot_inventory_areas <- function(inventory_rows) {
+  sort(unique(unlist(inventory_rows$areas, use.names = FALSE)))
+}
+
+get_relevant_snapshot_indicators <- function(inventory_rows, requested_areas) {
+  if (nrow(inventory_rows) == 0) {
+    return(character(0))
+  }
+
+  has_requested_area <- snapshot_inventory_has_area(inventory_rows$areas, requested_areas)
+  sort(unique(inventory_rows$indicator[has_requested_area]))
+}
+
+summarize_snapshot_availability_row <- function(inventory_rows, requested_areas) {
+  available_areas <- get_snapshot_inventory_areas(inventory_rows)
+  present_areas <- intersect(requested_areas, available_areas)
+  missing_areas <- setdiff(requested_areas, available_areas)
+
+  status <- dplyr::case_when(
+    length(requested_areas) == 0 ~ "Sem locais seleccionados",
+    length(missing_areas) == 0 ~ "Disponível",
+    length(present_areas) > 0 ~ "Parcial",
+    TRUE ~ "Indisponível"
+  )
+
+  tibble::tibble(
+    Estado = status,
+    `Áreas pedidas` = format_snapshot_values(requested_areas, max_values = 4),
+    `Áreas cobertas` = length(present_areas),
+    `Áreas em falta` = format_snapshot_values(missing_areas, max_values = 4),
+    `Fonte(s)` = format_snapshot_values(get_relevant_snapshot_indicators(inventory_rows, requested_areas)),
+    Ficheiros = nrow(inventory_rows),
+    Linhas = sum(inventory_rows$rows, na.rm = TRUE)
+  )
+}
+
+build_population_snapshot_availability <- function(inventory, years, areas) {
+  purrr::map_dfr(years, function(current_year) {
+    inventory_rows <- inventory %>%
+      dplyr::filter(
+        .data$dataset == "population",
+        .data$year == .env$current_year
+      )
+
+    summarize_snapshot_availability_row(inventory_rows, areas) %>%
+      dplyr::mutate(
+        Ano = current_year,
+        Conjunto = "População",
+        .before = 1
+      )
+  })
+}
+
+build_death_snapshot_availability <- function(inventory, years, areas, causes) {
+  requested <- tidyr::expand_grid(
+    Ano = years,
+    `Causa de morte` = causes
+  )
+
+  purrr::pmap_dfr(requested, function(Ano, `Causa de morte`) {
+    inventory_rows <- inventory %>%
+      dplyr::filter(
+        .data$dataset == "deaths",
+        .data$year == .env$Ano,
+        .data$cause == .env$`Causa de morte`
+      ) %>%
+      dplyr::arrange(dplyr::desc(.data$source_priority), .data$indicator)
+
+    summarize_snapshot_availability_row(inventory_rows, areas) %>%
+      dplyr::mutate(
+        Ano = Ano,
+        `Causa de morte` = `Causa de morte`,
+        .before = 1
+      )
+  })
+}
+
+build_snapshot_availability_table <- function(
+  dataset = "deaths",
+  years = year_of_interest,
+  areas = get_default_area_selection(),
+  causes = NULL,
+  show_missing = TRUE,
+  inventory = get_snapshot_inventory()
+) {
+  if (is.null(inventory)) {
+    return(tibble::tibble(
+      Estado = "Inventário RDS não encontrado",
+      Detalhe = get_snapshot_inventory_file()
+    ))
+  }
+
+  dataset <- if (identical(dataset, "population")) "population" else "deaths"
+  years <- sort(unique(as.integer(years)))
+  years <- years[!is.na(years)]
+  areas <- sort(unique(as.character(areas)))
+  areas <- areas[!is.na(areas) & nzchar(areas)]
+
+  out <- if (identical(dataset, "population")) {
+    build_population_snapshot_availability(inventory, years, areas)
+  } else {
+    causes <- sort(unique(as.character(causes)))
+    causes <- causes[!is.na(causes) & nzchar(causes)]
+
+    if (length(causes) == 0) {
+      return(tibble::tibble(
+        Estado = "Sem causas seleccionadas",
+        Detalhe = "Seleccione pelo menos uma causa de morte."
+      ))
+    }
+
+    build_death_snapshot_availability(inventory, years, areas, causes)
+  }
+
+  if (!isTRUE(show_missing)) {
+    out <- out %>%
+      dplyr::filter(.data$Estado != "Indisponível")
+  }
+
+  out
+}
+
 snapshot_inventory_has_area <- function(area_lists, requested_areas = NULL) {
   if (is.null(requested_areas)) {
     return(rep(TRUE, length(area_lists)))

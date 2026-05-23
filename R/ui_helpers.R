@@ -117,6 +117,58 @@ forecast_selection_note_ui <- function() {
   )
 }
 
+data_availability_tab_ui <- function() {
+  tabPanel(
+    "Disponibilidade de Dados",
+    sidebarLayout(
+      sidebarPanel(
+        radioButtons(
+          "availability_dataset",
+          "Conjunto:",
+          choices = c("Óbitos" = "deaths", "População" = "population"),
+          selected = "deaths",
+          inline = TRUE
+        ),
+        year_range_slider(
+          "availability_years",
+          "Anos:"
+        ),
+        conditionalPanel(
+          "input.availability_dataset == 'deaths'",
+          selectInput(
+            "availability_cause",
+            "Causa de Morte:",
+            choices = diseases,
+            selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
+            multiple = TRUE
+          )
+        ),
+        selectInput(
+          "availability_area",
+          "Local:",
+          choices = local_area,
+          multiple = TRUE,
+          selected = c("Portugal", "Norte")
+        ),
+        checkboxInput(
+          "availability_show_missing",
+          "Mostrar indisponíveis",
+          value = TRUE
+        )
+      ),
+      mainPanel(
+        h4("Resumo RDS"),
+        tableOutput("snapshotInventorySummary"),
+        downloadButton("downloadSnapshotInventorySummaryCSV", "Descarregar resumo (CSV)"),
+        br(), br(),
+        h4("Cobertura Seleccionada"),
+        tableOutput("snapshotAvailabilityTable"),
+        downloadButton("downloadSnapshotAvailabilityCSV", "Descarregar cobertura (CSV)")
+      )
+    )
+  )
+}
+
 observed_mortality_tab_ui <- function() {
   tabPanel(
     "Mortalidade Observada",

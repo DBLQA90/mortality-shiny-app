@@ -66,6 +66,7 @@ for (app_file in c(
 ui <- navbarPage(
   title = "PNS Monitorização não oficial",
 
+  data_availability_tab_ui(),
   observed_mortality_tab_ui(),
   annual_metrics_tab_ui(),
   advanced_forecasting_tab_ui(),
@@ -256,6 +257,52 @@ server <- function(input, output, session) {
 
     paste(years, collapse = ", ")
   }
+
+  snapshot_inventory_data <- reactive({
+    get_snapshot_inventory()
+  })
+
+  output$snapshotInventorySummary <- renderTable({
+    build_snapshot_inventory_summary(snapshot_inventory_data())
+  })
+
+  output$downloadSnapshotInventorySummaryCSV <- downloadHandler(
+    filename = function() paste0("resumo_disponibilidade_rds_", Sys.Date(), ".csv"),
+    content = function(file) {
+      write_csv_utf8(build_snapshot_inventory_summary(snapshot_inventory_data()), file)
+    }
+  )
+
+  snapshot_availability_data <- reactive({
+    validate(need(length(input$availability_area) > 0, "Seleccione pelo menos um local."))
+
+    years <- get_years_in_selected_range(input$availability_years)
+    causes <- if (identical(input$availability_dataset, "deaths")) {
+      input$availability_cause
+    } else {
+      NULL
+    }
+
+    build_snapshot_availability_table(
+      dataset = input$availability_dataset,
+      years = years,
+      areas = input$availability_area,
+      causes = causes,
+      show_missing = isTRUE(input$availability_show_missing),
+      inventory = snapshot_inventory_data()
+    )
+  })
+
+  output$snapshotAvailabilityTable <- renderTable({
+    snapshot_availability_data()
+  })
+
+  output$downloadSnapshotAvailabilityCSV <- downloadHandler(
+    filename = function() paste0("cobertura_rds_", Sys.Date(), ".csv"),
+    content = function(file) {
+      write_csv_utf8(snapshot_availability_data(), file)
+    }
+  )
 
   make_series_spec <- function(query_spec, population, rate_type, year_range = range(year_of_interest)) {
     selected_years <- get_years_in_selected_range(year_range)

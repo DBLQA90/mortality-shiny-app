@@ -25,6 +25,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Adds an optional RDS snapshot data source so users can load prebuilt data files instead of querying INE live.
 - Splits the app internals into smaller `R/` files for configuration, INE access, snapshot access, metrics, data assembly, and UI helpers.
 - Adds a snapshot inventory manifest so the app can discover available chunked RDS files before loading data.
+- Adds a `Disponibilidade de Dados` tab to inspect RDS coverage by year, area, cause, and source indicator.
 
 ## Running The App
 
@@ -160,6 +161,18 @@ AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
 Stop with `Ctrl+C`; completed chunks from the interrupted batch are committed before the script exits.
 
 ## App Modules
+
+### Data Availability
+
+Inspect the local RDS snapshot inventory before loading an analysis. The tab summarises available population and death chunks, then checks selected years, areas, and causes against `data/snapshots/snapshot_inventory.rds`.
+
+Coverage states:
+
+- `Disponível`: all selected areas are present for that year/cause.
+- `Parcial`: at least one selected area is present, but others are missing.
+- `Indisponível`: none of the selected areas are present.
+
+The coverage table can be exported as CSV.
 
 ### Observed Mortality
 

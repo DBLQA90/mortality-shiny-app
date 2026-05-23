@@ -220,6 +220,8 @@ When `data/snapshots/snapshot_inventory.rds` is present, the app reads that mani
 Rscript tools/update_snapshot_inventory.R
 ```
 
+The `Disponibilidade de Dados` tab uses the same inventory to classify selected RDS coverage as available, partial, or unavailable. This is an inventory-level check: it tells whether the necessary chunks and requested areas are present before the app reads the data rows for an analysis.
+
 `tools/build_0008206_snapshot_from_portal.R` is the preferred route for historical `0008206` death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. The accompanying GitHub Actions workflow uses this portal exporter on a schedule, builds a limited number of missing area batches per run, and commits new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
 
 `tools/build_0008206_snapshot_chunks.R` remains available as an API-based fallback for the same chunked layout. It is usually slower for `0008206`, but can still be useful if the portal export route is temporarily unavailable.
