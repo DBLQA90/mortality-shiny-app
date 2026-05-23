@@ -966,14 +966,11 @@ read_chunked_death_snapshot <- function(years, causes) {
     return(NULL)
   }
 
-  selected <- grid %>%
+  available <- grid %>%
     dplyr::filter(.data$exists) %>%
-    dplyr::group_by(.data$year, .data$cause) %>%
-    dplyr::arrange(dplyr::desc(.data$source_priority), .by_group = TRUE) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup()
+    dplyr::distinct(.data$year, .data$cause)
 
-  missing <- dplyr::anti_join(requested, selected, by = c("year", "cause"))
+  missing <- dplyr::anti_join(requested, available, by = c("year", "cause"))
   if (nrow(missing) > 0) {
     missing_labels <- paste0(missing$year, " / ", missing$cause)
     stop(
@@ -981,6 +978,12 @@ read_chunked_death_snapshot <- function(years, causes) {
       call. = FALSE
     )
   }
+
+  # Keep all available indicators for overlapping year/cause pairs. The final
+  # row-level collapse lets 0008206 fill areas missing from 0013166, while still
+  # preferring 0013166 wherever it exists.
+  selected <- grid %>%
+    dplyr::filter(.data$exists)
 
   rows <- purrr::map2(
     selected$path,
@@ -1000,6 +1003,30 @@ read_chunked_death_snapshot <- function(years, causes) {
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     dplyr::select(-source_priority)
+}
+
+validate_snapshot_combinations <- function(data, required, by, label) {
+  present <- data %>%
+    dplyr::distinct(dplyr::across(dplyr::all_of(by)))
+  missing <- dplyr::anti_join(required, present, by = by)
+
+  if (nrow(missing) == 0) {
+    return(invisible(TRUE))
+  }
+
+  missing_labels <- apply(
+    missing,
+    1,
+    function(row) paste(paste(names(row), row, sep = "="), collapse = " / ")
+  )
+  if (length(missing_labels) > 10) {
+    missing_labels <- c(utils::head(missing_labels, 10), glue::glue("... and {nrow(missing) - 10} more"))
+  }
+
+  stop(
+    glue::glue("{label} snapshot is missing requested combination(s): {paste(missing_labels, collapse = '; ')}."),
+    call. = FALSE
+  )
 }
 
 get_flat_or_chunked_population_snapshot <- function(years) {
@@ -1048,6 +1075,13 @@ get_snapshot_population_data <- function(years, area) {
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
 
+  validate_snapshot_combinations(
+    data = pop,
+    required = tidyr::expand_grid(year = year_filter, area = area_filter),
+    by = c("year", "area"),
+    label = "Population"
+  )
+
   if (nrow(pop) == 0) {
     stop(
       "The population snapshot has no rows for the selected years/areas. Choose INE or rebuild the snapshot.",
@@ -1092,6 +1126,13 @@ get_snapshot_death_data <- function(years, area, cause) {
     ) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
+
+  validate_snapshot_combinations(
+    data = deaths,
+    required = tidyr::expand_grid(year = year_filter, area = area_filter, cause = cause_filter),
+    by = c("year", "area", "cause"),
+    label = "Deaths"
+  )
 
   if (nrow(deaths) == 0) {
     stop(
