@@ -100,6 +100,8 @@ The standard population weights used by the app are:
 
 The multiplier is 100,000 and confidence intervals are requested at 95%.
 
+If the direct-standardisation routine cannot estimate a valid interval for very sparse selected data, the app reports the value as unavailable rather than silently substituting another method.
+
 ### Proportional Mortality
 
 Proportional mortality is calculated for a selected cause as:
@@ -110,6 +112,8 @@ proportional mortality = deaths for selected cause / deaths from all causes * 10
 
 The denominator is loaded for `Todas as causas de morte` for the same year, sex, and geography. In the annual metrics tab this denominator is loaded whenever `Mortalidade Proporcional` is selected, even if `Todas as causas de morte` is not one of the selected causes.
 
+Annual proportional mortality intervals use an exact binomial interval for selected-cause deaths over all-cause deaths.
+
 ### Years Of Potential Life Lost
 
 `AVPP` uses 70 years as the cutoff. Because INE data are grouped by age band, the app approximates age at death using each age band's midpoint:
@@ -119,6 +123,12 @@ AVPP = sum(deaths in age band * max(70 - age midpoint, 0))
 ```
 
 For `0 - 4 anos`, the midpoint is 2.5. For five-year age bands, the midpoint is the average of the lower and upper bound. Age groups with midpoints at or above 70 contribute zero years lost.
+
+Annual AVPP intervals use a normal approximation with Poisson variance by age band: `variance = sum(deaths * years_lost^2)`. These intervals are approximate and should be read cautiously for sparse local data.
+
+### Source Transparency
+
+Loaded rows keep their source indicator where this can be identified. Live INE loads retain the indicator code used for each row. Chunked death snapshots infer the death indicator from the snapshot path, so overlapping years can show `0013166`, `0008206`, or both depending on row-level fallback. Existing population RDS chunks do not contain their original indicator code, so the app labels them as `RDS population` unless future chunks include a `source_indicator` column.
 
 ## Annual Metrics Tab
 

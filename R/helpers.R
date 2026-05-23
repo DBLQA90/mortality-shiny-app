@@ -33,3 +33,35 @@ get_model_labels <- function(model_ids) {
   labels[is.na(labels)] <- model_ids[is.na(labels)]
   labels
 }
+
+format_source_indicators <- function(x) {
+  x <- sort(unique(as.character(x)))
+  x <- x[!is.na(x) & nzchar(x)]
+
+  if (length(x) == 0) {
+    return("N/D")
+  }
+
+  paste(x, collapse = ", ")
+}
+
+get_loaded_source_summary <- function(data) {
+  population_source <- if ("population_source" %in% names(data)) {
+    format_source_indicators(data$population_source)
+  } else {
+    "N/D"
+  }
+
+  death_source <- if ("death_source" %in% names(data)) {
+    format_source_indicators(data$death_source)
+  } else if ("source_indicator" %in% names(data)) {
+    format_source_indicators(data$source_indicator)
+  } else {
+    "N/D"
+  }
+
+  list(
+    population_source = population_source,
+    death_source = death_source
+  )
+}

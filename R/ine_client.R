@@ -217,7 +217,8 @@ download_data <- function(indicator, dims, has_cause = FALSE) {
             )
           ),
           age_band = dim_4_t,
-          value    = as.numeric(valor)
+          value    = as.numeric(valor),
+          source_indicator = indicator
         )
 
       if (has_cause) {
@@ -260,7 +261,8 @@ empty_download_data <- function(has_cause = FALSE) {
     sex_raw = character(),
     sex = character(),
     age_band = character(),
-    value = numeric()
+    value = numeric(),
+    source_indicator = character()
   )
 
   if (has_cause) {

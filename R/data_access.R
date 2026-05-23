@@ -14,7 +14,10 @@ prepare_population_data <- function(indicator, years, area, source_priority, yea
     dplyr::rename(pop = value) %>%
     dplyr::group_by(year, area, sex, age_band) %>%
     dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = source_priority)
+    dplyr::mutate(
+      source_priority = source_priority,
+      source_indicator = indicator
+    )
 }
 
 prepare_death_data <- function(indicator, years, area, cause, source_priority, year_order = "asc") {
@@ -36,7 +39,10 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority, y
     dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
     dplyr::group_by(year, area, sex, cause, age_band) %>%
     dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(source_priority = source_priority)
+    dplyr::mutate(
+      source_priority = source_priority,
+      source_indicator = indicator
+    )
 }
 
 
@@ -45,8 +51,10 @@ get_data_for_snapshot <- function(area, cause, years = year_of_interest) {
   df_death <- get_snapshot_death_data(years, area, cause)
 
   df_full <- df_pop %>%
+    dplyr::rename(population_source = source_indicator) %>%
     dplyr::right_join(
-      df_death,
+      df_death %>%
+        dplyr::rename(death_source = source_indicator),
       by = c("year", "area", "sex", "age_band")
     ) %>%
     tidyr::replace_na(list(deaths = 0)) %>%
@@ -174,8 +182,12 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
 
   # Combine
   df_full <- df_pop %>%
-    dplyr::right_join(df_death,
-                      by = c("year", "area", "sex", "age_band")) %>%
+    dplyr::rename(population_source = source_indicator) %>%
+    dplyr::right_join(
+      df_death %>%
+        dplyr::rename(death_source = source_indicator),
+      by = c("year", "area", "sex", "age_band")
+    ) %>%
     tidyr::replace_na(list(deaths = 0)) %>%
     dplyr::filter(!is.na(pop)) %>%
     dplyr::mutate(

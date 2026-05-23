@@ -144,6 +144,14 @@ validate_snapshot_columns <- function(data, required_cols, label) {
   data
 }
 
+ensure_source_indicator_column <- function(data, source_indicator) {
+  if (!"source_indicator" %in% names(data)) {
+    data$source_indicator <- source_indicator
+  }
+
+  data
+}
+
 read_snapshot_inventory_object <- memoise::memoise(function(path) {
   if (!file.exists(path)) {
     return(NULL)
@@ -506,7 +514,7 @@ read_chunked_population_snapshot <- function(years, areas = NULL) {
         )
       }
 
-      return(dplyr::bind_rows(lapply(paths, read_snapshot_object)))
+      return(collapse_population_snapshot_chunks(paths))
     }
   }
 
@@ -524,19 +532,31 @@ read_chunked_population_snapshot <- function(years, areas = NULL) {
     )
   }
 
-  dplyr::bind_rows(lapply(paths, read_snapshot_object))
+  collapse_population_snapshot_chunks(paths)
+}
+
+collapse_population_snapshot_chunks <- function(paths, source_indicator = "RDS population") {
+  rows <- lapply(paths, function(path) {
+    read_snapshot_object(path) %>%
+      ensure_source_indicator_column(source_indicator)
+  })
+
+  dplyr::bind_rows(rows)
 }
 
 collapse_death_snapshot_chunks <- function(selected) {
-  rows <- purrr::map2(
-    selected$path,
-    selected$source_priority,
-    function(path, source_priority) {
+  rows <- purrr::pmap(
+    list(
+      path = selected$path,
+      source_priority = selected$source_priority,
+      indicator = selected$indicator
+    ),
+    function(path, source_priority, indicator) {
       chunk <- read_snapshot_object(path)
       if (!"source_priority" %in% names(chunk)) {
         chunk$source_priority <- source_priority
       }
-      chunk
+      ensure_source_indicator_column(chunk, indicator)
     }
   )
 
@@ -685,18 +705,20 @@ get_snapshot_population_data <- function(years, area) {
       required_cols = c("year", "area", "sex", "age_band", "pop"),
       label = "Population"
     ) %>%
+    ensure_source_indicator_column("RDS population") %>%
     dplyr::mutate(
       year = as.integer(year),
       area = as.character(area),
       sex = as.character(sex),
       age_band = as.character(age_band),
-      pop = as.numeric(pop)
+      pop = as.numeric(pop),
+      source_indicator = as.character(source_indicator)
     ) %>%
     dplyr::filter(
       .data$year %in% .env$year_filter,
       .data$area %in% .env$area_filter
     ) %>%
-    dplyr::group_by(year, area, sex, age_band) %>%
+    dplyr::group_by(year, area, sex, age_band, source_indicator) %>%
     dplyr::summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
 
   validate_snapshot_combinations(
@@ -735,20 +757,22 @@ get_snapshot_death_data <- function(years, area, cause) {
       required_cols = c("year", "area", "sex", "cause", "age_band", "deaths"),
       label = "Deaths"
     ) %>%
+    ensure_source_indicator_column("RDS deaths") %>%
     dplyr::mutate(
       year = as.integer(year),
       area = as.character(area),
       sex = as.character(sex),
       cause = as.character(cause),
       age_band = as.character(age_band),
-      deaths = as.numeric(deaths)
+      deaths = as.numeric(deaths),
+      source_indicator = as.character(source_indicator)
     ) %>%
     dplyr::filter(
       .data$year %in% .env$year_filter,
       .data$area %in% .env$area_filter,
       .data$cause %in% .env$cause_filter
     ) %>%
-    dplyr::group_by(year, area, sex, cause, age_band) %>%
+    dplyr::group_by(year, area, sex, cause, age_band, source_indicator) %>%
     dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
 
   validate_snapshot_combinations(

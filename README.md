@@ -26,6 +26,8 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Splits the app internals into smaller `R/` files for configuration, INE access, snapshot access, metrics, data assembly, and UI helpers.
 - Adds a snapshot inventory manifest so the app can discover available chunked RDS files before loading data.
 - Adds a `Disponibilidade de Dados` tab to inspect RDS coverage by year, area, cause, and source indicator.
+- Shows source indicators used in observed and annual analyses.
+- Adds 95% uncertainty intervals to annual metric tables and plots where estimable.
 
 ## Running The App
 
@@ -197,6 +199,8 @@ Available metrics:
 - standardised mortality
 - proportional mortality, using all-cause deaths as the denominator for each location
 - years of potential life lost before age 70
+
+Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
 ### Advanced Forecasting
 

@@ -75,3 +75,41 @@ compute_ypll <- function(df, cutoff = 70) {
     dplyr::summarise(AVPP = sum(deaths * years_lost, na.rm = TRUE)) %>%
     dplyr::pull(AVPP)
 }
+
+compute_ypll_interval <- function(df, cutoff = 70, confidence = 0.95) {
+  ypll_data <- df %>%
+    dplyr::mutate(
+      age_midpoint = get_age_midpoint(age_band),
+      years_lost = pmax(cutoff - age_midpoint, 0)
+    ) %>%
+    dplyr::filter(!is.na(years_lost))
+
+  estimate <- sum(ypll_data$deaths * ypll_data$years_lost, na.rm = TRUE)
+  variance <- sum(ypll_data$deaths * ypll_data$years_lost^2, na.rm = TRUE)
+  z <- stats::qnorm(1 - (1 - confidence) / 2)
+  se <- sqrt(variance)
+
+  c(
+    estimate = estimate,
+    lower = max(estimate - z * se, 0),
+    upper = estimate + z * se
+  )
+}
+
+compute_count_interval <- function(count, confidence = 0.95) {
+  if (!is.finite(count) || count < 0) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+
+  stats::poisson.test(round(count), conf.level = confidence)$conf.int
+}
+
+compute_proportion_interval <- function(numerator, denominator, confidence = 0.95) {
+  if (!is.finite(numerator) || !is.finite(denominator) || denominator <= 0) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+
+  numerator <- round(max(min(numerator, denominator), 0))
+  denominator <- round(denominator)
+  stats::binom.test(numerator, denominator, conf.level = confidence)$conf.int * 100
+}

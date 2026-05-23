@@ -283,7 +283,11 @@ annual_metrics_tab_ui <- function() {
         br(), br(),
         plotOutput("annualMetricsPlot", height = "420px"),
         br(),
-        downloadButton("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)")
+        downloadButton("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)"),
+        br(), br(),
+        h4("Fontes usadas"),
+        tableOutput("annualSourcesTable"),
+        downloadButton("downloadAnnualSourcesCSV", "Descarregar fontes (CSV)")
       )
     )
   )
