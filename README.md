@@ -175,8 +175,11 @@ ITERATIONS=1 ./tools/download_missing_0008206_local.sh
 MAX_BATCHES=52 ./tools/download_missing_0008206_local.sh
 YEARS=1991:1995 AREA_BATCH_SIZE=20 ./tools/download_missing_0008206_local.sh
 YEARS=2008 ./tools/download_missing_0008206_local.sh
+EXPORT_RETRIES=6 EXPORT_RETRY_SLEEP=45 ./tools/download_missing_0008206_local.sh
 AUTO_COMMIT=1 AUTO_PUSH=1 ./tools/download_missing_0008206_local.sh
 ```
+
+If INE returns a malformed CSV, the wrapper retries the export before stopping. Malformed CSV responses are saved under `data/snapshots/raw/0008206_portal/failed/` for inspection.
 
 ## App Modules
 

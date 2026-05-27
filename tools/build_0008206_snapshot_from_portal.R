@@ -258,6 +258,110 @@ download_generated_csv <- function(csv_url, cookie_jar, timeout_seconds = 180) {
   csv_path
 }
 
+copy_failed_export <- function(csv_path, raw_dir, year_batch, batch_area_names, app, attempt, error) {
+  if (!file.exists(csv_path)) {
+    return(invisible(NULL))
+  }
+
+  failed_dir <- file.path(raw_dir, "failed")
+  dir.create(failed_dir, recursive = TRUE, showWarnings = FALSE)
+  failed_stem <- paste0(
+    "failed_0008206_years_",
+    paste(year_batch, collapse = "-"),
+    "_areas_",
+    app$snapshot_file_token(paste(batch_area_names, collapse = "_")),
+    "_attempt_",
+    attempt,
+    "_",
+    format(Sys.time(), "%Y%m%d_%H%M%S")
+  )
+
+  failed_csv <- file.path(failed_dir, paste0(failed_stem, ".csv"))
+  failed_txt <- file.path(failed_dir, paste0(failed_stem, ".txt"))
+  file.copy(csv_path, failed_csv, overwrite = TRUE)
+  writeLines(conditionMessage(error), failed_txt, useBytes = TRUE)
+
+  message("Saved malformed INE CSV for inspection: ", failed_csv)
+  invisible(failed_csv)
+}
+
+download_and_parse_export <- function(
+  fields,
+  cookie_jar,
+  timeout_seconds,
+  year_batch,
+  batch_area_names,
+  app,
+  raw_dir,
+  keep_raw = FALSE
+) {
+  export_retries <- as.integer(getOption("ine_export_retries", env_or_default("EXPORT_RETRIES", "3")))
+  export_retry_sleep <- as.numeric(getOption("ine_export_retry_sleep", env_or_default("EXPORT_RETRY_SLEEP", "30")))
+  export_retries <- ifelse(is.na(export_retries) || export_retries < 0L, 0L, export_retries)
+  export_retry_sleep <- ifelse(is.na(export_retry_sleep) || export_retry_sleep < 0, 0, export_retry_sleep)
+  max_attempts <- export_retries + 1L
+
+  last_error <- NULL
+  for (attempt in seq_len(max_attempts)) {
+    csv_path <- NULL
+    parsed <- tryCatch({
+      csv_url <- submit_csv_request(fields, cookie_jar, timeout_seconds = timeout_seconds)
+      csv_path <- download_generated_csv(csv_url, cookie_jar, timeout_seconds = timeout_seconds)
+
+      if (keep_raw) {
+        dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
+        raw_name <- paste0(
+          "0008206_years_",
+          paste(year_batch, collapse = "-"),
+          "_areas_",
+          app$snapshot_file_token(paste(batch_area_names, collapse = "_")),
+          "_attempt_",
+          attempt,
+          ".csv"
+        )
+        file.copy(csv_path, file.path(raw_dir, raw_name), overwrite = TRUE)
+      }
+
+      parse_portal_csv(csv_path)
+    }, error = function(e) e)
+
+    if (!inherits(parsed, "error")) {
+      if (!is.null(csv_path)) {
+        unlink(csv_path)
+      }
+      return(parsed)
+    }
+
+    last_error <- parsed
+    if (!is.null(csv_path)) {
+      copy_failed_export(csv_path, raw_dir, year_batch, batch_area_names, app, attempt, parsed)
+      unlink(csv_path)
+    }
+
+    if (attempt < max_attempts) {
+      wait_seconds <- export_retry_sleep * attempt
+      message(
+        glue(
+          "INE CSV export could not be parsed for years {paste(year_batch, collapse = ', ')} / ",
+          "areas {paste(batch_area_names, collapse = ' | ')} ",
+          "(attempt {attempt}/{max_attempts}): {conditionMessage(parsed)}; ",
+          "retrying in {wait_seconds}s."
+        )
+      )
+      Sys.sleep(wait_seconds)
+    }
+  }
+
+  stop(
+    glue(
+      "INE CSV export could not be parsed after {max_attempts} attempts for years ",
+      "{paste(year_batch, collapse = ', ')} / areas {paste(batch_area_names, collapse = ' | ')}: ",
+      "{conditionMessage(last_error)}"
+    ),
+    call. = FALSE
+  )
+}
+
 find_class_node <- function(root, order) {
   node <- xml2::xml_find_first(
     root,
@@ -617,12 +721,16 @@ max_batches <- parse_limit(value_or_default(cli$max_batches, env_or_default("MAX
 timeout_seconds <- as.integer(value_or_default(cli$timeout, env_or_default("TIMEOUT", "240")))
 curl_retries <- as.integer(value_or_default(cli$curl_retries, env_or_default("CURL_RETRIES", "4")))
 curl_retry_sleep <- as.numeric(value_or_default(cli$curl_retry_sleep, env_or_default("CURL_RETRY_SLEEP", "15")))
+export_retries <- as.integer(value_or_default(cli$export_retries, env_or_default("EXPORT_RETRIES", "3")))
+export_retry_sleep <- as.numeric(value_or_default(cli$export_retry_sleep, env_or_default("EXPORT_RETRY_SLEEP", "30")))
 keep_raw <- identical(tolower(value_or_default(cli$keep_raw, env_or_default("KEEP_RAW", "0"))), "1")
 raw_dir <- value_or_default(cli$raw_dir, file.path(out_dir, "raw", "0008206_portal"))
 
 options(
   ine_curl_retries = ifelse(is.na(curl_retries) || curl_retries < 0L, 0L, curl_retries),
-  ine_curl_retry_sleep = ifelse(is.na(curl_retry_sleep) || curl_retry_sleep < 0, 0, curl_retry_sleep)
+  ine_curl_retry_sleep = ifelse(is.na(curl_retry_sleep) || curl_retry_sleep < 0, 0, curl_retry_sleep),
+  ine_export_retries = ifelse(is.na(export_retries) || export_retries < 0L, 0L, export_retries),
+  ine_export_retry_sleep = ifelse(is.na(export_retry_sleep) || export_retry_sleep < 0, 0, export_retry_sleep)
 )
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -679,6 +787,7 @@ message("  Areas: ", paste(areas, collapse = " | "))
 message("  Causes: ", if (identical(sort(causes), sort(portal_causes))) "ALL" else paste(causes, collapse = " | "))
 message("  Area batch size: ", area_batch_size)
 message("  Curl retries: ", getOption("ine_curl_retries"), " (sleep base ", getOption("ine_curl_retry_sleep"), "s)")
+message("  Export parse retries: ", getOption("ine_export_retries"), " (sleep base ", getOption("ine_export_retry_sleep"), "s)")
 
 batches_done <- 0L
 chunks_written <- 0L
@@ -710,23 +819,16 @@ for (year_batch in year_batches) {
     fields$xmlDocHidden <- export_spec$xml
     fields$lingua_cd <- "PT"
 
-    csv_url <- submit_csv_request(fields, cookie_jar, timeout_seconds = timeout_seconds)
-    csv_path <- download_generated_csv(csv_url, cookie_jar, timeout_seconds = timeout_seconds)
-    on.exit(unlink(csv_path), add = TRUE)
-
-    if (keep_raw) {
-      dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
-      raw_name <- paste0(
-        "0008206_years_",
-        paste(year_batch, collapse = "-"),
-        "_areas_",
-        app$snapshot_file_token(paste(batch_area_names, collapse = "_")),
-        ".csv"
-      )
-      file.copy(csv_path, file.path(raw_dir, raw_name), overwrite = TRUE)
-    }
-
-    parsed <- parse_portal_csv(csv_path)
+    parsed <- download_and_parse_export(
+      fields = fields,
+      cookie_jar = cookie_jar,
+      timeout_seconds = timeout_seconds,
+      year_batch = year_batch,
+      batch_area_names = batch_area_names,
+      app = app,
+      raw_dir = raw_dir,
+      keep_raw = keep_raw
+    )
     chunks_written <- chunks_written + save_death_chunks(parsed, out_dir, app)
     batches_done <- batches_done + 1L
   }

@@ -17,6 +17,8 @@ year_batch_size="${YEAR_BATCH_SIZE:-1}"
 timeout_seconds="${TIMEOUT:-240}"
 curl_retries="${CURL_RETRIES:-4}"
 curl_retry_sleep="${CURL_RETRY_SLEEP:-15}"
+export_retries="${EXPORT_RETRIES:-3}"
+export_retry_sleep="${EXPORT_RETRY_SLEEP:-30}"
 iterations="${ITERATIONS:-0}"
 sleep_seconds="${SLEEP_SECONDS:-5}"
 keep_raw="${KEEP_RAW:-0}"
@@ -108,6 +110,7 @@ Missing 0008206 downloader
   Area batch size: $area_batch_size
   Max batches/run: $max_batches
   Curl retries:    $curl_retries (sleep base ${curl_retry_sleep}s)
+  Export retries:  $export_retries (sleep base ${export_retry_sleep}s)
   Iterations:      $iterations (0 means until complete)
   Auto commit:     $auto_commit
   Auto push:       $auto_push
@@ -141,6 +144,8 @@ while true; do
     "timeout=$timeout_seconds" \
     "curl_retries=$curl_retries" \
     "curl_retry_sleep=$curl_retry_sleep" \
+    "export_retries=$export_retries" \
+    "export_retry_sleep=$export_retry_sleep" \
     "keep_raw=$keep_raw" 2>&1 | tee "$log_file"
   status="${PIPESTATUS[0]}"
   set -e
