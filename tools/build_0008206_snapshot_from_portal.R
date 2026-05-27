@@ -58,14 +58,23 @@ parse_years <- function(value, default_years) {
   if (identical(toupper(value), "ALL")) {
     return(default_years)
   }
-  if (grepl(":", value, fixed = TRUE)) {
-    bounds <- suppressWarnings(as.integer(strsplit(value, ":", fixed = TRUE)[[1]]))
-    bounds <- bounds[!is.na(bounds)]
-    if (length(bounds) == 2) {
-      return(seq.int(min(bounds), max(bounds)))
+
+  tokens <- unlist(strsplit(value, "[,|]", perl = TRUE), use.names = FALSE)
+  tokens <- trimws(tokens)
+  tokens <- tokens[nzchar(tokens)]
+
+  years <- unlist(lapply(tokens, function(token) {
+    if (grepl(":", token, fixed = TRUE)) {
+      bounds <- suppressWarnings(as.integer(strsplit(token, ":", fixed = TRUE)[[1]]))
+      bounds <- bounds[!is.na(bounds)]
+      if (length(bounds) == 2) {
+        return(seq.int(min(bounds), max(bounds)))
+      }
     }
-  }
-  years <- suppressWarnings(as.integer(unlist(strsplit(value, "[,|]", perl = TRUE), use.names = FALSE)))
+
+    suppressWarnings(as.integer(token))
+  }), use.names = FALSE)
+
   years[!is.na(years)]
 }
 
@@ -111,11 +120,37 @@ find_default_app_file <- function() {
 }
 
 curl_run <- function(args, label) {
-  status <- system2("curl", args = shQuote(args))
-  if (!identical(status, 0L)) {
-    stop(glue("curl failed while {label}."), call. = FALSE)
+  retries <- as.integer(getOption("ine_curl_retries", env_or_default("CURL_RETRIES", "4")))
+  retry_sleep <- as.numeric(getOption("ine_curl_retry_sleep", env_or_default("CURL_RETRY_SLEEP", "15")))
+  retries <- ifelse(is.na(retries) || retries < 0L, 0L, retries)
+  retry_sleep <- ifelse(is.na(retry_sleep) || retry_sleep < 0, 0, retry_sleep)
+  max_attempts <- retries + 1L
+
+  last_status <- NA_integer_
+  for (attempt in seq_len(max_attempts)) {
+    status <- system2("curl", args = shQuote(args))
+    last_status <- status
+
+    if (identical(status, 0L)) {
+      return(invisible(TRUE))
+    }
+
+    if (attempt < max_attempts) {
+      wait_seconds <- retry_sleep * attempt
+      message(
+        glue(
+          "curl failed while {label} (attempt {attempt}/{max_attempts}, exit status {status}); ",
+          "retrying in {wait_seconds}s."
+        )
+      )
+      Sys.sleep(wait_seconds)
+    }
   }
-  invisible(TRUE)
+
+  stop(
+    glue("curl failed while {label} after {max_attempts} attempts. Last exit status: {last_status}."),
+    call. = FALSE
+  )
 }
 
 fetch_portal_form <- function(cookie_jar, timeout_seconds = 120) {
@@ -580,8 +615,15 @@ area_batch_size <- as.integer(value_or_default(cli$area_batch_size, env_or_defau
 year_batch_size <- as.integer(value_or_default(cli$year_batch_size, env_or_default("YEAR_BATCH_SIZE", "1")))
 max_batches <- parse_limit(value_or_default(cli$max_batches, env_or_default("MAX_BATCHES", "Inf")))
 timeout_seconds <- as.integer(value_or_default(cli$timeout, env_or_default("TIMEOUT", "240")))
+curl_retries <- as.integer(value_or_default(cli$curl_retries, env_or_default("CURL_RETRIES", "4")))
+curl_retry_sleep <- as.numeric(value_or_default(cli$curl_retry_sleep, env_or_default("CURL_RETRY_SLEEP", "15")))
 keep_raw <- identical(tolower(value_or_default(cli$keep_raw, env_or_default("KEEP_RAW", "0"))), "1")
 raw_dir <- value_or_default(cli$raw_dir, file.path(out_dir, "raw", "0008206_portal"))
+
+options(
+  ine_curl_retries = ifelse(is.na(curl_retries) || curl_retries < 0L, 0L, curl_retries),
+  ine_curl_retry_sleep = ifelse(is.na(curl_retry_sleep) || curl_retry_sleep < 0, 0, curl_retry_sleep)
+)
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -636,6 +678,7 @@ message("  Years: ", paste(years, collapse = ", "))
 message("  Areas: ", paste(areas, collapse = " | "))
 message("  Causes: ", if (identical(sort(causes), sort(portal_causes))) "ALL" else paste(causes, collapse = " | "))
 message("  Area batch size: ", area_batch_size)
+message("  Curl retries: ", getOption("ine_curl_retries"), " (sleep base ", getOption("ine_curl_retry_sleep"), "s)")
 
 batches_done <- 0L
 chunks_written <- 0L

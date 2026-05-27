@@ -162,6 +162,22 @@ AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
 
 Stop with `Ctrl+C`; completed chunks from the interrupted batch are committed before the script exits.
 
+To fill the current online gap specifically, use the local missing-data wrapper:
+
+```sh
+./tools/download_missing_0008206_local.sh
+```
+
+By default this targets `0008206`, years `1991:2005,2008`, all areas, and all causes. These are the remaining online gaps after the current backfill: `1991-2005` still need local-area chunks, and `2008` still has missing areas. It writes resumable chunks to `data/snapshots/deaths/0008206/` and refreshes `data/snapshots/snapshot_inventory.rds` after each batch. Stop it with `Ctrl+C`; completed chunks are kept. Useful overrides:
+
+```sh
+ITERATIONS=1 ./tools/download_missing_0008206_local.sh
+MAX_BATCHES=52 ./tools/download_missing_0008206_local.sh
+YEARS=1991:1995 AREA_BATCH_SIZE=20 ./tools/download_missing_0008206_local.sh
+YEARS=2008 ./tools/download_missing_0008206_local.sh
+AUTO_COMMIT=1 AUTO_PUSH=1 ./tools/download_missing_0008206_local.sh
+```
+
 ## App Modules
 
 ### Data Availability
