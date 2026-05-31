@@ -51,22 +51,34 @@ snapshot_dir_has_local_data <- function(path) {
     return(FALSE)
   }
 
-  flat_files <- file.path(path, c("population.rds", "deaths.rds", "mortality_ine_snapshot.rds"))
-  if (any(file.exists(flat_files))) {
+  if (file.exists(file.path(path, "mortality_ine_snapshot.rds"))) {
     return(TRUE)
   }
 
-  for (subdir in c("population", "deaths")) {
+  has_population <- file.exists(file.path(path, "population.rds"))
+  has_deaths <- file.exists(file.path(path, "deaths.rds"))
+
+  for (subdir in "population") {
     chunk_dir <- file.path(path, subdir)
     if (
       dir.exists(chunk_dir) &&
         length(list.files(chunk_dir, pattern = "\\.rds$", recursive = TRUE, full.names = FALSE)) > 0
     ) {
-      return(TRUE)
+      has_population <- TRUE
     }
   }
 
-  FALSE
+  for (subdir in "deaths") {
+    chunk_dir <- file.path(path, subdir)
+    if (
+      dir.exists(chunk_dir) &&
+        length(list.files(chunk_dir, pattern = "\\.rds$", recursive = TRUE, full.names = FALSE)) > 0
+    ) {
+      has_deaths <- TRUE
+    }
+  }
+
+  isTRUE(has_population && has_deaths)
 }
 
 get_snapshot_dir <- function() {

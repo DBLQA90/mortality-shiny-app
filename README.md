@@ -84,7 +84,7 @@ For larger datasets, the repository uses chunked files:
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
-By default, the app first uses local snapshot files under `data/snapshots` when they are present. This means a full repository download works from its own local RDS files without reading the same files back from GitHub. If local snapshot files are absent, the app falls back to the configured GitHub raw snapshot directory. The manifest lists available chunks, areas, years, causes, row counts, and source priorities, allowing the app to choose relevant RDS files before reading the data itself. After adding or changing local snapshot chunks, refresh the manifest with:
+By default, the app first uses local snapshot files under `data/snapshots` when both population and death snapshots are present. This means a full repository download works from its own local RDS files without reading the same files back from GitHub. If local snapshot files are absent or only partially present, the app falls back to the configured GitHub raw snapshot directory. The manifest lists available chunks, areas, years, causes, row counts, and source priorities, allowing the app to choose relevant RDS files before reading the data itself. After adding or changing local snapshot chunks, refresh the manifest with:
 
 ```sh
 Rscript tools/update_snapshot_inventory.R
