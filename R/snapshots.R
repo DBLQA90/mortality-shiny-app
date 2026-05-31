@@ -2,17 +2,87 @@
 # Snapshot files
 # =========================================================
 
-get_snapshot_dir <- function() {
+get_default_remote_snapshot_dir <- function() {
   Sys.getenv(
-    "MORTALITY_SNAPSHOT_DIR",
-    file.path(get_app_dir(), "data", "snapshots")
+    "MORTALITY_REMOTE_SNAPSHOT_DIR",
+    "https://raw.githubusercontent.com/DBLQA90/mortality-shiny-app/main/data/snapshots"
   )
+}
+
+is_url_path <- function(path) {
+  grepl("^https?://", as.character(path), ignore.case = TRUE)
+}
+
+snapshot_path_join <- function(...) {
+  args <- lapply(list(...), as.character)
+
+  if (length(args) == 0) {
+    return("")
+  }
+
+  max_length <- max(lengths(args))
+  args <- lapply(args, rep_len, length.out = max_length)
+
+  do.call(
+    mapply,
+    c(
+      list(FUN = function(...) {
+        parts <- as.character(c(...))
+        parts <- parts[nzchar(parts)]
+
+        if (length(parts) == 0) {
+          return("")
+        }
+
+        if (is_url_path(parts[[1]])) {
+          return(paste(c(sub("/+$", "", parts[[1]]), gsub("^/+|/+$", "", parts[-1])), collapse = "/"))
+        }
+
+        do.call(file.path, as.list(parts))
+      }),
+      args,
+      list(USE.NAMES = FALSE)
+    )
+  )
+}
+
+snapshot_dir_has_local_chunks <- function(path) {
+  if (!dir.exists(path)) {
+    return(FALSE)
+  }
+
+  for (subdir in c("population", "deaths")) {
+    chunk_dir <- file.path(path, subdir)
+    if (
+      dir.exists(chunk_dir) &&
+        length(list.files(chunk_dir, pattern = "\\.rds$", recursive = TRUE, full.names = FALSE)) > 0
+    ) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
+get_snapshot_dir <- function() {
+  configured <- Sys.getenv("MORTALITY_SNAPSHOT_DIR", unset = "")
+  if (nzchar(configured)) {
+    return(configured)
+  }
+
+  local_snapshot_dir <- file.path(get_app_dir(), "data", "snapshots")
+  use_local <- tolower(Sys.getenv("MORTALITY_USE_LOCAL_SNAPSHOTS", unset = "")) %in% c("1", "true", "yes", "y")
+  if (isTRUE(use_local) && snapshot_dir_has_local_chunks(local_snapshot_dir)) {
+    return(local_snapshot_dir)
+  }
+
+  get_default_remote_snapshot_dir()
 }
 
 get_combined_snapshot_file <- function() {
   Sys.getenv(
     "MORTALITY_SNAPSHOT_RDS",
-    file.path(get_snapshot_dir(), "mortality_ine_snapshot.rds")
+    snapshot_path_join(get_snapshot_dir(), "mortality_ine_snapshot.rds")
   )
 }
 
@@ -26,24 +96,24 @@ get_snapshot_file <- function(kind) {
 
   Sys.getenv(
     env_name,
-    file.path(get_snapshot_dir(), paste0(kind, ".rds"))
+    snapshot_path_join(get_snapshot_dir(), paste0(kind, ".rds"))
   )
 }
 
 get_snapshot_inventory_file <- function() {
   Sys.getenv(
     "MORTALITY_SNAPSHOT_INVENTORY_RDS",
-    file.path(get_snapshot_dir(), "snapshot_inventory.rds")
+    snapshot_path_join(get_snapshot_dir(), "snapshot_inventory.rds")
   )
 }
 
 is_absolute_path <- function(path) {
-  grepl("^(/|[A-Za-z]:[/\\\\])", as.character(path))
+  is_url_path(path) | grepl("^(/|[A-Za-z]:[/\\\\])", as.character(path))
 }
 
 snapshot_inventory_full_path <- function(path) {
   path <- as.character(path)
-  ifelse(is_absolute_path(path), path, file.path(get_snapshot_dir(), path))
+  ifelse(is_absolute_path(path), path, snapshot_path_join(get_snapshot_dir(), path))
 }
 
 normalize_data_source <- function(data_source = "ine") {
@@ -73,6 +143,19 @@ get_data_source_progress_message <- function(data_source = "ine", context = "dat
   if (identical(context, "annual")) "A obter métricas anuais do INE..." else "A obter dados do INE..."
 }
 
+get_default_data_source <- function() {
+  configured <- Sys.getenv("MORTALITY_DEFAULT_DATA_SOURCE", unset = "")
+  if (nzchar(configured)) {
+    return(normalize_data_source(configured))
+  }
+
+  if (is_url_path(get_snapshot_dir())) {
+    return("snapshot")
+  }
+
+  "ine"
+}
+
 snapshot_file_token <- function(x) {
   x <- iconv(as.character(x), to = "ASCII//TRANSLIT")
   x <- tolower(x)
@@ -89,7 +172,7 @@ get_chunked_death_indicators <- function() {
 }
 
 get_chunked_death_snapshot_path <- function(indicator, year, cause) {
-  file.path(
+  snapshot_path_join(
     get_snapshot_dir(),
     "deaths",
     indicator,
@@ -98,16 +181,27 @@ get_chunked_death_snapshot_path <- function(indicator, year, cause) {
   )
 }
 
+snapshot_path_exists <- function(path) {
+  path <- as.character(path)
+  ifelse(is_url_path(path), TRUE, file.exists(path))
+}
+
 read_snapshot_object <- memoise::memoise(function(path) {
+  if (is_url_path(path)) {
+    con <- url(path, open = "rb")
+    on.exit(close(con), add = TRUE)
+    return(readRDS(con))
+  }
+
   readRDS(path)
 })
 
 read_snapshot_dataset <- memoise::memoise(function(kind, separate_path, combined_path) {
-  if (file.exists(separate_path)) {
+  if (snapshot_path_exists(separate_path)) {
     return(read_snapshot_object(separate_path))
   }
 
-  if (file.exists(combined_path)) {
+  if (snapshot_path_exists(combined_path)) {
     snapshot <- read_snapshot_object(combined_path)
     if (is.list(snapshot) && !is.null(snapshot[[kind]])) {
       return(snapshot[[kind]])
@@ -153,11 +247,11 @@ ensure_source_indicator_column <- function(data, source_indicator) {
 }
 
 read_snapshot_inventory_object <- memoise::memoise(function(path) {
-  if (!file.exists(path)) {
+  if (!snapshot_path_exists(path)) {
     return(NULL)
   }
 
-  inventory <- tryCatch(readRDS(path), error = function(e) NULL)
+  inventory <- tryCatch(read_snapshot_object(path), error = function(e) NULL)
   if (is.null(inventory)) {
     warning(
       glue::glue("Snapshot inventory '{path}' could not be read; falling back to direct chunk lookup."),
@@ -238,8 +332,10 @@ build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory(
     dplyr::filter(.data$dataset == "population")
   deaths <- inventory %>%
     dplyr::filter(.data$dataset == "deaths")
-  inventory_mtime <- if (file.exists(inventory_path)) {
+  inventory_mtime <- if (!is_url_path(inventory_path) && file.exists(inventory_path)) {
     format(file.info(inventory_path)$mtime, "%Y-%m-%d %H:%M")
+  } else if (is_url_path(inventory_path)) {
+    "GitHub"
   } else {
     "N/D"
   }
@@ -399,6 +495,143 @@ build_snapshot_availability_table <- function(
   out
 }
 
+format_snapshot_availability_issue <- function(row) {
+  pieces <- character(0)
+  if ("Ano" %in% names(row)) {
+    pieces <- c(pieces, as.character(row[["Ano"]][[1]]))
+  }
+  if ("Causa de morte" %in% names(row)) {
+    cause <- as.character(row[["Causa de morte"]][[1]])
+    if (!is.na(cause) && nzchar(cause)) {
+      pieces <- c(pieces, cause)
+    }
+  }
+
+  issue_label <- if (length(pieces) > 0) paste(pieces, collapse = " / ") else "Selecção"
+  issue <- paste0(issue_label, ": ", as.character(row[["Estado"]][[1]]))
+
+  missing_areas <- if ("Áreas em falta" %in% names(row)) {
+    as.character(row[["Áreas em falta"]][[1]])
+  } else {
+    ""
+  }
+  if (nzchar(missing_areas) && !identical(missing_areas, "Nenhum")) {
+    issue <- paste0(issue, " (áreas em falta: ", missing_areas, ")")
+  }
+
+  sources <- if ("Fonte(s)" %in% names(row)) as.character(row[["Fonte(s)"]][[1]]) else ""
+  if (nzchar(sources) && !identical(sources, "Nenhum")) {
+    issue <- paste0(issue, "; fonte(s): ", sources)
+  }
+
+  issue
+}
+
+summarize_snapshot_availability_issues <- function(availability, label, max_examples = 5) {
+  if (is.null(availability) || nrow(availability) == 0 || !"Estado" %in% names(availability)) {
+    return(character(0))
+  }
+
+  issues <- availability %>%
+    dplyr::filter(.data$Estado != "Disponível")
+
+  if (nrow(issues) == 0) {
+    return(character(0))
+  }
+
+  status_summary <- issues %>%
+    dplyr::count(.data$Estado, name = "n") %>%
+    dplyr::mutate(txt = paste0(.data$Estado, ": ", .data$n)) %>%
+    dplyr::pull(.data$txt) %>%
+    paste(collapse = "; ")
+
+  shown <- utils::head(seq_len(nrow(issues)), max_examples)
+  examples <- vapply(
+    shown,
+    function(i) format_snapshot_availability_issue(issues[i, , drop = FALSE]),
+    character(1)
+  )
+  if (nrow(issues) > length(shown)) {
+    examples <- c(examples, paste0("... e mais ", nrow(issues) - length(shown), " problema(s) de cobertura."))
+  }
+
+  c(
+    glue::glue("{label}: cobertura RDS incompleta ({status_summary})."),
+    paste0(" - ", examples)
+  )
+}
+
+build_snapshot_request_warnings <- function(
+  years,
+  areas,
+  causes = NULL,
+  include_population = TRUE,
+  include_deaths = TRUE,
+  inventory = get_snapshot_inventory(),
+  max_examples = 5
+) {
+  if (!isTRUE(include_population) && !isTRUE(include_deaths)) {
+    return(character(0))
+  }
+
+  years <- sort(unique(as.integer(years)))
+  years <- years[!is.na(years)]
+  areas <- sort(unique(as.character(areas)))
+  areas <- areas[!is.na(areas) & nzchar(areas)]
+
+  if (is.null(inventory)) {
+    return(glue::glue(
+      "Aviso RDS: o inventário de snapshots não foi encontrado em {get_snapshot_inventory_file()}. A importação pode falhar ou recorrer à procura directa de ficheiros."
+    ))
+  }
+
+  messages <- character(0)
+
+  if (isTRUE(include_population)) {
+    population_availability <- build_snapshot_availability_table(
+      dataset = "population",
+      years = years,
+      areas = areas,
+      show_missing = TRUE,
+      inventory = inventory
+    )
+    messages <- c(
+      messages,
+      summarize_snapshot_availability_issues(
+        population_availability,
+        label = "População",
+        max_examples = max_examples
+      )
+    )
+  }
+
+  if (isTRUE(include_deaths)) {
+    causes <- sort(unique(as.character(causes)))
+    causes <- causes[!is.na(causes) & nzchar(causes)]
+
+    if (length(causes) > 0) {
+      death_availability <- build_snapshot_availability_table(
+        dataset = "deaths",
+        years = years,
+        areas = areas,
+        causes = causes,
+        show_missing = TRUE,
+        inventory = inventory
+      )
+      messages <- c(
+        messages,
+        summarize_snapshot_availability_issues(
+          death_availability,
+          label = "Óbitos",
+          max_examples = max_examples
+        )
+      )
+    }
+  }
+
+  messages
+}
+
 snapshot_inventory_has_area <- function(area_lists, requested_areas = NULL) {
   if (is.null(requested_areas)) {
     return(rep(TRUE, length(area_lists)))
@@ -506,7 +739,7 @@ read_chunked_population_snapshot <- function(years, areas = NULL) {
       }
 
       paths <- snapshot_inventory_full_path(selected$path)
-      missing_paths <- paths[!file.exists(paths)]
+      missing_paths <- paths[!snapshot_path_exists(paths)]
       if (length(missing_paths) > 0) {
         stop(
           glue::glue("Missing population snapshot chunk file(s): {paste(missing_paths, collapse = ', ')}."),
@@ -518,13 +751,13 @@ read_chunked_population_snapshot <- function(years, areas = NULL) {
     }
   }
 
-  paths <- file.path(get_snapshot_dir(), "population", paste0("year_", years, ".rds"))
+  paths <- snapshot_path_join(get_snapshot_dir(), "population", paste0("year_", years, ".rds"))
 
-  if (!any(file.exists(paths))) {
+  if (!any(snapshot_path_exists(paths))) {
     return(NULL)
   }
 
-  missing_paths <- paths[!file.exists(paths)]
+  missing_paths <- paths[!snapshot_path_exists(paths)]
   if (length(missing_paths) > 0) {
     stop(
       glue::glue("Missing population snapshot chunk(s): {paste(missing_paths, collapse = ', ')}."),
@@ -620,7 +853,7 @@ read_chunked_death_snapshot <- function(years, causes, areas = NULL) {
         list(.data$indicator, .data$year, .data$cause),
         get_chunked_death_snapshot_path
       ),
-      exists = file.exists(.data$path)
+      exists = snapshot_path_exists(.data$path)
     )
 
   if (!any(grid$exists)) {
@@ -674,6 +907,14 @@ validate_snapshot_combinations <- function(data, required, by, label) {
 }
 
 get_flat_or_chunked_population_snapshot <- function(years, areas = NULL) {
+  if (
+    is_url_path(get_snapshot_dir()) &&
+      !nzchar(Sys.getenv("MORTALITY_POPULATION_SNAPSHOT_RDS", unset = "")) &&
+      !nzchar(Sys.getenv("MORTALITY_SNAPSHOT_RDS", unset = ""))
+  ) {
+    return(read_chunked_population_snapshot(years, areas = areas))
+  }
+
   tryCatch(
     get_snapshot_dataset("population"),
     error = function(e) read_chunked_population_snapshot(years, areas = areas)
@@ -681,6 +922,14 @@ get_flat_or_chunked_population_snapshot <- function(years, areas = NULL) {
 }
 
 get_flat_or_chunked_death_snapshot <- function(years, causes, areas = NULL) {
+  if (
+    is_url_path(get_snapshot_dir()) &&
+      !nzchar(Sys.getenv("MORTALITY_DEATHS_SNAPSHOT_RDS", unset = "")) &&
+      !nzchar(Sys.getenv("MORTALITY_SNAPSHOT_RDS", unset = ""))
+  ) {
+    return(read_chunked_death_snapshot(years, causes, areas = areas))
+  }
+
   tryCatch(
     get_snapshot_dataset("deaths"),
     error = function(e) read_chunked_death_snapshot(years, causes, areas = areas)

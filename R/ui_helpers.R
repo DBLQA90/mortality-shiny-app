@@ -19,7 +19,7 @@ data_source_input <- function(input_id) {
     input_id,
     "Fonte de dados:",
     choices = data_source_choices,
-    selected = normalize_data_source(Sys.getenv("MORTALITY_DEFAULT_DATA_SOURCE", "ine"))
+    selected = get_default_data_source()
   )
 }
 
@@ -223,6 +223,8 @@ beginner_forecasting_tab_ui <- function() {
       ),
       mainPanel(
         plotOutput("beginnerForecastPlot", height = "400px"),
+        br(),
+        uiOutput("beginnerForecastWarnings"),
         br(),
         downloadButton("downloadBeginnerForecastPlot", "Descarregar gráfico (PNG)"),
         br(),

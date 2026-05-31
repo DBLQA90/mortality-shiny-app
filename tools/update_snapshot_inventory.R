@@ -24,10 +24,14 @@ sys.source(file.path(repo_dir, "R/helpers.R"), envir = globalenv())
 sys.source(file.path(repo_dir, "R/cache.R"), envir = globalenv())
 sys.source(file.path(repo_dir, "R/snapshots.R"), envir = globalenv())
 
-inventory <- write_snapshot_inventory()
+snapshot_dir <- file.path(repo_dir, "data", "snapshots")
+inventory <- write_snapshot_inventory(
+  path = file.path(snapshot_dir, "snapshot_inventory.rds"),
+  snapshot_dir = snapshot_dir
+)
 
 cat(glue(
-  "Wrote {nrow(inventory)} snapshot inventory rows to {get_snapshot_inventory_file()}\n"
+  "Wrote {nrow(inventory)} snapshot inventory rows to {file.path(snapshot_dir, 'snapshot_inventory.rds')}\n"
 ))
 cat(glue(
   "Population chunks: {sum(inventory$dataset == 'population')}; death chunks: {sum(inventory$dataset == 'deaths')}\n"

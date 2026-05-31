@@ -41,10 +41,6 @@ get_app_dir <- function() {
   getwd()
 }
 
-source_app_file <- function(path) {
-  sys.source(file.path(get_app_dir(), path), envir = parent.frame())
-}
-
 for (app_file in c(
   "R/config.R",
   "R/helpers.R",
@@ -56,7 +52,7 @@ for (app_file in c(
   "R/data_access.R",
   "R/ui_helpers.R"
 )) {
-  source_app_file(app_file)
+  sys.source(file.path(get_app_dir(), app_file), envir = environment())
 }
 
 # =========================================================
@@ -318,6 +314,37 @@ server <- function(input, output, session) {
     )
   }
 
+  notify_snapshot_request_warnings <- function(
+    years,
+    areas,
+    causes,
+    data_source,
+    include_population = TRUE,
+    include_deaths = TRUE
+  ) {
+    if (!identical(normalize_data_source(data_source), "snapshot")) {
+      return(invisible(character(0)))
+    }
+
+    messages <- build_snapshot_request_warnings(
+      years = years,
+      areas = areas,
+      causes = causes,
+      include_population = include_population,
+      include_deaths = include_deaths
+    )
+
+    if (length(messages) > 0) {
+      showNotification(
+        paste(messages, collapse = "\n"),
+        type = "warning",
+        duration = 12
+      )
+    }
+
+    invisible(messages)
+  }
+
   load_metric_bundle <- function(query_spec, kind, token, year_range = range(year_of_interest), year_order = "asc") {
     validate(need(length(query_spec$area_key) > 0, "Selecione pelo menos um local de residência."))
 
@@ -326,6 +353,12 @@ server <- function(input, output, session) {
 
     year_order <- normalize_year_order(year_order)
     years_to_load <- get_years_in_selected_range(year_range, year_order = year_order)
+    notify_snapshot_request_warnings(
+      years = years_to_load,
+      areas = query_spec$area_key,
+      causes = query_spec$cause,
+      data_source = query_spec$data_source
+    )
 
     dat <- with_data_load_cancel_checker(
       cancel_checker = function() !identical(cancel_seq[[kind]], token),
@@ -1043,10 +1076,33 @@ server <- function(input, output, session) {
   }
 
   get_successful_model_ids <- function(dat) {
+    if (is.null(dat)) {
+      return(character(0))
+    }
+
     value_or_default(dat$fitted_models, character(0))
   }
 
+  has_successful_forecast <- function(dat) {
+    length(get_successful_model_ids(dat)) > 0 &&
+      !is.null(dat$fc) &&
+      nrow(dat$fc) > 0
+  }
+
+  validate_successful_forecast <- function(dat) {
+    validate(
+      need(
+        has_successful_forecast(dat),
+        "Erro detectado na previsão. Nenhum modelo pôde ser estimado com sucesso para esta série; consulte os avisos dos modelos."
+      )
+    )
+  }
+
   get_default_forecast_output_model <- function(dat) {
+    if (is.null(dat)) {
+      return(NULL)
+    }
+
     successful_models <- get_successful_model_ids(dat)
 
     if (!is.null(dat$recommended_model) && dat$recommended_model %in% successful_models) {
@@ -1251,29 +1307,40 @@ server <- function(input, output, session) {
   }
 
   build_forecast_warning_ui <- function(dat) {
-    failures <- dat$failures
+    if (is.null(dat)) {
+      return(NULL)
+    }
+
+    failures <- value_or_default(
+      dat$failures,
+      tibble::tibble(Model = character(0), Message = character(0))
+    )
     successful_models <- get_successful_model_ids(dat)
 
-    if (nrow(failures) == 0) {
+    if (nrow(failures) == 0 && length(successful_models) > 0) {
       return(NULL)
     }
 
     wellPanel(
-      h4("Avisos dos modelos"),
+      h4(if (length(successful_models) == 0) "Erro detectado na previsão" else "Avisos dos modelos"),
       p(
         if (length(successful_models) == 0) {
-          "Nenhum dos modelos pedidos pôde ser estimado para esta especificação."
+          "Nenhum dos modelos pedidos pôde ser estimado para esta especificação. A aplicação não apresenta a previsão como válida para esta selecção."
         } else {
           "Alguns dos modelos pedidos não puderam ser estimados. Os resultados abaixo utilizam os modelos que foram ajustados com sucesso."
         }
       ),
-      tags$ul(
-        lapply(seq_len(nrow(failures)), function(i) {
-          tags$li(
-            paste0(get_model_labels(failures$Model[[i]]), ": ", failures$Message[[i]])
-          )
-        })
-      )
+      if (nrow(failures) > 0) {
+        tags$ul(
+          lapply(seq_len(nrow(failures)), function(i) {
+            tags$li(
+              paste0(get_model_labels(failures$Model[[i]]), ": ", failures$Message[[i]])
+            )
+          })
+        )
+      } else {
+        p("Não foi devolvida uma mensagem técnica pelo estimador.")
+      }
     )
   }
 
@@ -1762,6 +1829,8 @@ server <- function(input, output, session) {
   }
 
   build_beginner_forecast_plot <- function(dat) {
+    validate_successful_forecast(dat)
+
     full_obs <- dat$full_history$series
     train_obs <- dat$obs
     recommended_fc <- dat$fc %>%
@@ -1827,6 +1896,8 @@ server <- function(input, output, session) {
   }
 
   build_beginner_summary_ui <- function(dat) {
+    validate_successful_forecast(dat)
+
     last_observed <- dat$full_history$series %>%
       dplyr::slice_tail(n = 1)
     final_forecast <- dat$fc %>%
@@ -1887,6 +1958,8 @@ server <- function(input, output, session) {
   }
 
   build_beginner_reliability_ui <- function(dat) {
+    validate_successful_forecast(dat)
+
     recommended_fc <- dat$fc %>%
       dplyr::filter(model == dat$recommended_model) %>%
       dplyr::slice_tail(n = 1)
@@ -2410,10 +2483,6 @@ server <- function(input, output, session) {
       horizon = input$beginner_horizon
     )
 
-    validate(
-      need(length(guided_result$fitted_models) > 0, "Não foi possível estimar qualquer modelo de projecção para esta série.")
-    )
-
     c(
       guided_result,
       list(
@@ -2439,6 +2508,11 @@ server <- function(input, output, session) {
     }
   )
 
+  output$beginnerForecastWarnings <- renderUI({
+    req(input$go_beginner_forecast > 0)
+    build_forecast_warning_ui(beginner_forecast())
+  })
+
   output$beginnerForecastSummary <- renderUI({
     req(input$go_beginner_forecast > 0)
     build_beginner_summary_ui(beginner_forecast())
@@ -2451,6 +2525,8 @@ server <- function(input, output, session) {
 
   beginner_forecast_table <- reactive({
     dat <- beginner_forecast()
+    validate_successful_forecast(dat)
+
     if (identical(dat$mode, "recommended")) {
       build_forecast_display_table(
         dat,
@@ -2491,6 +2567,20 @@ server <- function(input, output, session) {
     )
 
     area_specs <- get_annual_area_specs(input$annual_area, input$annual_area_label)
+    annual_causes_needed <- unique(c(
+      selected_causes,
+      if (selected_metric %in% "proportional") "Todas as causas de morte" else character(0)
+    ))
+    annual_areas_needed <- sort(unique(unlist(lapply(area_specs, `[[`, "areas"), use.names = FALSE)))
+
+    notify_snapshot_request_warnings(
+      years = year,
+      areas = annual_areas_needed,
+      causes = annual_causes_needed,
+      data_source = input$annual_data_source,
+      include_population = selected_metric %in% c("crude", "dsr"),
+      include_deaths = TRUE
+    )
 
     shiny::withProgress(message = get_data_source_progress_message(input$annual_data_source, context = "annual"), value = 0, {
       with_data_load_cancel_checker(
