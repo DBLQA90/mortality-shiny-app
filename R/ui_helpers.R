@@ -56,7 +56,7 @@ forecast_controls_panel <- function() {
       "horizon",
       "Horizonte de projecção (anos):",
       min   = 1,
-      max   = 8,
+      max   = 30,
       value = 7
     ),
     sliderInput(
@@ -90,7 +90,7 @@ beginner_forecast_controls_panel <- function() {
       "beginner_horizon",
       "Horizonte de projecção (anos):",
       min = 1,
-      max = 8,
+      max = 30,
       value = 5
     ),
     year_range_slider(

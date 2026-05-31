@@ -157,6 +157,8 @@ The app supports these model families through the `forecast` package:
 
 The guided forecast tab uses simpler controls and recommends among available models using in-sample accuracy. The advanced forecast tab exposes model families, training windows, confidence interval level, optional transformation, diagnostics, backtesting, and structural-break exploration.
 
+Both forecasting tabs allow horizons up to 30 years beyond the last observed year. Longer horizons widen the gap between a statistical extrapolation and interpretable epidemiological expectation, so the final years should be read with extra caution, especially for sparse local series or unstable causes.
+
 Each requested model is estimated independently. If one model fails, the app keeps the successful models and shows a model warning with the technical error message returned by the estimator. If all requested models fail, the forecast is treated as an error condition: the app shows `Erro detectado na previsão` and does not present forecast values as valid results for that selection.
 
 Missing or incomplete source data can also invalidate a forecast. When RDS snapshots are selected, the app checks the snapshot inventory for the requested years, areas, and causes before fitting. If coverage is partial or unavailable, it shows a warning so the user can distinguish a modelling failure from a data-availability problem.
@@ -228,7 +230,7 @@ For large or slow indicators, the app can also read chunked files:
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
-By default, the app reads the snapshot manifest and chunk files from the configured GitHub raw snapshot directory. A local folder can be forced with `MORTALITY_SNAPSHOT_DIR`; alternatively, setting `MORTALITY_USE_LOCAL_SNAPSHOTS=true` makes the app use local chunk files under `data/snapshots` when they are present. A stray local inventory without chunk files is therefore not enough to redirect the app away from GitHub. The inventory records the dataset, indicator, year, cause, relative path, row count, available areas, sexes, age bands, and source priority. This lets the app avoid unnecessary chunk discovery and makes missing data easier to identify. The manifest is rebuilt with:
+By default, the app first reads local snapshot files under `data/snapshots` when they are present. If the local snapshot files are absent, the app reads the manifest and chunk files from the configured GitHub raw snapshot directory. `MORTALITY_SNAPSHOT_DIR` can force a specific local or remote folder, and `MORTALITY_USE_LOCAL_SNAPSHOTS=false` can skip the default local folder. A stray local inventory without snapshot data is not enough to redirect the app away from GitHub. The inventory records the dataset, indicator, year, cause, relative path, row count, available areas, sexes, age bands, and source priority. This lets the app avoid unnecessary chunk discovery and makes missing data easier to identify. The manifest is rebuilt with:
 
 ```sh
 Rscript tools/update_snapshot_inventory.R

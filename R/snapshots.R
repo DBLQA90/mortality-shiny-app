@@ -46,9 +46,14 @@ snapshot_path_join <- function(...) {
   )
 }
 
-snapshot_dir_has_local_chunks <- function(path) {
+snapshot_dir_has_local_data <- function(path) {
   if (!dir.exists(path)) {
     return(FALSE)
+  }
+
+  flat_files <- file.path(path, c("population.rds", "deaths.rds", "mortality_ine_snapshot.rds"))
+  if (any(file.exists(flat_files))) {
+    return(TRUE)
   }
 
   for (subdir in c("population", "deaths")) {
@@ -71,8 +76,8 @@ get_snapshot_dir <- function() {
   }
 
   local_snapshot_dir <- file.path(get_app_dir(), "data", "snapshots")
-  use_local <- tolower(Sys.getenv("MORTALITY_USE_LOCAL_SNAPSHOTS", unset = "")) %in% c("1", "true", "yes", "y")
-  if (isTRUE(use_local) && snapshot_dir_has_local_chunks(local_snapshot_dir)) {
+  use_local <- !tolower(Sys.getenv("MORTALITY_USE_LOCAL_SNAPSHOTS", unset = "true")) %in% c("0", "false", "no", "n")
+  if (isTRUE(use_local) && snapshot_dir_has_local_data(local_snapshot_dir)) {
     return(local_snapshot_dir)
   }
 
@@ -149,7 +154,8 @@ get_default_data_source <- function() {
     return(normalize_data_source(configured))
   }
 
-  if (is_url_path(get_snapshot_dir())) {
+  snapshot_dir <- get_snapshot_dir()
+  if (is_url_path(snapshot_dir) || snapshot_dir_has_local_data(snapshot_dir)) {
     return("snapshot")
   }
 
