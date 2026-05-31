@@ -41,6 +41,9 @@ get_app_dir <- function() {
   getwd()
 }
 
+app_dir <- get_app_dir()
+bootstrap_env <- environment(get_app_dir)
+
 for (app_file in c(
   "R/config.R",
   "R/helpers.R",
@@ -52,7 +55,7 @@ for (app_file in c(
   "R/data_access.R",
   "R/ui_helpers.R"
 )) {
-  sys.source(file.path(get_app_dir(), app_file), envir = environment())
+  sys.source(file.path(app_dir, app_file), envir = bootstrap_env)
 }
 
 # =========================================================

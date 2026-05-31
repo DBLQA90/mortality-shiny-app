@@ -656,7 +656,7 @@ snapshot_relative_path <- function(path, snapshot_dir = get_snapshot_dir()) {
   full_path
 }
 
-summarize_snapshot_chunk <- function(path, dataset, indicator = NA_character_) {
+summarize_snapshot_chunk <- function(path, dataset, indicator = NA_character_, snapshot_dir = get_snapshot_dir()) {
   chunk <- read_snapshot_object(path)
   cause <- if ("cause" %in% names(chunk)) sort(unique(as.character(chunk$cause))) else NA_character_
 
@@ -665,7 +665,7 @@ summarize_snapshot_chunk <- function(path, dataset, indicator = NA_character_) {
     indicator = indicator,
     year = if ("year" %in% names(chunk)) as.integer(sort(unique(chunk$year))[[1]]) else NA_integer_,
     cause = if (length(cause) > 0) cause[[1]] else NA_character_,
-    path = snapshot_relative_path(path),
+    path = snapshot_relative_path(path, snapshot_dir),
     rows = nrow(chunk),
     areas = list(if ("area" %in% names(chunk)) sort(unique(as.character(chunk$area))) else character(0)),
     sexes = list(if ("sex" %in% names(chunk)) sort(unique(as.character(chunk$sex))) else character(0)),
@@ -690,14 +690,15 @@ build_snapshot_inventory <- function(snapshot_dir = get_snapshot_dir()) {
     population_paths,
     summarize_snapshot_chunk,
     dataset = "population",
-    indicator = "population"
+    indicator = "population",
+    snapshot_dir = snapshot_dir
   )
 
   death_inventory <- purrr::map_dfr(death_paths, function(path) {
     relative <- snapshot_relative_path(path, snapshot_dir)
     parts <- strsplit(relative, .Platform$file.sep, fixed = TRUE)[[1]]
     indicator <- if (length(parts) >= 3) parts[[2]] else NA_character_
-    summarize_snapshot_chunk(path, dataset = "deaths", indicator = indicator)
+    summarize_snapshot_chunk(path, dataset = "deaths", indicator = indicator, snapshot_dir = snapshot_dir)
   })
 
   dplyr::bind_rows(population_inventory, death_inventory) %>%

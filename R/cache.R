@@ -2,9 +2,17 @@
 # Persistent cache
 # =========================================================
 
+get_cache_app_dir <- function() {
+  if (exists("get_app_dir", mode = "function")) {
+    return(get_app_dir())
+  }
+
+  getwd()
+}
+
 persistent_cache_root <- Sys.getenv(
   "MORTALITY_APP_CACHE_DIR",
-  file.path(get_app_dir(), ".mortality-shiny-cache")
+  file.path(get_cache_app_dir(), ".mortality-shiny-cache")
 )
 persistent_metadata_cache_max_age <- as.numeric(Sys.getenv(
   "MORTALITY_METADATA_CACHE_MAX_AGE",

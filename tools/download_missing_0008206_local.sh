@@ -7,7 +7,7 @@ cd "$repo_root"
 
 app_file="${APP_FILE:-mortality-shiny-app.R}"
 out_dir="${OUT_DIR:-data/snapshots}"
-years="${YEARS:-1991:2005,2008}"
+years="${YEARS:-ALL}"
 areas="${AREAS:-ALL}"
 causes="${CAUSES:-ALL}"
 priority_areas="${PRIORITY_AREAS:-Norte|Portugal}"
@@ -115,9 +115,9 @@ Missing 0008206 downloader
   Auto commit:     $auto_commit
   Auto push:       $auto_push
 
-The current online gap is 0008206 local-area data for 1991-2005, plus
-the remaining missing areas in 2008. Defaults therefore target
-YEARS=1991:2005,2008, all areas, and all causes.
+Defaults scan all available 0008206 years, areas, and causes, then only
+write chunks that are absent or incomplete in the current snapshot folder.
+Use YEARS=1991:1995 or similar when you want to narrow a repair run.
 EOF
 
 batch=0

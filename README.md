@@ -6,7 +6,7 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 
 For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md](METHODOLOGY.md).
 
-## What changed in v5
+## Current Version Highlights
 
 - Replaced `ineptR` with the CRAN package `ineptr2`.
 - Uses INE indicators `0008273` and `0003182` for population.
@@ -40,8 +40,10 @@ install.packages("pacman")
 Then run the app from this repository:
 
 ```r
-shiny::runApp("mortality-shiny-app.R")
+shiny::runApp(".")
 ```
+
+In RStudio, opening this folder and pressing **Run App** works through the repository's `app.R` launcher.
 
 `pacman::p_load()` will load or install the required runtime packages, including:
 
@@ -82,7 +84,7 @@ For larger datasets, the repository uses chunked files:
 - `data/snapshots/population/year_<year>.rds`
 - `data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds`
 
-The app also reads `data/snapshots/snapshot_inventory.rds` when present. This manifest lists available chunks, areas, years, causes, row counts, and source priorities, allowing the app to choose relevant RDS files before reading the data itself. After adding or changing snapshot chunks, refresh the manifest with:
+By default, the app reads the snapshot inventory and chunk files from GitHub raw URLs, so a code-only local copy does not need to keep the RDS files beside the app. The manifest lists available chunks, areas, years, causes, row counts, and source priorities, allowing the app to choose relevant RDS files before reading the data itself. After adding or changing local snapshot chunks, refresh the manifest with:
 
 ```sh
 Rscript tools/update_snapshot_inventory.R
@@ -91,6 +93,7 @@ Rscript tools/update_snapshot_inventory.R
 You can also point to another location with environment variables:
 
 - `MORTALITY_SNAPSHOT_DIR`
+- `MORTALITY_USE_LOCAL_SNAPSHOTS=true` to use local `data/snapshots` chunks when no explicit snapshot directory is set
 - `MORTALITY_POPULATION_SNAPSHOT_RDS`
 - `MORTALITY_DEATHS_SNAPSHOT_RDS`
 - `MORTALITY_SNAPSHOT_RDS` for one combined RDS list containing `population` and `deaths`
@@ -144,7 +147,7 @@ Rscript tools/import_0008206_portugal_excel.R 'files=/path/1991-1995Deaths.xls|/
 
 The importer reads the `Quadro` sheet, skips year blocks with no numeric death values, checks that each populated year has 66 causes and the expected sex/age structure, compares against existing Portugal rows when chunks already exist, and then writes the same per-year/per-cause RDS format. If an Excel export has empty boundary years, use the portal exporter for those specific gaps.
 
-The repository currently includes complete population chunks for the configured app locations, complete `0013166` chunks for 2022-2023 where INE returns location data, and progressively backfilled `0008206` chunks. `0008206` is intentionally incremental because it is the slow historical indicator.
+The repository currently includes complete population chunks for the configured app locations, complete `0013166` chunks for 2022-2023 where INE returns location data, and complete `0008206` chunks for 1991-2022 across the configured locations.
 
 For faster local backfilling, run the loop helper from the repository root:
 
@@ -162,13 +165,13 @@ AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
 
 Stop with `Ctrl+C`; completed chunks from the interrupted batch are committed before the script exits.
 
-To fill the current online gap specifically, use the local missing-data wrapper:
+To repair or fill missing `0008206` chunks, use the local missing-data wrapper:
 
 ```sh
 ./tools/download_missing_0008206_local.sh
 ```
 
-By default this targets `0008206`, years `1991:2005,2008`, all areas, and all causes. These are the remaining online gaps after the current backfill: `1991-2005` still need local-area chunks, and `2008` still has missing areas. It writes resumable chunks to `data/snapshots/deaths/0008206/` and refreshes `data/snapshots/snapshot_inventory.rds` after each batch. Stop it with `Ctrl+C`; completed chunks are kept. Useful overrides:
+By default this scans all available `0008206` years, all areas, and all causes, then only writes chunks that are absent or incomplete in the current snapshot folder. It writes resumable chunks to `data/snapshots/deaths/0008206/` and refreshes `data/snapshots/snapshot_inventory.rds` after each batch. Stop it with `Ctrl+C`; completed chunks are kept. Useful overrides:
 
 ```sh
 ITERATIONS=1 ./tools/download_missing_0008206_local.sh
@@ -246,7 +249,7 @@ The user can choose:
 
 ## Data Sources
 
-All data is fetched from INE through `ineptr2`.
+Data can be read from the prebuilt RDS snapshots in this repository or fetched live from INE through `ineptr2`.
 
 Population indicators:
 
