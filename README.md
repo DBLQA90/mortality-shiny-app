@@ -28,13 +28,14 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Adds a `Disponibilidade de Dados` tab to inspect RDS coverage by year, area, cause, and source indicator.
 - Shows source indicators used in observed and annual analyses.
 - Adds 95% uncertainty intervals to annual metric tables and plots where estimable.
+- Adds a base-R dependency installer and first-run package bootstrap.
 
 ## Running The App
 
-Install `pacman` once if needed:
+From a fresh R installation, install/check the runtime packages once:
 
 ```r
-install.packages("pacman")
+source("install_dependencies.R")
 ```
 
 Then run the app from this repository:
@@ -45,7 +46,9 @@ shiny::runApp(".")
 
 In RStudio, opening this folder and pressing **Run App** works through the repository's `app.R` launcher.
 
-`pacman::p_load()` will load or install the required runtime packages, including:
+The app startup also checks for missing runtime packages and installs them from CRAN on first run when needed. Set `MORTALITY_INSTALL_MISSING_PACKAGES=false` before launching if you prefer the app to stop and report missing packages instead of installing them automatically.
+
+The required runtime packages are:
 
 - `glue`
 - `PHEindicatormethods`
@@ -62,6 +65,7 @@ In RStudio, opening this folder and pressing **Run App** works through the repos
 
 The app entry point is `mortality-shiny-app.R`. Most helper logic is split into smaller files under `R/`:
 
+- `R/dependencies.R`: runtime package list and first-run installation helper.
 - `R/config.R`: indicator IDs, default choices, age groups, standard population weights.
 - `R/cache.R`: persistent metadata/data cache helpers.
 - `R/ine_client.R`: INE metadata and live data download helpers.

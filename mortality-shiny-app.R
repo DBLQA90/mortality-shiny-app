@@ -1,26 +1,4 @@
 # =========================================================
-# Packages
-# =========================================================
-if (!requireNamespace("pacman", quietly = TRUE)) {
-  stop(
-    "Package 'pacman' is required. Install project dependencies first (for example with renv::restore()).",
-    call. = FALSE
-  )
-}
-pacman::p_load(
-  glue,
-  PHEindicatormethods,
-  tidyverse,
-  shiny,
-  forecast,
-  ineptr2,       # for INE data
-  strucchange,   # for breakpoints
-  memoise,       # for caching INE queries
-  cachem,        # bounded in-memory caches
-  later          # for servicing pending Shiny events between INE slices
-)
-
-# =========================================================
 # App bootstrap
 # =========================================================
 
@@ -43,6 +21,9 @@ get_app_dir <- function() {
 
 app_dir <- get_app_dir()
 bootstrap_env <- environment(get_app_dir)
+
+sys.source(file.path(app_dir, "R/dependencies.R"), envir = bootstrap_env)
+install_project_dependencies()
 
 for (app_file in c(
   "R/config.R",
