@@ -15,6 +15,7 @@ fallback_year_of_interest <- 1991:2023
 fallback_local_area <- c(
   "Portugal",
   "Norte",
+  "Alentejo",
   "Abrantes", "Águeda", "Aguiar da Beira", "Alandroal", "Albergaria-a-Velha",
   "Albufeira", "Alcácer do Sal", "Alcanena", "Alcobaça", "Alcochete",
   "Alcoutim", "Alenquer", "Alfândega da Fé", "Alijó", "Aljezur", "Aljustrel",
