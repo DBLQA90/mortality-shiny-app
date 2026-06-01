@@ -240,9 +240,7 @@ The `Disponibilidade de Dados` tab uses the same inventory to classify selected 
 
 When a user starts an analysis with `Ficheiros RDS`, the app repeats this inventory-level check for the active selection. Partial or unavailable coverage is shown as a warning before the detailed rows are loaded. If the requested rows are truly missing, the load still stops with an explicit message rather than silently producing a partial result.
 
-`tools/build_0008206_snapshot_from_portal.R` is the preferred route for historical `0008206` death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. The accompanying GitHub Actions workflow uses this portal exporter on a schedule, builds a limited number of missing area batches per run, and commits new chunks back to the repository. This avoids requiring one long INE download to complete successfully.
-
-`tools/build_0008206_snapshot_chunks.R` remains available as an API-based fallback for the same chunked layout. It is usually slower for `0008206`, but can still be useful if the portal export route is temporarily unavailable.
+`tools/build_0008206_snapshot_from_portal.R` is the preferred route for manually rebuilding historical `0008206` death chunks. Instead of calling the INE API for each cause slice, it uses the INE web portal's BDDXplorer CSV export, then normalises that CSV into the same columns used by the app. The repository no longer runs scheduled GitHub Actions jobs for this backfill because the snapshot archive is now committed.
 
 `tools/build_population_snapshot_chunks.R` creates yearly population chunks. `tools/build_death_snapshot_chunks.R` creates the same per-year/per-cause death chunks for API-backed indicators such as `0013166`. When multiple death indicators contain the same year and cause, the snapshot reader resolves priority at row level by year, area, sex, cause, and age band. This means `0013166` is used ahead of `0008206` where it exists, while `0008206` can still fill areas not present in `0013166`.
 

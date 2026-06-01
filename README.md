@@ -118,7 +118,7 @@ For the slow historical deaths indicator `0008206`, the repository includes a re
 Rscript tools/build_0008206_snapshot_from_portal.R out=data/snapshots years=ALL areas=ALL causes=ALL max_batches=26
 ```
 
-This writes small files under `data/snapshots/deaths/0008206/`. The GitHub Actions workflow `Build 0008206 Snapshot Chunks` runs on a schedule and can also be launched manually. It builds a limited number of missing portal batches per run and commits new chunks back to the repository, so the historical death archive can fill gradually instead of depending on one long download.
+This writes small files under `data/snapshots/deaths/0008206/`. It is intended for manual maintenance if the local snapshot archive needs to be rebuilt. The repository no longer runs scheduled GitHub Actions jobs for this backfill.
 
 Population and API-backed death indicators can also be built directly into the same chunked layout:
 
@@ -135,58 +135,9 @@ data/snapshots/deaths/<indicator>/year_<year>/cause_<cause-token>.rds
 
 When overlapping years exist, the app prefers the current death indicator `0013166` over the historical `0008206` snapshot for the same year, cause, area, sex, and age band. If a higher-priority indicator lacks a requested area, lower-priority chunks can still fill those rows.
 
-The older API-based `0008206` builder is still available as a fallback:
-
-```sh
-Rscript tools/build_0008206_snapshot_chunks.R out=data/snapshots max_chunks=20
-```
-
 The portal exporter fetches a table from the INE portal, requests CSV, parses the returned file, combines `Menos de 1 ano` and `1 - 4 anos` into `0 - 4 anos`, and writes one RDS file per year and cause. Defaults are conservative: latest available `0008206` year, `Portugal|Norte`, and all causes. Use `areas=ALL`, `years=2019:2022`, `area_batch_size=12`, or `max_batches=1` to control how much work is done per run.
 
-If you already have direct INE Excel exports for `0008206`, Portugal-only chunks can be imported without querying INE:
-
-```sh
-Rscript tools/import_0008206_portugal_excel.R 'files=/path/1991-1995Deaths.xls|/path/1996-2004Deaths.xls' out=data/snapshots
-```
-
-The importer reads the `Quadro` sheet, skips year blocks with no numeric death values, checks that each populated year has 66 causes and the expected sex/age structure, compares against existing Portugal rows when chunks already exist, and then writes the same per-year/per-cause RDS format. If an Excel export has empty boundary years, use the portal exporter for those specific gaps.
-
 The repository currently includes complete population chunks for the configured app locations, complete `0013166` chunks for 2022-2023 where INE returns location data, and complete `0008206` chunks for 1991-2022 across the configured locations.
-
-For faster local backfilling, run the loop helper from the repository root:
-
-```sh
-./tools/run_0008206_snapshot_loop.sh
-```
-
-By default it runs repeated `0008206` portal batches with `MAX_BATCHES=26`, covers all available years, areas, and causes, commits each completed batch, and pushes to `main`. Useful overrides:
-
-```sh
-MAX_BATCHES=52 ./tools/run_0008206_snapshot_loop.sh
-YEARS=2019:2021 ITERATIONS=3 ./tools/run_0008206_snapshot_loop.sh
-AUTO_PUSH=0 ./tools/run_0008206_snapshot_loop.sh
-```
-
-Stop with `Ctrl+C`; completed chunks from the interrupted batch are committed before the script exits.
-
-To repair or fill missing `0008206` chunks, use the local missing-data wrapper:
-
-```sh
-./tools/download_missing_0008206_local.sh
-```
-
-By default this scans all available `0008206` years, all areas, and all causes, then only writes chunks that are absent or incomplete in the current snapshot folder. It writes resumable chunks to `data/snapshots/deaths/0008206/` and refreshes `data/snapshots/snapshot_inventory.rds` after each batch. Stop it with `Ctrl+C`; completed chunks are kept. Useful overrides:
-
-```sh
-ITERATIONS=1 ./tools/download_missing_0008206_local.sh
-MAX_BATCHES=52 ./tools/download_missing_0008206_local.sh
-YEARS=1991:1995 AREA_BATCH_SIZE=20 ./tools/download_missing_0008206_local.sh
-YEARS=2008 ./tools/download_missing_0008206_local.sh
-EXPORT_RETRIES=6 EXPORT_RETRY_SLEEP=45 ./tools/download_missing_0008206_local.sh
-AUTO_COMMIT=1 AUTO_PUSH=1 ./tools/download_missing_0008206_local.sh
-```
-
-If INE returns a malformed CSV, the wrapper retries the export before stopping. Malformed CSV responses are saved under `data/snapshots/raw/0008206_portal/failed/` for inspection.
 
 ## App Modules
 
