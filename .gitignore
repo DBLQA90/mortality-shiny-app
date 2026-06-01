@@ -2,5 +2,6 @@
 .mortality-shiny-cache/
 .snapshot-download-logs/
 outputs/
+data/snapshots/raw/
 ine_portal_export_without_csv.html
 ine_portal_last_post.txt
