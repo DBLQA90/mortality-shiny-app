@@ -85,7 +85,27 @@ forecast_controls_panel <- function() {
 
 beginner_forecast_controls_panel <- function() {
   tagList(
-    p("Esta previsão guiada utiliza a série actualmente carregada em 'Mortalidade Observada'."),
+    selectInput(
+      "beginner_area",
+      "Local de residência:",
+      choices = local_area,
+      multiple = TRUE,
+      selected = get_default_area_selection()
+    ),
+    textInput("beginner_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
+    selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
+    selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
+    radioButtons(
+      "beginner_population",
+      "População:",
+      choices = c("Total", "Menos de 75 anos")
+    ),
+    radioButtons(
+      "beginner_rate_type",
+      "Taxa:",
+      choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+    ),
+    data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",
       "Horizonte de projecção (anos):",
@@ -106,7 +126,9 @@ beginner_forecast_controls_panel <- function() {
       ),
       selected = "recommended"
     ),
-    actionButton("go_beginner_forecast", "Gerar previsão")
+    actionButton("go_beginner_forecast", "Gerar previsão"),
+    br(), br(),
+    actionButton("cancel_beginner_forecast", "Interromper carregamento")
   )
 }
 

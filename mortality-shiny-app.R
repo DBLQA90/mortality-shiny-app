@@ -46,11 +46,11 @@ for (app_file in c(
 ui <- navbarPage(
   title = "PNS Monitorização não oficial",
 
-  data_availability_tab_ui(),
   observed_mortality_tab_ui(),
-  annual_metrics_tab_ui(),
+  beginner_forecasting_tab_ui(),
   advanced_forecasting_tab_ui(),
-  beginner_forecasting_tab_ui()
+  annual_metrics_tab_ui(),
+  data_availability_tab_ui()
 )
 
 # =========================================================
@@ -58,7 +58,7 @@ ui <- navbarPage(
 # =========================================================
 
 server <- function(input, output, session) {
-  cancel_seq <- reactiveValues(rates = 0L, forecast = 0L, annual = 0L)
+  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L)
 
   observeEvent(input$cancel_rates, {
     cancel_seq$rates <- cancel_seq$rates + 1L
@@ -68,6 +68,11 @@ server <- function(input, output, session) {
   observeEvent(input$cancel_forecast, {
     cancel_seq$forecast <- cancel_seq$forecast + 1L
     showNotification("Pedido de interrupção recebido (Projecções).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cancel_beginner_forecast, {
+    cancel_seq$beginner <- cancel_seq$beginner + 1L
+    showNotification("Pedido de interrupção recebido (Previsão Guiada).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
 
   observeEvent(input$cancel_annual_metrics, {
@@ -84,6 +89,8 @@ server <- function(input, output, session) {
   year_load_state <- reactiveValues(
     rates_range = NULL,
     rates_order = "desc",
+    beginner_range = NULL,
+    beginner_order = "desc",
     forecast_range = NULL,
     forecast_order = "desc"
   )
@@ -136,6 +143,12 @@ server <- function(input, output, session) {
     current_range <- clean_year_range(input$years_fit)
     year_load_state$forecast_order <- detect_year_load_order(year_load_state$forecast_range, current_range)
     year_load_state$forecast_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+  observeEvent(input$beginner_years_fit, {
+    current_range <- clean_year_range(input$beginner_years_fit)
+    year_load_state$beginner_order <- detect_year_load_order(year_load_state$beginner_range, current_range)
+    year_load_state$beginner_range <- current_range
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   get_rate_mapping <- function(rate_type) {
@@ -550,15 +563,22 @@ server <- function(input, output, session) {
       )
     }
 
-    acc_list <- lapply(fits, function(fit) {
-      acc <- forecast::accuracy(fit)
-      acc[1, metrics, drop = FALSE]
-    })
-
-    dplyr::bind_rows(lapply(names(acc_list), function(m) {
-      df <- as.data.frame(acc_list[[m]])
-      df$Model <- m
-      df
+    dplyr::bind_rows(lapply(names(fits), function(m) {
+      tryCatch({
+        acc <- as.data.frame(forecast::accuracy(fits[[m]]))
+        df <- acc[1, intersect(metrics, names(acc)), drop = FALSE]
+        missing_metrics <- setdiff(metrics, names(df))
+        for (metric in missing_metrics) {
+          df[[metric]] <- NA_real_
+        }
+        df <- df[, metrics, drop = FALSE]
+        df$Model <- m
+        df
+      }, error = function(e) {
+        df <- as.data.frame(stats::setNames(as.list(rep(NA_real_, length(metrics))), metrics))
+        df$Model <- m
+        df
+      })
     }), .id = NULL) %>%
       dplyr::select(Model, dplyr::everything())
   }
@@ -2437,43 +2457,59 @@ server <- function(input, output, session) {
   # -------------------------
   # Beginner Forecasting
   # -------------------------
-  # The guided workflow reuses the currently loaded observed series and only asks
-  # for a horizon, a training window, and whether the user wants a simple
-  # recommendation or a visual comparison of reasonable alternatives.
   beginner_training_history <- eventReactive(input$go_beginner_forecast, {
-    validate(need(input$go_rates > 0, "Carregue primeiro uma série em 'Mortalidade Observada'."))
-
-    base_history <- observed_history()
-    training_range <- get_beginner_training_range(
-      years = base_history$series$year,
-      year_range = input$beginner_years_fit
+    token <- isolate(cancel_seq$beginner)
+    year_order <- isolate(year_load_state$beginner_order)
+    query_spec <- make_query_spec(
+      input$beginner_area,
+      input$beginner_area_label,
+      input$beginner_cause,
+      input$beginner_sex,
+      input$beginner_data_source
     )
 
-    build_historical_series(
-      metric_bundle = observed_metric_bundle(),
-      series_spec = make_series_spec(
-        query_spec = observed_metric_bundle()$query_spec,
-        population = base_history$spec$population,
-        rate_type = base_history$spec$rate_type,
-        year_range = training_range
+    shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
+      metric_bundle <- load_metric_bundle(
+        query_spec,
+        "beginner",
+        token,
+        year_range = input$beginner_years_fit,
+        year_order = year_order
       )
-    )
+      training_range <- get_beginner_training_range(
+        years = metric_bundle$years,
+        year_range = input$beginner_years_fit
+      )
+
+      build_historical_series(
+        metric_bundle = metric_bundle,
+        series_spec = make_series_spec(
+          query_spec = metric_bundle$query_spec,
+          population = input$beginner_population,
+          rate_type = input$beginner_rate_type,
+          year_range = training_range
+        )
+      )
+    })
   }, ignoreNULL = TRUE)
 
   beginner_forecast <- eventReactive(input$go_beginner_forecast, {
+    training_history <- beginner_training_history()
     guided_result <- run_forecast_models(
-      history = beginner_training_history(),
+      history = training_history,
       model_ids = unname(forecast_model_choices),
-      horizon = input$beginner_horizon
+      horizon = input$beginner_horizon,
+      kind = "beginner",
+      token = isolate(cancel_seq$beginner)
     )
 
     c(
       guided_result,
       list(
-        full_history = observed_history(),
+        full_history = training_history,
         horizon = input$beginner_horizon,
         mode = input$beginner_mode,
-        training_label = get_beginner_training_label(beginner_training_history())
+        training_label = get_beginner_training_label(training_history)
       )
     )
   }, ignoreNULL = TRUE)
