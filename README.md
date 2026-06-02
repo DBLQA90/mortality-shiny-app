@@ -4,6 +4,8 @@ Unofficial Shiny app for exploring Portuguese mortality indicators from INE.
 
 The app supports observed mortality analysis, guided forecasting, advanced model comparison, diagnostics, and structural break exploration. Results are intended for exploration, decision support, and research workflows, and should be interpreted with appropriate epidemiological and statistical caution.
 
+For a practical tab-by-tab guide to using and interpreting the app, see [USER_MANUAL.md](USER_MANUAL.md).
+
 For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Current Version Highlights
@@ -76,7 +78,7 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 
 ## Optional RDS Snapshots
 
-The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`; choose `INE em directo` to query INE instead. This selector is available in the observed mortality, annual metrics, and advanced model specification loading controls. Guided forecasts reuse the source from the observed mortality series already loaded.
+The app can load data from prebuilt RDS files instead of querying INE live. In the app controls, choose `Ficheiros RDS` under `Fonte de dados`; choose `INE em directo` to query INE instead. This selector is available in the observed mortality, guided forecast, annual metrics, and advanced model specification loading controls.
 
 By default, the app first supports flat snapshot files:
 
@@ -141,18 +143,6 @@ The repository currently includes complete population chunks for the configured 
 
 ## App Modules
 
-### Data Availability
-
-Inspect the local RDS snapshot inventory before loading an analysis. The tab summarises available population and death chunks, then checks selected years, areas, and causes against `data/snapshots/snapshot_inventory.rds`.
-
-Coverage states:
-
-- `Disponível`: all selected areas are present for that year/cause.
-- `Parcial`: at least one selected area is present, but others are missing.
-- `Indisponível`: none of the selected areas are present.
-
-The coverage table can be exported as CSV.
-
 ### Observed Mortality
 
 Explore historical mortality rates by geography, cause of death, sex, and population scope.
@@ -164,6 +154,38 @@ Outputs include:
 - directly standardised rates using ESP 2013
 - time-series plots
 - summary and annual data tables
+- source indicators used in the loaded data
+
+### Guided Forecasting
+
+Provides a guided forecasting workflow with simpler controls and reasonable defaults.
+
+The user can choose:
+
+- residence location and optional selection name
+- cause of death
+- sex
+- population scope
+- rate
+- data source
+- forecast horizon
+- training window
+- recommended model or model comparison mode
+
+Guided and advanced forecasts can project up to 30 years beyond the last observed year.
+
+### Advanced Forecasting
+
+Provides a fuller modelling workflow, including:
+
+- ARIMA, ETS, random walk with drift, naive, Theta, TBATS, Holt, and damped Holt models
+- custom training windows
+- confidence interval controls
+- optional log transform
+- forecast tables and downloadable outputs
+- residual diagnostics
+- backtesting and model comparison
+- structural break analysis
 
 ### Annual Metrics
 
@@ -179,30 +201,17 @@ Available metrics:
 
 Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
-### Advanced Forecasting
+### Data Availability
 
-Provides a fuller modelling workflow, including:
+Inspect the local RDS snapshot inventory before loading an analysis. The tab summarises available population and death chunks, then checks selected years, areas, and causes against `data/snapshots/snapshot_inventory.rds`.
 
-- ARIMA, ETS, random walk with drift, naive, Theta, TBATS, Holt, and damped Holt models
-- custom training windows
-- confidence interval controls
-- optional log transform
-- forecast tables and downloadable outputs
-- residual diagnostics
-- backtesting and model comparison
-- structural break analysis
+Coverage states:
 
-### Beginner Forecasting
+- `Disponível`: all selected areas are present for that year/cause.
+- `Parcial`: at least one selected area is present, but others are missing.
+- `Indisponível`: none of the selected areas are present.
 
-Provides a guided forecasting workflow with simpler controls and reasonable defaults.
-
-The user can choose:
-
-- forecast horizon
-- training window
-- recommended model or model comparison mode
-
-Guided and advanced forecasts can project up to 30 years beyond the last observed year.
+The coverage table can be exported as CSV.
 
 ## Data Sources
 
