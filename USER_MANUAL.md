@@ -254,7 +254,9 @@ Controlos principais:
 - `Fonte de dados`;
 - `Janela de ajuste`;
 - horizonte da previsão;
-- modo de previsão.
+- modo de previsão;
+- `Como escolher o modelo recomendado` (método de validação);
+- `Tamanho do teste (% dos anos)`, quando aplicável.
 
 A `Janela de ajuste` define os anos usados para treinar o modelo. Se usar uma janela mais curta, a previsão fica mais focada na tendência recente. Se usar uma janela mais longa, fica mais influenciada pela história completa.
 
@@ -262,6 +264,18 @@ Modos típicos:
 
 - previsão recomendada;
 - comparação entre modelos disponíveis.
+
+### Como é Escolhido o Modelo Recomendado
+
+Por predefinição, o modelo recomendado é escolhido pela sua precisão **fora da amostra**, e não apenas pela qualidade do ajuste à série completa. Assim evita-se favorecer modelos que se ajustam muito bem ao passado mas que preveem mal, um risco real em séries anuais curtas.
+
+Os anos mais recentes da série formam o período de teste. O controlo `Tamanho do teste (% dos anos)` define que percentagem dos anos é usada para esse teste. Há dois esquemas, mais um modo de referência:
+
+- `Validação móvel (recomendada)`: para cada ano do período de teste, o modelo é reajustado com os anos anteriores e avaliado numa previsão a um passo; os erros são combinados. Aproveita melhor as séries curtas e é menos sensível a um único corte.
+- `Divisão única treino/teste`: o modelo é ajustado uma vez nos anos iniciais e avaliado no período de teste completo de uma só vez. É mais simples, mas mais sensível ao período de teste escolhido.
+- `Ajuste dentro da amostra`: usa apenas a precisão no ajuste à série completa. É o comportamento mais simples e serve sobretudo como referência.
+
+Se a série for demasiado curta para reservar pelo menos três anos de treino e um ano de teste, a aplicação recorre automaticamente ao ajuste dentro da amostra e indica-o no painel de fiabilidade. A validação avalia a previsão a um passo, pelo que reflecte sobretudo o desempenho de curto prazo; horizontes longos continuam a exigir cautela.
 
 Resultados principais:
 
@@ -361,18 +375,26 @@ Sinais de alerta:
 
 ### Backtesting
 
-O backtesting separa os últimos anos observados como período de teste. O modelo é treinado nos anos anteriores e depois comparado com os valores que realmente ocorreram.
+O backtesting reserva os anos mais recentes como período de teste, treina o modelo nos anos anteriores e compara as previsões com os valores que realmente ocorreram. O controlo `Tamanho do teste (% dos anos)` define que percentagem dos anos entra no teste. A `Abordagem de validação` tem três opções:
+
+- `Métricas do ajuste actual`: usa a precisão no ajuste à série completa (dentro da amostra), sem reservar anos.
+- `Divisão única (últimos %)`: ajusta uma vez nos anos iniciais e avalia todo o período de teste de uma só vez.
+- `Validação móvel (últimos %)`: reajusta o modelo em cada origem do período de teste e avalia previsões a um passo, combinando os erros. É a predefinição e a mais robusta em séries curtas.
+
+A abordagem escolhida aqui é a mesma que determina o **modelo recomendado** usado por predefinição no separador de resultados e nos diagnósticos, pelo que mudar de abordagem ou de percentagem pode alterar o modelo destacado. Se a série for demasiado curta para reservar treino e teste, a aplicação recorre ao ajuste dentro da amostra.
 
 Vantagens:
 
 - dá uma noção prática de desempenho fora da amostra;
 - ajuda a comparar modelos;
-- pode revelar modelos que parecem bons no ajuste mas falham na previsão.
+- pode revelar modelos que parecem bons no ajuste mas falham na previsão;
+- a validação móvel aproveita mais os poucos anos disponíveis do que um único corte.
 
 Limitações:
 
 - há poucos anos disponíveis em muitas séries;
 - um único período de teste pode não representar o futuro;
+- a validação a um passo reflecte sobretudo o desempenho de curto prazo;
 - mudanças excepcionais, como epidemias ou alterações de codificação, podem distorcer o resultado.
 
 ### Análise de Quebras

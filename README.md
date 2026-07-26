@@ -74,8 +74,19 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 - `R/ine_client.R`: INE metadata and live data download helpers.
 - `R/snapshots.R`: flat/chunked RDS readers, source priority handling, and snapshot inventory helpers.
 - `R/metrics.R`: mortality-rate, direct-standardisation, and AVPP calculations.
+- `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers (unit tested).
 - `R/data_access.R`: shared data assembly for snapshot and live INE sources.
 - `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
+
+## Running Tests
+
+Unit tests for the calculation and forecast-helper modules live in `tests/testthat/`. Run them with:
+
+```sh
+Rscript run_tests.R
+```
+
+The runner loads only the network-free calculation modules (`R/config.R`, `R/metrics.R`, `R/forecast_helpers.R`), so the tests do not contact INE. They require `testthat`, `tidyverse`, `PHEindicatormethods`, and `forecast`.
 
 ## Optional RDS Snapshots
 

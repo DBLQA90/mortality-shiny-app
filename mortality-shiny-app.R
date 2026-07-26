@@ -33,6 +33,7 @@ for (app_file in c(
   "R/ine_client.R",
   "R/metadata.R",
   "R/metrics.R",
+  "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
 )) {
@@ -556,70 +557,6 @@ server <- function(input, output, session) {
       dplyr::arrange(Ano)
   }
 
-  build_accuracy_table <- function(fits, obs = NULL, inverse = function(x) as.numeric(x)) {
-    metrics <- c("ME", "RMSE", "MAE", "MAPE", "MASE")
-
-    na_row <- function(m) {
-      df <- as.data.frame(stats::setNames(as.list(rep(NA_real_, length(metrics))), metrics))
-      df$Model <- m
-      df[, c("Model", metrics), drop = FALSE]
-    }
-
-    if (length(fits) == 0) {
-      return(
-        tibble(
-          Model = character(0),
-          ME = numeric(0),
-          RMSE = numeric(0),
-          MAE = numeric(0),
-          MAPE = numeric(0),
-          MASE = numeric(0)
-        )
-      )
-    }
-
-    # In-sample accuracy is computed on the original rate scale. Models are
-    # fitted on the (possibly log-transformed) modelling scale, so the fitted
-    # values are back-transformed before comparison. This keeps ME/RMSE/MAE/
-    # MAPE/MASE on the same per-100,000 scale as the forecasts and the holdout
-    # metrics, and makes the recommended-model choice reflect fit quality on
-    # the scale the user actually sees.
-    actual <- if (!is.null(obs)) as.numeric(obs$value) else NULL
-    scale_denom <- if (!is.null(actual) && sum(is.finite(actual)) >= 2) {
-      mean(abs(diff(actual)), na.rm = TRUE)
-    } else {
-      NA_real_
-    }
-
-    dplyr::bind_rows(lapply(names(fits), function(m) {
-      tryCatch({
-        if (is.null(actual)) {
-          stop("Observed series not supplied for accuracy calculation.", call. = FALSE)
-        }
-
-        fitted_vals <- inverse(as.numeric(stats::fitted(fits[[m]])))
-        n <- min(length(fitted_vals), length(actual))
-        a <- actual[seq_len(n)]
-        p <- fitted_vals[seq_len(n)]
-        finite <- is.finite(a) & is.finite(p)
-
-        if (!any(finite)) {
-          stop("No overlapping finite fitted values for accuracy calculation.", call. = FALSE)
-        }
-
-        df <- compute_forecast_error_metrics(
-          actual = a[finite],
-          predicted = p[finite],
-          scale_denom = scale_denom
-        )
-        df$Model <- m
-        df[, c("Model", metrics), drop = FALSE]
-      }, error = function(e) {
-        na_row(m)
-      })
-    }), .id = NULL)
-  }
-
   get_diagnostic_fit <- function(dat, model_id = NULL) {
     successful_models <- get_successful_model_ids(dat)
 
@@ -807,21 +744,6 @@ server <- function(input, output, session) {
     )
   }
 
-  compute_forecast_error_metrics <- function(actual, predicted, scale_denom = NA_real_) {
-    validate(need(length(actual) == length(predicted), "As séries observada e prevista têm de ter o mesmo comprimento."))
-
-    err <- predicted - actual
-    nonzero_actual <- abs(actual) > 1e-8
-
-    tibble(
-      ME = mean(err, na.rm = TRUE),
-      RMSE = sqrt(mean(err^2, na.rm = TRUE)),
-      MAE = mean(abs(err), na.rm = TRUE),
-      MAPE = if (any(nonzero_actual)) mean(abs(err[nonzero_actual] / actual[nonzero_actual]), na.rm = TRUE) * 100 else NA_real_,
-      MASE = if (is.finite(scale_denom) && scale_denom > 0) mean(abs(err), na.rm = TRUE) / scale_denom else NA_real_
-    )
-  }
-
   build_holdout_metric_table <- function(training_result, holdout_actual) {
     successful_models <- get_successful_model_ids(training_result)
 
@@ -883,24 +805,6 @@ server <- function(input, output, session) {
         Recomendação = dplyr::if_else(Model == recommended_model, "Seleccionado pela lógica actual", "")
       ) %>%
       dplyr::select(Classificação, Model, Recomendação)
-  }
-
-  build_fitted_values_df <- function(obs, fits, inverse = function(x) as.numeric(x)) {
-    if (length(fits) == 0) {
-      return(tibble(year = numeric(0), fitted = numeric(0), model = character(0)))
-    }
-
-    dplyr::bind_rows(lapply(names(fits), function(model_id) {
-      # Back-transform so fitted values share the observed rate scale.
-      fitted_vals <- inverse(as.numeric(stats::fitted(fits[[model_id]])))
-      year_count <- min(length(fitted_vals), nrow(obs))
-
-      tibble(
-        year = obs$year[seq_len(year_count)],
-        fitted = fitted_vals[seq_len(year_count)],
-        model = model_id
-      )
-    }))
   }
 
   build_comparison_plot <- function(comparison_dat) {
@@ -1913,17 +1817,6 @@ server <- function(input, output, session) {
   #               (expanding training window) and pools the errors.
   # When the series is too short to leave >= MIN_VALIDATION_TRAIN training years
   # and >= 1 test year, selection falls back to the in-sample accuracy table.
-  MIN_VALIDATION_TRAIN <- 3L
-
-  compute_validation_test_size <- function(n, test_fraction, min_train = MIN_VALIDATION_TRAIN) {
-    if (!is.finite(n) || !is.finite(test_fraction) || n < min_train + 1L) {
-      return(0L)
-    }
-    k <- max(1L, as.integer(round(n * test_fraction)))
-    k <- min(k, as.integer(n - min_train))
-    if (k < 1L) 0L else k
-  }
-
   run_rolling_validation <- function(base_result, test_size) {
     df <- base_result$obs %>% dplyr::arrange(year)
     n <- nrow(df)
