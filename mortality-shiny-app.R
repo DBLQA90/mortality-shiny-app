@@ -941,6 +941,46 @@ server <- function(input, output, session) {
       )
     }
 
+    if (identical(comparison_dat$mode, "rolling")) {
+      validate(need(nrow(comparison_dat$predictions) > 0, "Não existem previsões de validação móvel para apresentar."))
+
+      return(
+        ggplot() +
+          geom_line(
+            data = comparison_dat$full_obs,
+            aes(x = year, y = value),
+            color = "grey70",
+            linewidth = 0.8
+          ) +
+          geom_point(
+            data = comparison_dat$full_obs,
+            aes(x = year, y = value),
+            color = "grey40",
+            size = 1.6
+          ) +
+          geom_line(
+            data = comparison_dat$predictions,
+            aes(x = year, y = predicted, color = model),
+            linetype = "dashed",
+            linewidth = 0.9
+          ) +
+          geom_point(
+            data = comparison_dat$predictions,
+            aes(x = year, y = predicted, color = model),
+            size = 2
+          ) +
+          labs(
+            title = "Validação móvel - previsões a um passo",
+            subtitle = "Pontos cinzentos: série observada; linhas tracejadas: previsão de cada modelo a partir de cada origem.",
+            x = "Ano",
+            y = comparison_dat$y_label
+          ) +
+          scale_color_brewer(palette = "Set1", name = "Modelo", labels = get_model_labels) +
+          theme_minimal() +
+          theme(plot.title = element_text(hjust = 0.5))
+      )
+    }
+
     inverse_fn <- comparison_dat$inverse
     if (!is.function(inverse_fn)) {
       inverse_fn <- function(x) as.numeric(x)
@@ -1853,6 +1893,171 @@ server <- function(input, output, session) {
     )
   }
 
+  # ---- Out-of-sample model selection --------------------------------------
+  # The recommended model is chosen from out-of-sample forecast accuracy rather
+  # than in-sample fit, so short annual series do not simply reward the most
+  # flexible model. The most recent `test_fraction` of the selected series forms
+  # the evaluation region:
+  #   * "single"  fits once on the earlier years and scores one multi-step
+  #               forecast over the whole region;
+  #   * "rolling" re-forecasts one step ahead from every origin in the region
+  #               (expanding training window) and pools the errors.
+  # When the series is too short to leave >= MIN_VALIDATION_TRAIN training years
+  # and >= 1 test year, selection falls back to the in-sample accuracy table.
+  MIN_VALIDATION_TRAIN <- 3L
+
+  compute_validation_test_size <- function(n, test_fraction, min_train = MIN_VALIDATION_TRAIN) {
+    if (!is.finite(n) || !is.finite(test_fraction) || n < min_train + 1L) {
+      return(0L)
+    }
+    k <- max(1L, as.integer(round(n * test_fraction)))
+    k <- min(k, as.integer(n - min_train))
+    if (k < 1L) 0L else k
+  }
+
+  run_rolling_validation <- function(base_result, test_size) {
+    df <- base_result$obs %>% dplyr::arrange(year)
+    n <- nrow(df)
+    origins <- seq.int(n - test_size + 1L, n)
+    scale_denom <- if (n >= 2) mean(abs(diff(df$value)), na.rm = TRUE) else NA_real_
+
+    steps <- dplyr::bind_rows(lapply(origins, function(pos) {
+      train_years <- df$year[seq_len(pos - 1L)]
+      origin_year <- df$year[[pos]]
+      training_history <- rebuild_history_with_year_range(
+        history = base_result$history,
+        year_range = range(train_years)
+      )
+      fold <- run_forecast_models(
+        history = training_history,
+        model_ids = base_result$selected_model_ids,
+        horizon = 1L,
+        conf_level = base_result$conf_level,
+        transform_method = base_result$transform_method,
+        model_specs = base_result$model_specs
+      )
+      fold$fc %>%
+        dplyr::filter(year == origin_year) %>%
+        dplyr::transmute(model, year, predicted = mean, actual = df$value[[pos]])
+    }))
+
+    if (nrow(steps) == 0) {
+      return(list(metrics = base_result$accuracy[0, , drop = FALSE], predictions = steps))
+    }
+
+    metrics <- steps %>%
+      dplyr::group_by(model) %>%
+      dplyr::group_modify(~ compute_forecast_error_metrics(.x$actual, .x$predicted, scale_denom)) %>%
+      dplyr::ungroup() %>%
+      dplyr::rename(Model = model) %>%
+      dplyr::select(Model, ME, RMSE, MAE, MAPE, MASE)
+
+    list(metrics = metrics, predictions = steps)
+  }
+
+  evaluate_model_selection <- function(base_result, method = "rolling", test_fraction = 0.25) {
+    n <- nrow(base_result$obs)
+    fitted_models <- get_successful_model_ids(base_result)
+    requested <- if (method %in% c("insample", "single", "rolling")) method else "rolling"
+
+    finalize <- function(method_used, metric_tbl, test_size = 0L, note = NULL, plot_data = NULL) {
+      usable <- metric_tbl %>% dplyr::filter(Model %in% fitted_models)
+      recommended <- choose_recommended_model(usable)
+      if (is.null(recommended)) {
+        recommended <- get_default_forecast_output_model(base_result)
+      }
+      train_range <- NULL
+      test_range <- NULL
+      if (test_size > 0L && !identical(method_used, "insample")) {
+        yrs <- sort(base_result$obs$year)
+        train_range <- range(utils::head(yrs, n - test_size))
+        test_range <- range(utils::tail(yrs, test_size))
+      }
+      list(
+        requested_method = requested,
+        method_used = method_used,
+        test_size = test_size,
+        train_range = train_range,
+        test_range = test_range,
+        metrics = metric_tbl,
+        ranking = rank_model_metrics(metric_tbl),
+        recommended_model = recommended,
+        fallback = !identical(method_used, requested),
+        note = note,
+        plot_data = plot_data
+      )
+    }
+
+    if (identical(requested, "insample")) {
+      return(finalize("insample", base_result$accuracy))
+    }
+
+    test_size <- compute_validation_test_size(n, test_fraction)
+    if (test_size < 1L) {
+      return(finalize(
+        "insample",
+        base_result$accuracy,
+        note = glue::glue(
+          "Série demasiado curta ({n} ano{if (n == 1) '' else 's'}) para reservar treino e teste; a recomendação recorre ao ajuste dentro da amostra."
+        )
+      ))
+    }
+
+    if (identical(requested, "single")) {
+      split <- build_holdout_split(base_result$history, holdout_k = test_size)
+      training_result <- run_forecast_models(
+        history = split$training_history,
+        model_ids = base_result$selected_model_ids,
+        horizon = nrow(split$holdout_actual),
+        conf_level = base_result$conf_level,
+        transform_method = base_result$transform_method,
+        model_specs = base_result$model_specs
+      )
+      metric_tbl <- build_holdout_metric_table(training_result, split$holdout_actual)
+      plot_data <- list(
+        training_obs = split$training_history$series,
+        holdout_actual = split$holdout_actual,
+        forecast_df = training_result$fc,
+        holdout_k = nrow(split$holdout_actual)
+      )
+      return(finalize("single", metric_tbl, test_size = test_size, plot_data = plot_data))
+    }
+
+    roll <- run_rolling_validation(base_result, test_size)
+    plot_data <- list(
+      full_obs = base_result$obs,
+      predictions = roll$predictions,
+      test_size = test_size
+    )
+    finalize("rolling", roll$metrics, test_size = test_size, plot_data = plot_data)
+  }
+
+  describe_validation_selection <- function(validation) {
+    if (is.null(validation)) {
+      return(NULL)
+    }
+
+    method_label <- switch(
+      validation$method_used,
+      insample = "ajuste dentro da amostra",
+      single = "divisão única treino/teste",
+      rolling = "validação móvel (origem deslizante)",
+      validation$method_used
+    )
+
+    parts <- glue::glue("Escolha do modelo: {method_label}.")
+    if (!is.null(validation$train_range) && !is.null(validation$test_range)) {
+      parts <- c(parts, glue::glue(
+        "Treino {validation$train_range[[1]]}-{validation$train_range[[2]]}; teste {validation$test_range[[1]]}-{validation$test_range[[2]]} ({validation$test_size} ano{if (validation$test_size == 1) '' else 's'})."
+      ))
+    }
+    if (!is.null(validation$note)) {
+      parts <- c(parts, validation$note)
+    }
+
+    paste(parts, collapse = " ")
+  }
+
   get_beginner_training_range <- function(years, year_range) {
     selected_years <- get_years_in_selected_range(year_range)
     training_years <- sort(intersect(as.integer(years), selected_years))
@@ -2054,6 +2259,7 @@ server <- function(input, output, session) {
       TRUE ~ "Os diferentes modelos dão pontos finais bastante distintos, o que reduz a confiança."
     )
     structural_warning <- get_simple_structural_warning_text(dat$full_history)
+    validation_text <- describe_validation_selection(dat$validation)
 
     wellPanel(
       h4("Fiabilidade"),
@@ -2061,6 +2267,9 @@ server <- function(input, output, session) {
       p(training_message),
       p(interval_message),
       p(agreement_message),
+      if (!is.null(validation_text)) {
+        p(tags$em(validation_text))
+      },
       if (!is.null(structural_warning)) {
         p(tags$strong(structural_warning))
       }
@@ -2534,23 +2743,38 @@ server <- function(input, output, session) {
 
   beginner_forecast <- eventReactive(input$go_beginner_forecast, {
     training_history <- beginner_training_history()
-    guided_result <- run_forecast_models(
-      history = training_history,
-      model_ids = unname(forecast_model_choices),
-      horizon = input$beginner_horizon,
-      kind = "beginner",
-      token = isolate(cancel_seq$beginner)
-    )
 
-    c(
-      guided_result,
-      list(
-        full_history = training_history,
+    shiny::withProgress(message = "A ajustar e validar modelos...", value = 0, {
+      guided_result <- run_forecast_models(
+        history = training_history,
+        model_ids = unname(forecast_model_choices),
         horizon = input$beginner_horizon,
-        mode = input$beginner_mode,
-        training_label = get_beginner_training_label(training_history)
+        kind = "beginner",
+        token = isolate(cancel_seq$beginner)
       )
-    )
+      incProgress(0.5)
+
+      validation <- evaluate_model_selection(
+        base_result = guided_result,
+        method = value_or_default(input$beginner_validation, "rolling"),
+        test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
+      )
+      if (!is.null(validation$recommended_model)) {
+        guided_result$recommended_model <- validation$recommended_model
+      }
+      incProgress(0.5)
+
+      c(
+        guided_result,
+        list(
+          full_history = training_history,
+          horizon = input$beginner_horizon,
+          mode = input$beginner_mode,
+          training_label = get_beginner_training_label(training_history),
+          validation = validation
+        )
+      )
+    })
   }, ignoreNULL = TRUE)
 
   output$beginnerForecastPlot <- renderPlot({
@@ -2771,9 +2995,33 @@ server <- function(input, output, session) {
 
   # These thin wrappers keep the downstream renderers simple and make it clear
   # that all advanced sub-tabs are reading from one frozen result object.
-  advanced_forecast_result <- reactive({
+  # The frozen fitting result (models fitted on the full selected series).
+  advanced_forecast_base <- reactive({
     req(input$go_forecast > 0)
     forecast_sel()
+  })
+
+  # Out-of-sample selection runs live off the frozen base so users can switch
+  # validation method/test size without refitting the forward forecast.
+  advanced_validation <- reactive({
+    evaluate_model_selection(
+      base_result = advanced_forecast_base(),
+      method = value_or_default(input$comparison_validation_mode, "rolling"),
+      test_fraction = value_or_default(input$comparison_test_pct, 25) / 100
+    )
+  })
+
+  # Downstream tabs read the recommended model from here; it now reflects the
+  # out-of-sample choice rather than the in-sample fit.
+  advanced_forecast_result <- reactive({
+    base <- advanced_forecast_base()
+    # Keep the other advanced tabs working even if out-of-sample validation
+    # fails for this selection; fall back to the in-sample recommendation.
+    validation <- tryCatch(advanced_validation(), error = function(e) NULL)
+    if (!is.null(validation) && !is.null(validation$recommended_model)) {
+      base$recommended_model <- validation$recommended_model
+    }
+    base
   })
 
   advanced_forecast_history <- reactive({
@@ -3127,88 +3375,75 @@ server <- function(input, output, session) {
   # Advanced Forecasting: Backtesting & Comparison
   # -------------------------
   output$comparisonHoldoutControl <- renderUI({
-    if (!identical(input$comparison_validation_mode, "holdout")) {
-      return(NULL)
+    if (identical(input$comparison_validation_mode, "insample")) {
+      return(
+        p("As métricas do ajuste actual usam toda a série seleccionada, sem reservar anos para teste.")
+      )
     }
 
     series_n <- nrow(advanced_forecast_history()$series)
-    max_k <- min(10, series_n - 3)
-
-    if (max_k < 1) {
+    if (series_n < MIN_VALIDATION_TRAIN + 1L) {
       return(
-        p("A validação nos últimos anos requer pelo menos 4 anos observados no histórico de ajuste seleccionado.")
+        p("A validação fora da amostra requer pelo menos 4 anos observados no histórico de ajuste; a recomendação recorre ao ajuste dentro da amostra.")
       )
     }
 
-    numericInput(
-      "comparison_holdout_k",
-      "Últimos k anos para validação:",
-      value = min(5, max_k),
-      min = 1,
-      max = max_k,
-      step = 1
+    sliderInput(
+      "comparison_test_pct",
+      "Tamanho do teste (% dos anos):",
+      min = 10,
+      max = 40,
+      value = 25,
+      step = 5,
+      post = "%"
     )
   })
 
+  output$comparisonValidationInfo <- renderText({
+    describe_validation_selection(advanced_validation())
+  })
+
   advanced_comparison <- reactive({
-    base_result <- advanced_forecast_result()
-    mode <- input$comparison_validation_mode
+    base <- advanced_forecast_base()
+    validation <- advanced_validation()
+    method <- validation$method_used
 
-    if (!identical(mode, "holdout")) {
-      metric_tbl <- base_result$accuracy
-      ranking_tbl <- rank_model_metrics(metric_tbl)
+    common <- list(
+      metrics = validation$metrics,
+      ranking = validation$ranking,
+      failures = base$failures,
+      fitted_models = base$fitted_models,
+      selected_model_ids = base$selected_model_ids,
+      validation = validation,
+      y_label = base$history$y_label
+    )
 
-      return(list(
-        mode = "insample",
-        metrics = metric_tbl,
-        ranking = ranking_tbl,
-        failures = base_result$failures,
-        fits = base_result$fits,
-        obs = base_result$obs,
-        inverse = base_result$transform_inverse,
-        y_label = base_result$history$y_label
-      ))
+    if (identical(method, "single")) {
+      pd <- validation$plot_data
+      return(c(common, list(
+        mode = "holdout",
+        training_obs = pd$training_obs,
+        holdout_actual = pd$holdout_actual,
+        forecast_df = pd$forecast_df,
+        holdout_k = pd$holdout_k
+      )))
     }
 
-    max_holdout_k <- min(10, nrow(advanced_forecast_history()$series) - 3)
-    validate(
-      need(
-        max_holdout_k >= 1,
-        "A validação nos últimos anos requer pelo menos 4 anos observados no histórico de ajuste seleccionado."
-      )
-    )
+    if (identical(method, "rolling")) {
+      pd <- validation$plot_data
+      return(c(common, list(
+        mode = "rolling",
+        full_obs = pd$full_obs,
+        predictions = pd$predictions
+      )))
+    }
 
-    holdout_k <- value_or_default(input$comparison_holdout_k, min(5, max_holdout_k))
-    split <- build_holdout_split(
-      history = base_result$history,
-      holdout_k = holdout_k
-    )
-
-    holdout_result <- run_forecast_models(
-      history = split$training_history,
-      model_ids = base_result$selected_model_ids,
-      horizon = nrow(split$holdout_actual),
-      conf_level = base_result$conf_level,
-      transform_method = base_result$transform_method,
-      model_specs = base_result$model_specs
-    )
-
-    metric_tbl <- build_holdout_metric_table(
-      training_result = holdout_result,
-      holdout_actual = split$holdout_actual
-    )
-
-    list(
-      mode = "holdout",
-      metrics = metric_tbl,
-      ranking = rank_model_metrics(metric_tbl),
-      failures = holdout_result$failures,
-      training_obs = split$training_history$series,
-      holdout_actual = split$holdout_actual,
-      forecast_df = holdout_result$fc,
-      holdout_k = nrow(split$holdout_actual),
-      y_label = base_result$history$y_label
-    )
+    c(common, list(
+      mode = "insample",
+      obs = base$obs,
+      fits = base$fits,
+      inverse = base$transform_inverse
+    ))
   })
 
   output$comparisonWarnings <- renderUI({

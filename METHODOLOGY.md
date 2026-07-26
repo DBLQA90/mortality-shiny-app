@@ -155,7 +155,7 @@ The app supports these model families through the `forecast` package:
 - Holt
 - damped Holt
 
-The guided forecast tab uses simpler controls and recommends among available models using in-sample accuracy. The advanced forecast tab exposes model families, training windows, confidence interval level, optional transformation, diagnostics, backtesting, and structural-break exploration.
+The guided forecast tab uses simpler controls and recommends a model using out-of-sample forecast accuracy (see below). The advanced forecast tab exposes model families, training windows, confidence interval level, optional transformation, diagnostics, backtesting, and structural-break exploration.
 
 Both forecasting tabs allow horizons up to 30 years beyond the last observed year. Longer horizons widen the gap between a statistical extrapolation and interpretable epidemiological expectation, so the final years should be read with extra caution, especially for sparse local series or unstable causes.
 
@@ -178,6 +178,17 @@ Model accuracy is summarised with:
 - MASE
 
 The current recommendation logic prioritises lower RMSE, then MAE, then MASE, then MAPE, using the first available metric in that order.
+
+### Model Selection (out-of-sample)
+
+The recommended model is chosen from out-of-sample forecast accuracy rather than in-sample fit, so short annual series do not simply reward the most flexible model. The most recent portion of the selected series is used as an evaluation region; its size is set by the user as a percentage of the available years.
+
+Two schemes are offered in both the guided and advanced tabs:
+
+- **Rolling validation (default):** for each year in the evaluation region the model is re-fitted on all earlier years and scored on a one-step-ahead forecast; the errors are pooled across origins. This uses the limited data efficiently and is less sensitive to any single split.
+- **Single split:** the model is fitted once on the earlier years and scored on a single multi-step forecast over the whole evaluation region.
+
+When the selected series is too short to leave at least three training years and one test year, selection falls back to the in-sample accuracy table and a note is shown. Out-of-sample errors are computed on the original rate scale (per 100,000), matching the forecasts and the holdout metrics. The evaluation refits models on the transformed modelling scale but scores back-transformed predictions.
 
 Backtesting can evaluate forecasts against a holdout period from the end of the observed series. Holdout errors are computed against the observed values for overlapping years.
 

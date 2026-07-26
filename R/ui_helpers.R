@@ -126,6 +126,28 @@ beginner_forecast_controls_panel <- function() {
       ),
       selected = "recommended"
     ),
+    radioButtons(
+      "beginner_validation",
+      "Como escolher o modelo recomendado:",
+      choices = c(
+        "Validação móvel (recomendada)" = "rolling",
+        "Divisão única treino/teste" = "single",
+        "Ajuste dentro da amostra" = "insample"
+      ),
+      selected = "rolling"
+    ),
+    conditionalPanel(
+      "input.beginner_validation != 'insample'",
+      sliderInput(
+        "beginner_test_pct",
+        "Tamanho do teste (% dos anos):",
+        min = 10,
+        max = 40,
+        value = 25,
+        step = 5,
+        post = "%"
+      )
+    ),
     actionButton("go_beginner_forecast", "Gerar previsão"),
     br(), br(),
     actionButton("cancel_beginner_forecast", "Interromper carregamento")
@@ -419,9 +441,10 @@ advanced_backtesting_tab_ui <- function() {
           "Abordagem de validação:",
           choices = c(
             "Métricas do ajuste actual" = "insample",
-            "Validação nos últimos k anos" = "holdout"
+            "Divisão única (últimos %)" = "single",
+            "Validação móvel (últimos %)" = "rolling"
           ),
-          selected = "insample",
+          selected = "rolling",
           inline = TRUE
         )
       ),
@@ -430,6 +453,8 @@ advanced_backtesting_tab_ui <- function() {
         uiOutput("comparisonHoldoutControl")
       )
     ),
+    textOutput("comparisonValidationInfo"),
+    br(),
     uiOutput("comparisonWarnings"),
     br(),
     h4("Classificação"),

@@ -31,6 +31,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Shows source indicators used in observed and annual analyses.
 - Adds 95% uncertainty intervals to annual metric tables and plots where estimable.
 - Adds a base-R dependency installer and first-run package bootstrap.
+- Selects the recommended forecast model from out-of-sample accuracy (rolling validation or a single train/test split, with a user-set test-set percentage), instead of in-sample fit.
 
 ## Running The App
 
@@ -170,6 +171,7 @@ The user can choose:
 - data source
 - forecast horizon
 - training window
+- how the recommended model is chosen: rolling validation (default) or a single train/test split, with a test-set size in percent of the selected years (falls back to in-sample fit when the series is too short)
 - recommended model or model comparison mode
 
 Guided and advanced forecasts can project up to 30 years beyond the last observed year.
