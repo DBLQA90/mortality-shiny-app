@@ -23,6 +23,47 @@ data_source_input <- function(input_id) {
   )
 }
 
+# Plain-language help notes shown under controls, for users unfamiliar with the
+# underlying statistics. Kept as small helpers so the wording stays consistent
+# across the observed, guided and advanced panels.
+rate_type_help <- function() {
+  helpText(
+    "Bruta: mortes por 100.000 habitantes. Padronizada: ajustada à idade, ",
+    "para comparar de forma justa locais com estruturas etárias diferentes."
+  )
+}
+population_help <- function() {
+  helpText(
+    "'Menos de 75 anos' foca a mortalidade prematura (potencialmente evitável) ",
+    "e não representa a mortalidade total."
+  )
+}
+horizon_help <- function() {
+  helpText("Número de anos a projectar para o futuro. Quanto maior o horizonte, maior a incerteza.")
+}
+models_help <- function() {
+  helpText(
+    "Cada família é um método estatístico diferente. Em caso de dúvida, use a ",
+    "'Previsão Guiada', que escolhe um método por si."
+  )
+}
+confidence_help <- function() {
+  helpText("Largura do intervalo de incerteza apresentado. 95% é o valor habitual.")
+}
+transform_help <- function() {
+  helpText(
+    "A transformação log estabiliza séries positivas e evita previsões negativas; ",
+    "'Sem transformação' modela a taxa directamente."
+  )
+}
+beginner_validation_help <- function() {
+  helpText(
+    "A aplicação escolhe o melhor método testando a previsão em anos recentes ",
+    "reservados para avaliação. 'Validação móvel' é a opção mais fiável. ",
+    "Se não souber, mantenha as predefinições."
+  )
+}
+
 # Shared control panels ----------------------------------------------------
 
 forecast_controls_panel <- function() {
@@ -36,11 +77,13 @@ forecast_controls_panel <- function() {
       "População:",
       choices = c("Total", "Menos de 75 anos")
     ),
+    population_help(),
     radioButtons(
       "rate_type2",
       "Taxa:",
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
+    rate_type_help(),
     year_range_slider(
       "years_fit",
       "Anos a importar / ajustar:"
@@ -52,6 +95,7 @@ forecast_controls_panel <- function() {
       choices = forecast_model_choices,
       selected = c("arima", "ets")
     ),
+    models_help(),
     sliderInput(
       "horizon",
       "Horizonte de projecção (anos):",
@@ -59,6 +103,7 @@ forecast_controls_panel <- function() {
       max   = 30,
       value = 7
     ),
+    horizon_help(),
     sliderInput(
       "conf_level2",
       "Nível de confiança (%):",
@@ -67,6 +112,7 @@ forecast_controls_panel <- function() {
       value = 95,
       step = 1
     ),
+    confidence_help(),
     selectInput(
       "transform2",
       "Transformação:",
@@ -76,6 +122,7 @@ forecast_controls_panel <- function() {
       ),
       selected = "log_offset"
     ),
+    transform_help(),
     uiOutput("advancedModelParameterPanels"),
     actionButton("go_forecast", "Carregar projecções"),
     br(), br(),
@@ -100,11 +147,13 @@ beginner_forecast_controls_panel <- function() {
       "População:",
       choices = c("Total", "Menos de 75 anos")
     ),
+    population_help(),
     radioButtons(
       "beginner_rate_type",
       "Taxa:",
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
+    rate_type_help(),
     data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",
@@ -113,6 +162,7 @@ beginner_forecast_controls_panel <- function() {
       max = 30,
       value = 5
     ),
+    horizon_help(),
     year_range_slider(
       "beginner_years_fit",
       "Janela de ajuste:"
@@ -126,27 +176,34 @@ beginner_forecast_controls_panel <- function() {
       ),
       selected = "recommended"
     ),
-    radioButtons(
-      "beginner_validation",
-      "Como escolher o modelo recomendado:",
-      choices = c(
-        "Validação móvel (recomendada)" = "rolling",
-        "Divisão única treino/teste" = "single",
-        "Ajuste dentro da amostra" = "insample"
-      ),
-      selected = "rolling"
-    ),
+    # Keep the default path simple: the model-selection controls are hidden
+    # until the user opts in. Their defaults (rolling, 25%) still apply.
+    checkboxInput("beginner_show_advanced", "Mostrar opções avançadas", value = FALSE),
     conditionalPanel(
-      "input.beginner_validation != 'insample'",
-      sliderInput(
-        "beginner_test_pct",
-        "Tamanho do teste (% dos anos):",
-        min = 10,
-        max = 40,
-        value = 25,
-        step = 5,
-        post = "%"
-      )
+      "input.beginner_show_advanced == true",
+      radioButtons(
+        "beginner_validation",
+        "Como escolher o modelo recomendado:",
+        choices = c(
+          "Validação móvel (recomendada)" = "rolling",
+          "Divisão única treino/teste" = "single",
+          "Ajuste dentro da amostra" = "insample"
+        ),
+        selected = "rolling"
+      ),
+      conditionalPanel(
+        "input.beginner_validation != 'insample'",
+        sliderInput(
+          "beginner_test_pct",
+          "Tamanho do teste (% dos anos):",
+          min = 10,
+          max = 40,
+          value = 25,
+          step = 5,
+          post = "%"
+        )
+      ),
+      beginner_validation_help()
     ),
     actionButton("go_beginner_forecast", "Gerar previsão"),
     br(), br(),
@@ -314,11 +371,13 @@ observed_mortality_tab_ui <- function() {
           "População:",
           choices = c("Total", "Menos de 75 anos")
         ),
+        population_help(),
         radioButtons(
           "rate_type",
           "Taxa:",
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
         ),
+        rate_type_help(),
         year_range_slider(
           "years_import",
           "Anos a importar:"
@@ -574,6 +633,13 @@ advanced_breaks_tab_ui <- function() {
 advanced_forecasting_tab_ui <- function() {
   tabPanel(
     "Previsão Avançada",
+    wellPanel(
+      p(tags$strong("Para uma previsão simples, use o separador 'Previsão Guiada'.")),
+      p(
+        "Este separador destina-se a utilizadores técnicos: permite escolher modelos, ",
+        "ajustar parâmetros e ver diagnósticos. Não é necessário para obter uma previsão."
+      )
+    ),
     tabsetPanel(
       advanced_model_spec_tab_ui(),
       advanced_forecast_output_tab_ui(),

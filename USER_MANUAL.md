@@ -258,8 +258,9 @@ Controlos principais:
 - `Janela de ajuste`;
 - horizonte da previsão;
 - modo de previsão;
-- `Como escolher o modelo recomendado` (método de validação);
-- `Tamanho do teste (% dos anos)`, quando aplicável.
+- em `Mostrar opções avançadas` (opcional): o método de validação (`Como escolher o modelo recomendado`) e o `Tamanho do teste (% dos anos)`.
+
+Por predefinição, a aplicação usa boas escolhas automáticas, pelo que basta escolher local, causa e horizonte e clicar em `Gerar previsão`. As opções de validação só são necessárias para afinar como o modelo é escolhido e ficam escondidas até activar `Mostrar opções avançadas`.
 
 A `Janela de ajuste` define os anos usados para treinar o modelo. Se usar uma janela mais curta, a previsão fica mais focada na tendência recente. Se usar uma janela mais longa, fica mais influenciada pela história completa.
 
@@ -270,7 +271,7 @@ Modos típicos:
 
 ### Como é Escolhido o Modelo Recomendado
 
-Por predefinição, o modelo recomendado é escolhido pela sua precisão **fora da amostra**, e não apenas pela qualidade do ajuste à série completa. Assim evita-se favorecer modelos que se ajustam muito bem ao passado mas que preveem mal, um risco real em séries anuais curtas.
+Estas opções ficam em `Mostrar opções avançadas` e não são necessárias para uma previsão simples. Por predefinição, o modelo recomendado é escolhido pela sua precisão **fora da amostra**, e não apenas pela qualidade do ajuste à série completa. Assim evita-se favorecer modelos que se ajustam muito bem ao passado mas que preveem mal, um risco real em séries anuais curtas.
 
 Os anos mais recentes da série formam o período de teste. O controlo `Tamanho do teste (% dos anos)` define que percentagem dos anos é usada para esse teste. Há dois esquemas, mais um modo de referência:
 

@@ -2042,10 +2042,18 @@ server <- function(input, output, session) {
           NULL
         },
         x = "Ano",
-        y = dat$history$y_label
+        y = dat$history$y_label,
+        caption = paste(
+          "Azul: taxa observada usada no ajuste. Cinzento: restante histórico.",
+          "Linha tracejada e zona sombreada: previsão e a sua incerteza",
+          "(quanto mais larga, menos certa)."
+        )
       ) +
       theme_minimal() +
-      theme(plot.title = element_text(hjust = 0.5))
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0)
+      )
 
     if (identical(dat$mode, "compare")) {
       p <- p +
@@ -2576,10 +2584,14 @@ server <- function(input, output, session) {
       labs(
         title = paste(dat$area_label, "-", dat$spec$cause, dat$spec$sex, "(", dat$spec$population, ")"),
         x = "Ano",
-        y = dat$y_label
+        y = dat$y_label,
+        caption = "A zona sombreada mostra o intervalo de confiança de 95% (a incerteza em torno da taxa)."
       ) +
       theme_minimal() +
-      theme(plot.title = element_text(hjust = 0.5))
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0)
+      )
   }
 
   build_observed_rate_table <- function(dat) {
