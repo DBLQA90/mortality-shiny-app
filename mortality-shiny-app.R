@@ -1469,13 +1469,12 @@ server <- function(input, output, session) {
       return(list(
         method = "none",
         label = "Sem transformação",
+        offset = 0,
+        zero_count = 0L,
         forward = function(x) as.numeric(x),
         inverse = function(x) as.numeric(x)
       ))
     }
-
-    min_positive <- suppressWarnings(min(values[values > 0], na.rm = TRUE))
-    log_offset <- if (is.finite(min_positive)) min_positive / 2 else 1e-6
 
     if (any(values < 0, na.rm = TRUE)) {
       validate(
@@ -1483,9 +1482,25 @@ server <- function(input, output, session) {
       )
     }
 
+    # The log offset is a data-dependent pseudo-count (half the smallest
+    # positive rate). It matters most when the series contains zeros, so expose
+    # its value in the label and flag the zero case for the user.
+    min_positive <- suppressWarnings(min(values[values > 0], na.rm = TRUE))
+    log_offset <- if (is.finite(min_positive)) min_positive / 2 else 1e-6
+    zero_count <- sum(values == 0, na.rm = TRUE)
+
+    label <- as.character(glue::glue("Transformação log com offset (offset = {signif(log_offset, 4)})"))
+    if (zero_count > 0) {
+      label <- as.character(glue::glue(
+        "{label}; {zero_count} valor(es) zero na série — o offset influencia a projecção e os intervalos"
+      ))
+    }
+
     list(
       method = "log_offset",
-      label = "Transformação log com offset",
+      label = label,
+      offset = log_offset,
+      zero_count = as.integer(zero_count),
       forward = function(x) log(as.numeric(x) + log_offset),
       inverse = function(x) pmax(exp(as.numeric(x)) - log_offset, 0)
     )
@@ -2162,6 +2177,14 @@ server <- function(input, output, session) {
     )
     structural_warning <- get_simple_structural_warning_text(dat$full_history)
     validation_text <- describe_validation_selection(dat$validation)
+    zero_note <- if (
+      identical(dat$transform_method, "log_offset") &&
+        any(dat$obs$value == 0, na.rm = TRUE)
+    ) {
+      "A série de treino contém anos com taxa zero; a transformação logarítmica usa um pequeno valor de deslocamento (offset) que influencia a projecção e os respectivos intervalos."
+    } else {
+      NULL
+    }
 
     wellPanel(
       h4("Fiabilidade"),
@@ -2171,6 +2194,9 @@ server <- function(input, output, session) {
       p(agreement_message),
       if (!is.null(validation_text)) {
         p(tags$em(validation_text))
+      },
+      if (!is.null(zero_note)) {
+        p(tags$strong(zero_note))
       },
       if (!is.null(structural_warning)) {
         p(tags$strong(structural_warning))

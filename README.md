@@ -64,6 +64,25 @@ The required runtime packages are:
 - `cachem`
 - `later`
 
+## Reproducible Environment (Optional)
+
+A pinned set of package versions is recorded in `renv.lock` (a known-good snapshot the app and tests were verified against). This is optional: the app still runs against your system library via the bootstrap installer above, and the lockfile does not auto-activate `renv`.
+
+To reproduce the pinned environment instead, install [`renv`](https://rstudio.github.io/renv/) and restore into a project-local library:
+
+```r
+install.packages("renv")
+renv::restore()
+```
+
+`renv.lock` records the recursive dependency closure from CRAN, so restoring installs the exact pinned versions. Regenerate it after changing dependencies with:
+
+```r
+renv::snapshot(packages = required_packages)
+```
+
+The recorded R version is the one the snapshot was taken with; `renv::restore()` warns but proceeds on a different R version.
+
 ## Code Layout
 
 The app entry point is `mortality-shiny-app.R`. Most helper logic is split into smaller files under `R/`:

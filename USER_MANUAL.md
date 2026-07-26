@@ -353,6 +353,8 @@ Limitações:
 - não resolve problemas de dados escassos;
 - pode distorcer séries com muitos valores próximos de zero.
 
+A transformação logarítmica soma um pequeno valor de deslocamento (offset) antes de aplicar o logaritmo, para permitir anos com taxa zero. Esse offset corresponde a metade da menor taxa positiva da série de ajuste e é apresentado na etiqueta da transformação (por exemplo, na tabela de especificação do modelo avançado). Quando a série contém zeros, a aplicação assinala que o offset influencia a projecção e os intervalos, porque é nesse caso que uma pequena constante aditiva tem maior efeito. Nessas situações, compare com `Sem transformação` para perceber a sensibilidade do resultado.
+
 ### Diagnósticos
 
 Os diagnósticos ajudam a perceber se o modelo deixou padrões por explicar.

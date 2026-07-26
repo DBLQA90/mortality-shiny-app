@@ -169,6 +169,8 @@ Missing or incomplete source data can also invalidate a forecast. When RDS snaps
 
 The model runner can fit models on transformed values and back-transform forecasts for display. The default workflow uses a log offset transformation where configured by the app controls. This can improve stability for positive rates but does not remove the need to inspect fit quality.
 
+The offset is a data-dependent pseudo-count equal to half the smallest positive rate in the fitting series (or `1e-6` when every value is zero). Its value is shown in the transformation label (for example in the advanced model specification table), and when the series contains zeros the app flags that the offset materially affects the back-transformed forecast and intervals, since this is the case where a small additive constant has the largest effect.
+
 ### Model Comparison
 
 Model accuracy is summarised with:
