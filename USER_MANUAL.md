@@ -19,11 +19,14 @@ A aplicação permite:
 
 A ordem dos separadores é:
 
-1. `Mortalidade Observada`
-2. `Previsão Guiada`
-3. `Previsão Avançada`
-4. `Métricas Anuais`
-5. `Disponibilidade de Dados`
+1. `Introdução`
+2. `Mortalidade Observada`
+3. `Previsão Guiada`
+4. `Previsão Avançada`
+5. `Métricas Anuais`
+6. `Disponibilidade de Dados`
+
+O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
 
 ## 2. Como Começar
 

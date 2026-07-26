@@ -213,6 +213,93 @@ data_availability_tab_ui <- function() {
   )
 }
 
+intro_tab_ui <- function() {
+  tabPanel(
+    "Introdução",
+    fluidRow(
+      column(
+        width = 10, offset = 1,
+        h2("Bem-vindo"),
+        p(
+          "Esta aplicação ajuda a explorar dados de mortalidade em Portugal, a partir dos ",
+          "indicadores do Instituto Nacional de Estatística (INE). Pode ver como a mortalidade ",
+          "evoluiu ao longo dos anos, comparar territórios e obter previsões simples para os ",
+          "próximos anos — sem precisar de saber estatística ou programação."
+        ),
+
+        h3("O que é uma previsão (e o que não é)"),
+        p(
+          "Uma previsão, ou projecção, é uma estimativa de como uma taxa de mortalidade poderá ",
+          "evoluir no futuro, com base no padrão dos anos anteriores."
+        ),
+        tags$ul(
+          tags$li("Não é uma certeza: é um cenário possível, não o que vai necessariamente acontecer."),
+          tags$li("Não é uma meta nem um número oficial."),
+          tags$li(
+            "A incerteza aumenta com o tempo: os primeiros anos são mais fiáveis do que, ",
+            "por exemplo, daqui a 20 ou 30 anos."
+          )
+        ),
+        p(tags$strong(
+          "Interprete os resultados como apoio à exploração, e não como conclusões definitivas."
+        )),
+
+        h3("Começar em 3 passos"),
+        tags$ol(
+          tags$li(
+            tags$strong("Escolha o que quer ver. "),
+            "No painel à esquerda, seleccione um local de residência (por exemplo, um concelho ou ",
+            tags$em("Portugal"), ") e uma causa de morte."
+          ),
+          tags$li(
+            tags$strong("Veja a evolução histórica. "),
+            "No separador ", tags$em("Mortalidade Observada"), ", clique em ",
+            tags$em("Carregar dados"), " para ver o gráfico dos últimos anos."
+          ),
+          tags$li(
+            tags$strong("Peça uma previsão simples. "),
+            "No separador ", tags$em("Previsão Guiada"), ", clique em ", tags$em("Gerar previsão"),
+            ". A aplicação escolhe automaticamente um método adequado e explica o resultado em ",
+            "linguagem simples, incluindo o grau de fiabilidade."
+          )
+        ),
+
+        h3("Que separador usar"),
+        tags$ul(
+          tags$li(tags$strong("Mortalidade Observada"), " — ver a evolução histórica de uma taxa e exportar tabelas e gráficos."),
+          tags$li(tags$strong("Previsão Guiada"), " — obter uma previsão simples, com explicação. Recomendado para a maioria dos utilizadores."),
+          tags$li(tags$strong("Previsão Avançada"), " — controlar modelos, diagnósticos e testes. Destinado a utilizadores técnicos; não é necessário para uma previsão simples."),
+          tags$li(tags$strong("Métricas Anuais"), " — comparar Portugal, Norte e um local à escolha num único ano."),
+          tags$li(tags$strong("Disponibilidade de Dados"), " — verificar que anos, locais e causas existem nos ficheiros antes de carregar.")
+        ),
+
+        h3("Alguns termos que vai encontrar"),
+        tags$ul(
+          tags$li(tags$strong("Taxa bruta:"), " número de mortes por 100.000 habitantes."),
+          tags$li(tags$strong("Taxa padronizada:"), " taxa ajustada à idade, que permite comparar de forma justa locais com populações mais jovens ou mais envelhecidas."),
+          tags$li(tags$strong("Intervalo de confiança:"), " a margem de incerteza à volta de um valor (a zona sombreada nos gráficos)."),
+          tags$li(tags$strong("Horizonte:"), " quantos anos para o futuro a previsão vai.")
+        ),
+
+        h3("Uma dica sobre a fonte de dados"),
+        p(
+          "No início de cada análise pode escolher a ", tags$em("Fonte de dados"), ". Comece com ",
+          tags$em("Ficheiros RDS"), ", que lê dados já preparados e é muito mais rápido. Use ",
+          tags$em("INE em directo"), " apenas se precisar de dados que os ficheiros não contêm — pode ser lento."
+        ),
+
+        wellPanel(
+          p(tags$em(
+            "Ferramenta não oficial e exploratória. Não substitui validação epidemiológica, ",
+            "análise clínica ou produtos estatísticos oficiais. Para um guia detalhado, ",
+            "separador a separador, consulte o Manual do Utilizador (USER_MANUAL.md)."
+          ))
+        )
+      )
+    )
+  )
+}
+
 observed_mortality_tab_ui <- function() {
   tabPanel(
     "Mortalidade Observada",

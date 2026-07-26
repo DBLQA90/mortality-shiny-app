@@ -47,6 +47,7 @@ for (app_file in c(
 ui <- navbarPage(
   title = "PNS Monitorização",
 
+  intro_tab_ui(),
   observed_mortality_tab_ui(),
   beginner_forecasting_tab_ui(),
   advanced_forecasting_tab_ui(),
