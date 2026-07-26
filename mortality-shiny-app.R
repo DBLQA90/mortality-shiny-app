@@ -547,8 +547,14 @@ server <- function(input, output, session) {
       dplyr::arrange(Ano)
   }
 
-  build_accuracy_table <- function(fits) {
+  build_accuracy_table <- function(fits, obs = NULL, inverse = function(x) as.numeric(x)) {
     metrics <- c("ME", "RMSE", "MAE", "MAPE", "MASE")
+
+    na_row <- function(m) {
+      df <- as.data.frame(stats::setNames(as.list(rep(NA_real_, length(metrics))), metrics))
+      df$Model <- m
+      df[, c("Model", metrics), drop = FALSE]
+    }
 
     if (length(fits) == 0) {
       return(
@@ -563,24 +569,46 @@ server <- function(input, output, session) {
       )
     }
 
+    # In-sample accuracy is computed on the original rate scale. Models are
+    # fitted on the (possibly log-transformed) modelling scale, so the fitted
+    # values are back-transformed before comparison. This keeps ME/RMSE/MAE/
+    # MAPE/MASE on the same per-100,000 scale as the forecasts and the holdout
+    # metrics, and makes the recommended-model choice reflect fit quality on
+    # the scale the user actually sees.
+    actual <- if (!is.null(obs)) as.numeric(obs$value) else NULL
+    scale_denom <- if (!is.null(actual) && sum(is.finite(actual)) >= 2) {
+      mean(abs(diff(actual)), na.rm = TRUE)
+    } else {
+      NA_real_
+    }
+
     dplyr::bind_rows(lapply(names(fits), function(m) {
       tryCatch({
-        acc <- as.data.frame(forecast::accuracy(fits[[m]]))
-        df <- acc[1, intersect(metrics, names(acc)), drop = FALSE]
-        missing_metrics <- setdiff(metrics, names(df))
-        for (metric in missing_metrics) {
-          df[[metric]] <- NA_real_
+        if (is.null(actual)) {
+          stop("Observed series not supplied for accuracy calculation.", call. = FALSE)
         }
-        df <- df[, metrics, drop = FALSE]
+
+        fitted_vals <- inverse(as.numeric(stats::fitted(fits[[m]])))
+        n <- min(length(fitted_vals), length(actual))
+        a <- actual[seq_len(n)]
+        p <- fitted_vals[seq_len(n)]
+        finite <- is.finite(a) & is.finite(p)
+
+        if (!any(finite)) {
+          stop("No overlapping finite fitted values for accuracy calculation.", call. = FALSE)
+        }
+
+        df <- compute_forecast_error_metrics(
+          actual = a[finite],
+          predicted = p[finite],
+          scale_denom = scale_denom
+        )
         df$Model <- m
-        df
+        df[, c("Model", metrics), drop = FALSE]
       }, error = function(e) {
-        df <- as.data.frame(stats::setNames(as.list(rep(NA_real_, length(metrics))), metrics))
-        df$Model <- m
-        df
+        na_row(m)
       })
-    }), .id = NULL) %>%
-      dplyr::select(Model, dplyr::everything())
+    }), .id = NULL)
   }
 
   get_diagnostic_fit <- function(dat, model_id = NULL) {
@@ -848,13 +876,14 @@ server <- function(input, output, session) {
       dplyr::select(Classificação, Model, Recomendação)
   }
 
-  build_fitted_values_df <- function(obs, fits) {
+  build_fitted_values_df <- function(obs, fits, inverse = function(x) as.numeric(x)) {
     if (length(fits) == 0) {
       return(tibble(year = numeric(0), fitted = numeric(0), model = character(0)))
     }
 
     dplyr::bind_rows(lapply(names(fits), function(model_id) {
-      fitted_vals <- as.numeric(stats::fitted(fits[[model_id]]))
+      # Back-transform so fitted values share the observed rate scale.
+      fitted_vals <- inverse(as.numeric(stats::fitted(fits[[model_id]])))
       year_count <- min(length(fitted_vals), nrow(obs))
 
       tibble(
@@ -912,9 +941,14 @@ server <- function(input, output, session) {
       )
     }
 
+    inverse_fn <- comparison_dat$inverse
+    if (!is.function(inverse_fn)) {
+      inverse_fn <- function(x) as.numeric(x)
+    }
     fitted_df <- build_fitted_values_df(
       obs = comparison_dat$obs,
-      fits = comparison_dat$fits
+      fits = comparison_dat$fits,
+      inverse = inverse_fn
     )
 
     validate(need(nrow(fitted_df) > 0, "Não existem valores ajustados disponíveis para a comparação de modelos."))
@@ -1793,7 +1827,11 @@ server <- function(input, output, session) {
       Message = vapply(fit_results[failed_ids], `[[`, character(1), "message")
     )
 
-    accuracy_tbl <- build_accuracy_table(fits)
+    accuracy_tbl <- build_accuracy_table(
+      fits,
+      obs = df_vals,
+      inverse = transform_setup$inverse
+    )
 
     list(
       history = history,
@@ -1809,6 +1847,7 @@ server <- function(input, output, session) {
       conf_level = conf_level,
       transform_method = transform_method,
       transform_label = transform_setup$label,
+      transform_inverse = transform_setup$inverse,
       model_specs = model_specs,
       area_label = history$area_label
     )
@@ -3126,6 +3165,7 @@ server <- function(input, output, session) {
         failures = base_result$failures,
         fits = base_result$fits,
         obs = base_result$obs,
+        inverse = base_result$transform_inverse,
         y_label = base_result$history$y_label
       ))
     }
