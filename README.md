@@ -239,9 +239,9 @@ Main calculations:
 
 - crude mortality: deaths divided by population, multiplied by 100,000
 - crude confidence intervals: exact Poisson intervals scaled to the selected population
-- standardised mortality: direct standardisation with European Standard Population 2013 weights
+- standardised mortality: direct standardisation with European Standard Population 2013 weights; the under-75 scope is the conventional premature-mortality rate standardised to the ESP 0-74 sub-population and is labelled as such
 - proportional mortality: selected-cause deaths divided by all-cause deaths for the same year, sex, and geography
-- AVPP: years of potential life lost before age 70, approximated from age-band midpoints
+- AVPP: years of potential life lost before age 70, approximated from age-band midpoints, with Dobson intervals for sparse counts
 
 Forecasts are exploratory extrapolations of annual mortality-rate series using models from the `forecast` package. Model comparison uses common forecast accuracy metrics such as RMSE, MAE, MAPE, and MASE.
 

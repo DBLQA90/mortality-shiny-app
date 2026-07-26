@@ -151,7 +151,7 @@ server <- function(input, output, session) {
     year_load_state$beginner_range <- current_range
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
-  get_rate_mapping <- function(rate_type) {
+  get_rate_mapping <- function(rate_type, population = "Total") {
     if (identical(rate_type, "crude")) {
       list(
         value_col = "crude_rate",
@@ -161,12 +161,21 @@ server <- function(input, output, session) {
         rate_label = "Bruta"
       )
     } else {
+      # The under-75 scope is standardised to the ESP-2013 0-74 sub-population
+      # (conventional premature mortality), a different standard from the
+      # all-age rate, so the label names the standard used to avoid implying
+      # the two standardised rates share one basis.
+      under75 <- identical(population, "Menos de 75 anos")
       list(
         value_col = "dsr",
         lower_col = "dsr_lower",
         upper_col = "dsr_upper",
-        y_label = "Taxa Padronizada por 100.000",
-        rate_label = "Padronizada"
+        y_label = if (under75) {
+          "Taxa Padronizada por 100.000 (padrão ESP 0-74)"
+        } else {
+          "Taxa Padronizada por 100.000"
+        },
+        rate_label = if (under75) "Padronizada (padrão ESP 0-74)" else "Padronizada"
       )
     }
   }
@@ -404,7 +413,7 @@ server <- function(input, output, session) {
   }
 
   build_historical_series <- function(metric_bundle, series_spec) {
-    rate_map <- get_rate_mapping(series_spec$rate_type)
+    rate_map <- get_rate_mapping(series_spec$rate_type, series_spec$population)
 
     series <- metric_bundle$metrics %>%
       dplyr::filter(
