@@ -25,6 +25,7 @@ A ordem dos separadores é:
 4. `Previsão Avançada`
 5. `Métricas Anuais`
 6. `Disponibilidade de Dados`
+7. `Glossário`
 
 O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
 
@@ -243,6 +244,16 @@ Cuidados:
 - em áreas pequenas, observe sempre os intervalos de confiança.
 
 ## 7. Separador Previsão Guiada
+
+### O que é uma previsão
+
+Uma previsão, ou projecção, é uma estimativa de como uma taxa poderá evoluir no futuro, a partir do padrão dos anos anteriores. É importante ter presente que:
+
+- não é uma certeza: é um cenário possível, não o que vai necessariamente acontecer;
+- não é uma meta nem um número oficial;
+- a incerteza aumenta com o tempo, pelo que os primeiros anos são mais fiáveis do que, por exemplo, daqui a 20 ou 30 anos.
+
+A aplicação aprende o padrão a partir dos anos observados (a janela de ajuste) e prolonga-o para o futuro, apresentando também uma banda de incerteza. Interprete os resultados como apoio à exploração, e não como conclusões definitivas. Os termos usados aqui estão explicados no separador `Glossário`.
 
 Este separador é para obter uma previsão rápida com menos decisões técnicas. Foi pensado para utilizadores que querem uma projecção exploratória sem configurar manualmente todos os modelos.
 
@@ -596,3 +607,41 @@ As taxas padronizadas ajudam a comparar estruturas etárias diferentes, mas não
 As previsões assumem que padrões históricos carregam informação sobre o futuro. Essa suposição pode falhar quando há alterações epidemiológicas, tecnológicas, sociais, ambientais ou de codificação.
 
 Use a aplicação como apoio à análise, não como resposta final.
+
+## 16. Glossário
+
+Explicações simples dos termos usados na aplicação. O separador `Glossário` apresenta esta mesma lista dentro da aplicação.
+
+### Conceitos de mortalidade
+
+- **Óbitos:** número absoluto de mortes na selecção (ano, local, causa, sexo e idade).
+- **Taxa bruta:** número de mortes por 100.000 habitantes. É simples, mas depende muito da idade da população.
+- **Taxa padronizada:** taxa ajustada à idade, que permite comparar de forma justa locais com populações mais jovens ou mais envelhecidas. Usa a População Padrão Europeia de 2013.
+- **População padrão (ESP 2013):** estrutura etária de referência comum, aplicada na padronização para que as comparações não sejam distorcidas pela idade.
+- **Mortalidade proporcional:** percentagem das mortes de uma causa face ao total de mortes, no mesmo ano, sexo e local.
+- **AVPP (anos de vida potencialmente perdidos):** medida do impacto da morte prematura; soma os anos que faltavam até aos 70 em cada morte antes dessa idade e dá mais peso às mortes em idades jovens.
+- **Mortalidade prematura:** mortes antes de uma certa idade (aqui, antes dos 75 anos), muitas vezes consideradas potencialmente evitáveis.
+- **Intervalo de confiança:** margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos.
+
+### Conceitos de previsão
+
+- **Previsão (projecção):** estimativa de como uma taxa poderá evoluir no futuro, a partir do padrão dos anos anteriores. Não é uma certeza nem uma meta.
+- **Horizonte:** quantos anos para o futuro a previsão vai. Quanto maior, maior a incerteza.
+- **Janela de ajuste (treino):** os anos usados para o modelo aprender o padrão da série.
+- **Teste / validação:** anos recentes reservados para avaliar quão bem o modelo prevê, antes de confiar na projecção futura.
+- **Validação móvel:** forma de validação que repete a previsão a partir de várias origens e combina os erros. É a mais fiável em séries curtas.
+- **Divisão única (treino/teste):** forma de validação que reserva os últimos anos uma só vez para testar o modelo.
+- **Ajuste dentro da amostra:** avaliação usando o ajuste à série completa, sem reservar anos. É menos exigente e serve apenas como referência.
+- **Retroteste (backtesting):** testar a previsão contra anos que realmente já aconteceram.
+- **Modelo:** método matemático que descreve o padrão da série para o projectar (por exemplo ARIMA, ETS, Holt, Naive). Na Previsão Guiada, a aplicação escolhe um por si.
+- **Transformação log:** passo opcional que estabiliza séries positivas e evita previsões negativas; a previsão é feita na escala transformada e depois reconvertida.
+- **Métricas de erro (RMSE, MAE, MAPE, MASE):** números que medem quão longe as previsões ficam dos valores reais; servem para comparar modelos. Valores mais baixos são melhores.
+- **Quebra estrutural:** mudança no padrão da série (por exemplo no nível ou na tendência), que pode dever-se a alterações reais, de codificação ou de registo.
+- **Resíduos e diagnósticos:** os resíduos são as diferenças entre o observado e o ajustado; os diagnósticos (ACF, PACF, Ljung-Box) ajudam a verificar se o modelo captou bem o padrão.
+
+### Dados
+
+- **INE:** Instituto Nacional de Estatística, a fonte oficial dos dados de mortalidade e população.
+- **Indicador:** conjunto de dados específico do INE (por exemplo, óbitos por causa), identificado por um código.
+- **Ficheiros RDS:** dados já preparados e guardados no repositório, que a aplicação lê rapidamente sem consultar o INE em directo.
+- **Fonte de dados:** a escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos).

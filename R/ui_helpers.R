@@ -337,6 +337,7 @@ intro_tab_ui <- function() {
           tags$li(tags$strong("Intervalo de confiança:"), " a margem de incerteza à volta de um valor (a zona sombreada nos gráficos)."),
           tags$li(tags$strong("Horizonte:"), " quantos anos para o futuro a previsão vai.")
         ),
+        p("Para mais termos explicados em linguagem simples, consulte o separador ", tags$strong("Glossário"), "."),
 
         h3("Uma dica sobre a fonte de dados"),
         p(
@@ -352,6 +353,68 @@ intro_tab_ui <- function() {
             "separador a separador, consulte o Manual do Utilizador (USER_MANUAL.md)."
           ))
         )
+      )
+    )
+  )
+}
+
+glossary_tab_ui <- function() {
+  # term/definition pairs grouped into sections; rendered as a definition list.
+  glossary_section <- function(title, entries) {
+    tagList(
+      h3(title),
+      tags$dl(
+        do.call(tagList, lapply(entries, function(e) {
+          tagList(tags$dt(e[[1]]), tags$dd(e[[2]]))
+        }))
+      )
+    )
+  }
+
+  mortality_terms <- list(
+    list("Óbitos", "Número absoluto de mortes na selecção (ano, local, causa, sexo e idade)."),
+    list("Taxa bruta", "Número de mortes por 100.000 habitantes. É simples, mas depende muito da idade da população."),
+    list("Taxa padronizada", "Taxa ajustada à idade, que permite comparar de forma justa locais com populações mais jovens ou mais envelhecidas. Usa a População Padrão Europeia de 2013."),
+    list("População padrão (ESP 2013)", "Uma estrutura etária de referência comum, aplicada na padronização para que as comparações não sejam distorcidas pela idade."),
+    list("Mortalidade proporcional", "Percentagem das mortes de uma causa face ao total de mortes, no mesmo ano, sexo e local."),
+    list("AVPP (anos de vida potencialmente perdidos)", "Medida do impacto da morte prematura: soma os anos que faltavam até aos 70 em cada morte antes dessa idade. Dá mais peso às mortes em idades jovens."),
+    list("Mortalidade prematura", "Mortes antes de uma certa idade (aqui, antes dos 75 anos), muitas vezes consideradas potencialmente evitáveis."),
+    list("Intervalo de confiança", "A margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos.")
+  )
+
+  forecast_terms <- list(
+    list("Previsão (projecção)", "Estimativa de como uma taxa poderá evoluir no futuro, a partir do padrão dos anos anteriores. Não é uma certeza nem uma meta."),
+    list("Horizonte", "Quantos anos para o futuro a previsão vai. Quanto maior, maior a incerteza."),
+    list("Janela de ajuste (treino)", "Os anos usados para o modelo aprender o padrão da série."),
+    list("Teste / validação", "Anos recentes reservados para avaliar quão bem o modelo prevê, antes de confiar na projecção futura."),
+    list("Validação móvel", "Forma de validação que repete a previsão a partir de várias origens e combina os erros. É a mais fiável em séries curtas."),
+    list("Divisão única (treino/teste)", "Forma de validação que reserva os últimos anos uma só vez para testar o modelo."),
+    list("Ajuste dentro da amostra", "Avaliação usando o ajuste à série completa, sem reservar anos. É menos exigente e serve apenas como referência."),
+    list("Retroteste (backtesting)", "Testar a previsão contra anos que realmente já aconteceram."),
+    list("Modelo", "Um método matemático que descreve o padrão da série para o projectar (por exemplo ARIMA, ETS, Holt, Naive). Na Previsão Guiada, a aplicação escolhe um por si."),
+    list("Transformação log", "Um passo opcional que estabiliza séries positivas e evita previsões negativas; a previsão é feita na escala transformada e depois reconvertida."),
+    list("Métricas de erro (RMSE, MAE, MAPE, MASE)", "Números que medem quão longe as previsões ficam dos valores reais; servem para comparar modelos. Valores mais baixos são melhores."),
+    list("Quebra estrutural", "Uma mudança no padrão da série (por exemplo no nível ou na tendência), que pode dever-se a alterações reais, de codificação ou de registo."),
+    list("Resíduos e diagnósticos", "Os resíduos são as diferenças entre o observado e o ajustado; os diagnósticos (ACF, PACF, Ljung-Box) ajudam a verificar se o modelo captou bem o padrão.")
+  )
+
+  data_terms <- list(
+    list("INE", "Instituto Nacional de Estatística, a fonte oficial dos dados de mortalidade e população."),
+    list("Indicador", "Um conjunto de dados específico do INE (por exemplo, óbitos por causa), identificado por um código."),
+    list("Ficheiros RDS", "Dados já preparados e guardados no repositório, que a aplicação lê rapidamente sem consultar o INE em directo."),
+    list("Fonte de dados", "A escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos).")
+  )
+
+  tabPanel(
+    "Glossário",
+    fluidRow(
+      column(
+        width = 10, offset = 1,
+        h2("Glossário"),
+        p("Explicações simples dos termos usados na aplicação. Não é preciso conhecê-los todos para começar."),
+        glossary_section("Conceitos de mortalidade", mortality_terms),
+        glossary_section("Conceitos de previsão", forecast_terms),
+        glossary_section("Dados", data_terms)
       )
     )
   )

@@ -52,7 +52,8 @@ ui <- navbarPage(
   beginner_forecasting_tab_ui(),
   advanced_forecasting_tab_ui(),
   annual_metrics_tab_ui(),
-  data_availability_tab_ui()
+  data_availability_tab_ui(),
+  glossary_tab_ui()
 )
 
 # =========================================================
