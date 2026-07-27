@@ -455,7 +455,11 @@ observed_mortality_tab_ui <- function() {
         tableOutput("rateSummaryTable"),
         downloadButton("downloadRateSummaryCSV", "Descarregar resumo (CSV)"),
         br(),
-        plotOutput("ratePlot", height = "400px"),
+        plotly::plotlyOutput("ratePlot", height = "400px"),
+        helpText(
+          "A zona sombreada mostra o intervalo de confiança de 95% (a incerteza ",
+          "em torno da taxa). Passe o rato sobre um ponto para ver os valores."
+        ),
         br(),
         downloadButton("downloadRatePlot", "Descarregar gráfico (PNG)"),
         br(),
@@ -475,7 +479,12 @@ beginner_forecasting_tab_ui <- function() {
         beginner_forecast_controls_panel()
       ),
       mainPanel(
-        plotOutput("beginnerForecastPlot", height = "400px"),
+        plotly::plotlyOutput("beginnerForecastPlot", height = "400px"),
+        helpText(
+          "Azul: taxa observada usada no ajuste. Cinzento: restante histórico. ",
+          "Linha tracejada e zona sombreada: previsão e a sua incerteza. ",
+          "Passe o rato sobre um ponto para ver os valores."
+        ),
         br(),
         uiOutput("beginnerForecastWarnings"),
         br(),
@@ -596,7 +605,8 @@ advanced_forecast_output_tab_ui <- function() {
     tableOutput("forecastSummaryTable"),
     downloadButton("downloadForecastSummaryCSV", "Descarregar resumo (CSV)"),
     br(),
-    plotOutput("forecastPlot", height = "400px"),
+    plotly::plotlyOutput("forecastPlot", height = "400px"),
+    helpText("Passe o rato sobre um ponto para ver os valores."),
     br(),
     downloadButton("downloadForecastPlot", "Descarregar gráfico (PNG)"),
     br(), br(),

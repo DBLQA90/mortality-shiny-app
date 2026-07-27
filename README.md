@@ -32,6 +32,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Adds 95% uncertainty intervals to annual metric tables and plots where estimable.
 - Adds a base-R dependency installer and first-run package bootstrap.
 - Selects the recommended forecast model from out-of-sample accuracy (rolling validation or a single train/test split, with a user-set test-set percentage), instead of in-sample fit.
+- Renders the forecast and observed-rate charts as interactive `plotly` widgets: hover a point to read the year and value, plus zoom and pan.
 
 ## Running The App
 
@@ -57,6 +58,7 @@ The required runtime packages are:
 - `PHEindicatormethods`
 - `tidyverse`
 - `shiny`
+- `plotly`
 - `forecast`
 - `ineptr2`
 - `strucchange`

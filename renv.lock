@@ -117,6 +117,12 @@
       "Source": "Repository",
       "Repository": "CRAN"
     },
+    "crosstalk": {
+      "Package": "crosstalk",
+      "Version": "1.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
     "curl": {
       "Package": "curl",
       "Version": "7.1.0",
@@ -273,6 +279,12 @@
       "Source": "Repository",
       "Repository": "CRAN"
     },
+    "htmlwidgets": {
+      "Package": "htmlwidgets",
+      "Version": "1.6.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
     "httpuv": {
       "Package": "httpuv",
       "Version": "1.6.17",
@@ -336,6 +348,12 @@
     "later": {
       "Package": "later",
       "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "lazyeval": {
+      "Package": "lazyeval",
+      "Version": "0.2.3",
       "Source": "Repository",
       "Repository": "CRAN"
     },
@@ -408,6 +426,12 @@
     "pkgconfig": {
       "Package": "pkgconfig",
       "Version": "2.0.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "plotly": {
+      "Package": "plotly",
+      "Version": "4.12.1",
       "Source": "Repository",
       "Repository": "CRAN"
     },

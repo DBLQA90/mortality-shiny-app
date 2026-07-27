@@ -2618,8 +2618,19 @@ server <- function(input, output, session) {
     }
   )
   
-  output$ratePlot <- renderPlot({
-    build_observed_rate_plot(observed_history())
+  # Wrap a ggplot as an interactive plotly widget: hovering a point shows the
+  # year and value, plus zoom/pan. The ggplot object is unchanged, so the PNG
+  # download handlers keep using it directly. Note that plotly ignores
+  # labs(caption), so the plain-language captions are repeated as static text
+  # under these plots in the UI.
+  to_interactive_plot <- function(p, tooltip = c("x", "y")) {
+    gp <- plotly::ggplotly(p, tooltip = tooltip)
+    gp <- plotly::layout(gp, hovermode = "closest", margin = list(t = 60))
+    plotly::config(gp, displaylogo = FALSE, modeBarButtonsToRemove = list("lasso2d", "select2d"))
+  }
+
+  output$ratePlot <- plotly::renderPlotly({
+    to_interactive_plot(build_observed_rate_plot(observed_history()))
   })
 
   output$downloadRatePlot <- downloadHandler(
@@ -2719,9 +2730,9 @@ server <- function(input, output, session) {
     })
   }, ignoreNULL = TRUE)
 
-  output$beginnerForecastPlot <- renderPlot({
+  output$beginnerForecastPlot <- plotly::renderPlotly({
     req(input$go_beginner_forecast > 0)
-    build_beginner_forecast_plot(beginner_forecast())
+    to_interactive_plot(build_beginner_forecast_plot(beginner_forecast()))
   })
 
   output$downloadBeginnerForecastPlot <- downloadHandler(
@@ -3108,12 +3119,12 @@ server <- function(input, output, session) {
     }
   )
 
-  output$forecastPlot <- renderPlot({
-    build_advanced_forecast_plot(
+  output$forecastPlot <- plotly::renderPlotly({
+    to_interactive_plot(build_advanced_forecast_plot(
       dat = advanced_forecast_result(),
       view_mode = input$forecast_output_view,
       selected_model = advanced_forecast_focus_model()
-    )
+    ))
   })
   
   output$downloadForecastPlot <- downloadHandler(

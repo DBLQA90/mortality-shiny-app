@@ -83,6 +83,10 @@ Nas análises temporais e nas previsões, a taxa seleccionada define a série a 
 - mortalidade padronizada;
 - mortalidade proporcional, quando aplicável.
 
+### Gráficos Interactivos
+
+Os principais gráficos de taxas e de previsão são interactivos. Passe o rato sobre um ponto para ver o ano e o valor exactos. Pode também aproximar (zoom) uma zona do gráfico arrastando o rato e voltar ao início com os botões da barra de ferramentas que aparece no canto do gráfico. Para guardar uma imagem fixa, use o botão `Descarregar gráfico (PNG)`.
+
 ## 4. Métricas de Mortalidade
 
 ### Óbitos

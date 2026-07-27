@@ -7,6 +7,7 @@ required_packages <- c(
   "PHEindicatormethods",
   "tidyverse",
   "shiny",
+  "plotly",
   "forecast",
   "ineptr2",
   "strucchange",
