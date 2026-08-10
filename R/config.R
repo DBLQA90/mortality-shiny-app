@@ -107,9 +107,38 @@ forecast_model_choices <- c(
 annual_metric_choices <- c(
   "Óbitos" = "deaths",
   "Mortalidade Bruta" = "crude",
-  "Mortalidade Padronizada" = "dsr",
+  "Mortalidade Padronizada (directa, ESP 2013)" = "dsr",
+  "SMR (padronização indirecta, referência = 100)" = "smr",
+  "Taxa Padronizada Indirecta (por 100.000)" = "isr",
   "Mortalidade Proporcional" = "proportional",
   "AVPP" = "ypll"
+)
+
+# Metrics that compare an area against a reference schedule rather than against
+# an external standard population. They need the reference area to be loaded
+# alongside the selected area.
+indirect_metric_ids <- c("smr", "isr")
+
+# Reference geography for indirect standardisation. Portugal is the default so
+# an SMR of 100 always means "national average"; the region is offered for
+# users who want to know whether a municipality is unusual *within* its region.
+smr_reference_choices <- c(
+  "Portugal" = "Portugal",
+  "Norte" = "Norte"
+)
+
+# How regional aggregates (Norte, Alentejo, ...) should be assembled.
+#
+# INE changed the NUTS boundaries in 2024: Lezíria do Tejo moved out of
+# Alentejo, so the regional rows of the current death indicator (0013166,
+# NUTS-2024) are not comparable with the historical indicator (0008206,
+# NUTS-2013) or with the population indicators (NUTS-2013 / NUTS-2002).
+# Municipality boundaries are unaffected, so the two honest options are to
+# rebuild the region from its municipalities or to keep INE's own rows and show
+# the break where it falls.
+region_mode_choices <- c(
+  "Aproximação por municípios (série contínua)" = "municipal",
+  "Dados originais INE (quebra em 2022)" = "original"
 )
 
 data_source_choices <- c(

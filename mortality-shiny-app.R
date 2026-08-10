@@ -33,6 +33,8 @@ for (app_file in c(
   "R/ine_client.R",
   "R/metadata.R",
   "R/metrics.R",
+  "R/standardisation.R",
+  "R/regions.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -2214,7 +2216,44 @@ server <- function(input, output, session) {
     )
   }
 
-  get_annual_area_specs <- function(selected_areas, custom_label = NULL) {
+  # Areas the active data source can actually supply, used to tell an
+  # incomplete municipal rebuild apart from a missing region.
+  get_available_areas <- function(data_source = "ine") {
+    if (!identical(normalize_data_source(data_source), "snapshot")) {
+      return(NULL)
+    }
+
+    tryCatch(
+      {
+        inventory <- get_snapshot_inventory()
+        if (is.null(inventory) || nrow(inventory) == 0) NULL else unique(unlist(inventory$areas, use.names = FALSE))
+      },
+      error = function(e) NULL
+    )
+  }
+
+  # Build one area spec, expanding a region into its municipalities when the
+  # municipal region mode is active. `warnings` carries any incomplete-coverage
+  # message up to the caller so it can be shown rather than swallowed.
+  make_annual_area_spec <- function(label, areas, region_mode, available_areas) {
+    resolved <- resolve_region_areas(
+      areas = areas,
+      region_mode = region_mode,
+      available_areas = available_areas
+    )
+
+    list(
+      label = label,
+      areas = resolved$areas,
+      expanded = resolved$expanded,
+      warnings = resolved$warnings
+    )
+  }
+
+  get_annual_area_specs <- function(selected_areas,
+                                    custom_label = NULL,
+                                    region_mode = "original",
+                                    available_areas = NULL) {
     selected_areas <- setdiff(sort(unique(as.character(selected_areas))), c("Portugal", "Norte"))
 
     validate(
@@ -2222,10 +2261,28 @@ server <- function(input, output, session) {
     )
 
     list(
-      list(label = "Portugal", areas = "Portugal"),
-      list(label = "Norte", areas = "Norte"),
-      list(label = get_selection_label(selected_areas, custom_label), areas = selected_areas)
+      # Portugal is a national total under every NUTS vintage, so it is never
+      # rebuilt from municipalities.
+      list(label = "Portugal", areas = "Portugal", expanded = character(0), warnings = character(0)),
+      make_annual_area_spec("Norte", "Norte", region_mode, available_areas),
+      make_annual_area_spec(
+        get_selection_label(selected_areas, custom_label),
+        selected_areas,
+        region_mode,
+        available_areas
+      )
     )
+  }
+
+  # Years contributing to a pooled value centred on `year`, clipped to the
+  # years the app knows about so an edge window is truncated rather than
+  # requesting data that cannot exist.
+  get_pooled_years <- function(year, window) {
+    window <- normalize_pooling_window(window)
+    half <- (window - 1L) %/% 2L
+    candidate <- seq.int(as.integer(year) - half, as.integer(year) + half)
+
+    sort(intersect(candidate, as.integer(year_of_interest)))
   }
 
   get_annual_metric_label <- function(metric_id) {
@@ -2240,12 +2297,16 @@ server <- function(input, output, session) {
     as.numeric(x[[1]])
   }
 
-  load_annual_cause_data <- function(area_spec, cause, sex, year, metric_id, data_source = "ine") {
-    data <- if (metric_id %in% c("crude", "dsr")) {
+  # Metrics needing a population denominator: rates, direct standardisation and
+  # both indirect measures.
+  annual_metrics_needing_population <- c("crude", "dsr", "smr", "isr")
+
+  load_annual_cause_data <- function(area_spec, cause, sex, years, metric_id, data_source = "ine") {
+    data <- if (metric_id %in% annual_metrics_needing_population) {
       get_data_for(
         area = area_spec$areas,
         cause = cause,
-        years = year,
+        years = years,
         year_order = "desc",
         data_source = data_source
       )$full
@@ -2253,7 +2314,7 @@ server <- function(input, output, session) {
       get_death_data_for(
         area = area_spec$areas,
         cause = cause,
-        years = year,
+        years = years,
         year_order = "desc",
         data_source = data_source
       )
@@ -2263,12 +2324,38 @@ server <- function(input, output, session) {
       dplyr::filter(sex == .env$sex)
   }
 
-  calculate_annual_metric_values <- function(area_spec, causes, metric_id, sex, year, token, data_source = "ine") {
+  # Collapse a multi-year, multi-area selection to one row per age band, which
+  # is the shape every metric below consumes. Deaths and population are summed,
+  # so a pooled denominator is person-years and a multi-area selection is one
+  # combined geography - the same convention the app already uses for areas.
+  collapse_annual_cause_data <- function(cause_data) {
+    cause_data %>%
+      dplyr::group_by(age_band) %>%
+      dplyr::summarise(
+        deaths = sum(deaths, na.rm = TRUE),
+        pop = if ("pop" %in% names(cause_data)) sum(pop, na.rm = TRUE) else NA_real_,
+        .groups = "drop"
+      )
+  }
+
+  calculate_annual_metric_values <- function(area_spec,
+                                             causes,
+                                             metric_id,
+                                             sex,
+                                             year,
+                                             token,
+                                             data_source = "ine",
+                                             pooling_window = 1L,
+                                             reference_areas = "Portugal") {
     abort_if_cancelled("annual", token)
 
     validate(
       need(!is.na(get_annual_metric_label(metric_id)), "Seleccione uma métrica válida.")
     )
+
+    pooling_window <- normalize_pooling_window(pooling_window)
+    years <- get_pooled_years(year, pooling_window)
+    period_label <- make_period_label(min(years), max(years))
 
     all_cause_deaths <- NA_real_
     all_cause_source <- NA_character_
@@ -2276,7 +2363,7 @@ server <- function(input, output, session) {
       all_cause_data <- get_death_data_for(
         area = area_spec$areas,
         cause = "Todas as causas de morte",
-        years = year,
+        years = years,
         year_order = "desc",
         data_source = data_source
       ) %>%
@@ -2302,7 +2389,7 @@ server <- function(input, output, session) {
         area_spec = area_spec,
         cause = cause,
         sex = sex,
-        year = year,
+        years = years,
         metric_id = metric_id,
         data_source = data_source
       )
@@ -2313,6 +2400,10 @@ server <- function(input, output, session) {
 
       deaths <- sum(cause_data$deaths, na.rm = TRUE)
       source_summary <- get_loaded_source_summary(cause_data)
+
+      # Age-band totals across the pooled window and the selected geography,
+      # reused by every metric that works from an age distribution.
+      pooled_bands <- collapse_annual_cause_data(cause_data)
 
       metric_values <- switch(
         metric_id,
@@ -2326,9 +2417,12 @@ server <- function(input, output, session) {
           )
         },
         crude = {
-          metric_row <- compute_metrics(cause_data) %>%
-            dplyr::filter(year == .env$year, sex == .env$sex) %>%
-            dplyr::slice(1)
+          # Computed from the pooled age bands, so a 3- or 5-year window gives
+          # total deaths over total person-years rather than a mean of yearly
+          # rates.
+          metric_row <- compute_metrics(
+            pooled_bands %>% dplyr::mutate(year = .env$year, sex = .env$sex, cause = .env$cause)
+          ) %>% dplyr::slice(1)
           list(
             value = first_numeric_or_na(metric_row$crude_rate),
             lower = first_numeric_or_na(metric_row$crude_lower),
@@ -2337,15 +2431,57 @@ server <- function(input, output, session) {
           )
         },
         dsr = {
-          metric_row <- compute_metrics(cause_data) %>%
-            dplyr::filter(year == .env$year, sex == .env$sex) %>%
-            dplyr::slice(1)
+          metric_row <- compute_metrics(
+            pooled_bands %>% dplyr::mutate(year = .env$year, sex = .env$sex, cause = .env$cause)
+          ) %>% dplyr::slice(1)
           list(
             value = first_numeric_or_na(metric_row$dsr),
             lower = first_numeric_or_na(metric_row$dsr_lower),
             upper = first_numeric_or_na(metric_row$dsr_upper),
             source_detail = glue::glue("Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}")
           )
+        },
+        smr = ,
+        isr = {
+          # Indirect standardisation: the reference area's age-specific rates
+          # are applied to this area's age structure. The reference is loaded
+          # over the same pooled window, cause and sex, so both sides of the
+          # comparison rest on identical data.
+          reference_bands <- collapse_annual_cause_data(
+            load_annual_cause_data(
+              area_spec = list(label = "referência", areas = reference_areas),
+              cause = cause,
+              sex = sex,
+              years = years,
+              metric_id = "smr",
+              data_source = data_source
+            )
+          )
+
+          smr_row <- compute_smr(df_area = pooled_bands, df_ref = reference_bands)
+
+          if (identical(metric_id, "smr")) {
+            list(
+              value = first_numeric_or_na(smr_row$smr),
+              lower = first_numeric_or_na(smr_row$smr_lower),
+              upper = first_numeric_or_na(smr_row$smr_upper),
+              source_detail = glue::glue(
+                "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
+                "Ref.: {paste(reference_areas, collapse = '+')} ",
+                "(O={round(smr_row$observed)}, E={round(smr_row$expected, 1)})"
+              )
+            )
+          } else {
+            list(
+              value = first_numeric_or_na(smr_row$isr),
+              lower = first_numeric_or_na(smr_row$isr_lower),
+              upper = first_numeric_or_na(smr_row$isr_upper),
+              source_detail = glue::glue(
+                "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
+                "Ref.: {paste(reference_areas, collapse = '+')}"
+              )
+            )
+          }
         },
         proportional = {
           ci <- compute_proportion_interval(deaths, all_cause_deaths)
@@ -2373,6 +2509,8 @@ server <- function(input, output, session) {
         cause = cause,
         metric_id = metric_id,
         metric = metric_label,
+        period = period_label,
+        n_years = length(years),
         value = metric_values$value,
         lower = metric_values$lower,
         upper = metric_values$upper,
@@ -2384,7 +2522,7 @@ server <- function(input, output, session) {
   round_annual_metric_value <- function(metric_id, value) {
     dplyr::case_when(
       metric_id %in% c("deaths", "ypll") ~ round(value, 0),
-      metric_id == "proportional" ~ round(value, 1),
+      metric_id %in% c("proportional", "smr", "isr") ~ round(value, 1),
       TRUE ~ round(value, 2)
     )
   }
@@ -2468,7 +2606,19 @@ server <- function(input, output, session) {
 
     validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma causa de morte para apresentar."))
 
-    ggplot(plot_df, aes(x = cause, y = value, fill = location)) +
+    period_text <- if ("period" %in% names(plot_df)) {
+      periods <- unique(as.character(plot_df$period))
+      n_years <- if ("n_years" %in% names(plot_df)) max(plot_df$n_years, na.rm = TRUE) else 1L
+      if (length(periods) == 1 && n_years > 1) {
+        glue::glue("{periods} ({n_years} anos agregados, pessoas-ano)")
+      } else {
+        paste(periods, collapse = ", ")
+      }
+    } else {
+      NULL
+    }
+
+    plot <- ggplot(plot_df, aes(x = cause, y = value, fill = location)) +
       geom_col(position = position_dodge(width = 0.72), width = 0.65) +
       geom_errorbar(
         aes(ymin = lower, ymax = upper),
@@ -2476,10 +2626,20 @@ server <- function(input, output, session) {
         width = 0.2,
         linewidth = 0.4,
         na.rm = TRUE
-      ) +
+      )
+
+    # An SMR is read against its reference, so draw the reference line rather
+    # than leaving the reader to judge 100 by eye.
+    if (identical(selected_metric, "smr")) {
+      plot <- plot +
+        geom_hline(yintercept = 100, linetype = "dashed", colour = "#0b2e4f", linewidth = 0.5)
+    }
+
+    plot +
       coord_flip() +
       labs(
         title = paste(unique(plot_df$metric), "por causa de morte"),
+        subtitle = period_text,
         x = NULL,
         y = unique(plot_df$metric)
       ) +
@@ -2802,19 +2962,47 @@ server <- function(input, output, session) {
       need(length(selected_metric) == 1, "Seleccione uma métrica.")
     )
 
-    area_specs <- get_annual_area_specs(input$annual_area, input$annual_area_label)
+    pooling_window <- normalize_pooling_window(input$annual_pooling)
+    region_mode <- normalize_region_mode(input$annual_region_mode)
+    reference_areas <- value_or_default(input$annual_smr_reference, "Portugal")
+    pooled_years <- get_pooled_years(year, pooling_window)
+
+    area_specs <- get_annual_area_specs(
+      selected_areas = input$annual_area,
+      custom_label = input$annual_area_label,
+      region_mode = region_mode,
+      available_areas = get_available_areas(input$annual_data_source)
+    )
     annual_causes_needed <- unique(c(
       selected_causes,
       if (selected_metric %in% "proportional") "Todas as causas de morte" else character(0)
     ))
-    annual_areas_needed <- sort(unique(unlist(lapply(area_specs, `[[`, "areas"), use.names = FALSE)))
+    annual_areas_needed <- sort(unique(unlist(
+      c(lapply(area_specs, `[[`, "areas"),
+        if (selected_metric %in% indirect_metric_ids) list(reference_areas) else NULL),
+      use.names = FALSE
+    )))
+
+    # Surface any incomplete municipal rebuild, and the NUTS-2024 break when
+    # the user chose to keep INE's own regional rows.
+    for (message_text in unique(unlist(lapply(area_specs, `[[`, "warnings"), use.names = FALSE))) {
+      showNotification(message_text, type = "warning", duration = 15)
+    }
+    vintage_warning <- region_vintage_warning(
+      areas = unique(c("Norte", as.character(input$annual_area))),
+      years = pooled_years,
+      region_mode = region_mode
+    )
+    if (!is.null(vintage_warning)) {
+      showNotification(vintage_warning, type = "warning", duration = 20)
+    }
 
     notify_snapshot_request_warnings(
-      years = year,
+      years = pooled_years,
       areas = annual_areas_needed,
       causes = annual_causes_needed,
       data_source = input$annual_data_source,
-      include_population = selected_metric %in% c("crude", "dsr"),
+      include_population = selected_metric %in% annual_metrics_needing_population,
       include_deaths = TRUE
     )
 
@@ -2831,7 +3019,9 @@ server <- function(input, output, session) {
               sex = input$annual_sex,
               year = year,
               token = token,
-              data_source = input$annual_data_source
+              data_source = input$annual_data_source,
+              pooling_window = pooling_window,
+              reference_areas = reference_areas
             )
           })) %>%
             dplyr::mutate(sort_location = area_specs[[3]]$label)

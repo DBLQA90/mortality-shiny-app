@@ -50,6 +50,35 @@ models_help <- function() {
 confidence_help <- function() {
   helpText("Largura do intervalo de incerteza apresentado. 95% é o valor habitual.")
 }
+annual_metric_help <- function() {
+  helpText(
+    "Padronizada (directa): compara com a população-padrão europeia; instável ",
+    "em concelhos pequenos. SMR (indirecta): compara os óbitos observados com ",
+    "os esperados se o local tivesse as taxas da referência — 100 = igual à ",
+    "referência. É a métrica indicada para concelhos com poucos óbitos."
+  )
+}
+smr_reference_help <- function() {
+  helpText(
+    "As taxas por idade desta referência são aplicadas à estrutura etária de ",
+    "cada local para calcular os óbitos esperados."
+  )
+}
+pooling_help <- function() {
+  helpText(
+    "Soma óbitos e população de vários anos (denominador em pessoas-ano) para ",
+    "estabilizar concelhos pequenos e causas raras. Reduz a largura dos ",
+    "intervalos, mas suaviza variações anuais reais."
+  )
+}
+region_mode_help <- function() {
+  helpText(
+    "O INE mudou as fronteiras NUTS em 2024 (a Lezíria do Tejo saiu do ",
+    "Alentejo). 'Aproximação por municípios' soma sempre os mesmos concelhos, ",
+    "dando uma série contínua; 'Dados originais INE' mantém as linhas do INE e ",
+    "assinala a quebra em 2022."
+  )
+}
 transform_help <- function() {
   helpText(
     "A transformação log estabiliza séries positivas e evita previsões negativas; ",
@@ -535,6 +564,31 @@ annual_metrics_tab_ui <- function() {
           choices = annual_metric_choices,
           selected = "deaths"
         ),
+        annual_metric_help(),
+        conditionalPanel(
+          "input.annual_metric == 'smr' || input.annual_metric == 'isr'",
+          selectInput(
+            "annual_smr_reference",
+            "Referência da padronização indirecta:",
+            choices = smr_reference_choices,
+            selected = "Portugal"
+          ),
+          smr_reference_help()
+        ),
+        selectInput(
+          "annual_pooling",
+          "Agregação plurianual:",
+          choices = POOLING_WINDOW_CHOICES,
+          selected = "1"
+        ),
+        pooling_help(),
+        selectInput(
+          "annual_region_mode",
+          "Regiões (Norte / Alentejo):",
+          choices = region_mode_choices,
+          selected = "municipal"
+        ),
+        region_mode_help(),
         data_source_input("annual_data_source"),
         actionButton("go_annual_metrics", "Carregar métricas"),
         br(), br(),

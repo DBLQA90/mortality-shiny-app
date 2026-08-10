@@ -33,6 +33,9 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Adds a base-R dependency installer and first-run package bootstrap.
 - Selects the recommended forecast model from out-of-sample accuracy (rolling validation or a single train/test split, with a user-set test-set percentage), instead of in-sample fit.
 - Renders the forecast and observed-rate charts as interactive `plotly` widgets: hover a point to read the year and value, plus zoom and pan.
+- Adds indirect standardisation: `SMR` (reference = 100) and an indirectly standardised rate per 100,000, with Byar/exact-Poisson intervals and a significance flag against the reference. This is the metric to use for small municipalities, where direct standardisation is unstable or unestimable.
+- Adds selectable 3- and 5-year pooling for the annual comparison, summing deaths and person-years so sparse local series become readable without averaging annual rates.
+- Adds a region mode for the NUTS-2024 boundary change: rebuild `Norte`/`Alentejo` from their municipalities for a continuous series, or keep INE's own rows with an explicit warning about the 2022 break.
 
 ## Running The App
 
@@ -95,6 +98,8 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 - `R/ine_client.R`: INE metadata and live data download helpers.
 - `R/snapshots.R`: flat/chunked RDS readers, source priority handling, and snapshot inventory helpers.
 - `R/metrics.R`: mortality-rate, direct-standardisation, and AVPP calculations.
+- `R/standardisation.R`: indirect standardisation (SMR/ISR) and multi-year pooling (unit tested).
+- `R/regions.R`: NUTS vintage handling and municipal rebuilds of regional aggregates (unit tested).
 - `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers (unit tested).
 - `R/data_access.R`: shared data assembly for snapshot and live INE sources.
 - `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
@@ -229,9 +234,15 @@ Available metrics:
 
 - deaths
 - crude mortality
-- standardised mortality
+- directly standardised mortality (ESP 2013)
+- SMR, indirectly standardised against a selectable reference (`Portugal` or `Norte`), expressed with the reference as 100
+- indirectly standardised rate per 100,000
 - proportional mortality, using all-cause deaths as the denominator for each location
 - years of potential life lost before age 70
+
+Each metric can be computed for a single year or pooled over a rolling 3- or
+5-year window. The region control chooses whether `Norte` and `Alentejo` are
+rebuilt from their municipalities or read from INE's own rows.
 
 Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
