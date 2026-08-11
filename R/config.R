@@ -26,7 +26,7 @@ fallback_local_area <- c(
   "Azambuja", "Baião", "Barcelos", "Barrancos", "Barreiro", "Batalha", "Beja",
   "Belmonte", "Benavente", "Bombarral", "Borba", "Boticas", "Braga",
   "Bragança", "Cabeceiras de Basto", "Cadaval", "Caldas da Rainha",
-  "Calheta", "Câmara de Lobos", "Caminha", "Campo Maior", "Cantanhede",
+  "Calheta (R.A.A.)", "Calheta (R.A.M.)", "Câmara de Lobos", "Caminha", "Campo Maior", "Cantanhede",
   "Carrazeda de Ansiães", "Carregal do Sal", "Cartaxo", "Cascais",
   "Castanheira de Pêra", "Castelo Branco", "Castelo de Paiva", "Castelo de Vide",
   "Castro Daire", "Castro Marim", "Castro Verde", "Celorico da Beira",
@@ -38,7 +38,7 @@ fallback_local_area <- c(
   "Figueiró dos Vinhos", "Fornos de Algodres", "Freixo de Espada à Cinta",
   "Fronteira", "Funchal", "Fundão", "Gavião", "Góis", "Golegã", "Gondomar",
   "Gouveia", "Grândola", "Guarda", "Guimarães", "Horta", "Idanha-a-Nova",
-  "Ílhavo", "Lagoa", "Lagos", "Lajes das Flores", "Lajes do Pico", "Lamego",
+  "Ílhavo", "Lagoa", "Lagoa (R.A.A.)", "Lagos", "Lajes das Flores", "Lajes do Pico", "Lamego",
   "Leiria", "Lisboa", "Loulé", "Loures", "Lourinhã", "Lousã", "Lousada",
   "Mação", "Macedo de Cavaleiros", "Machico", "Madalena", "Mafra", "Maia",
   "Mangualde", "Manteigas", "Marco de Canaveses", "Marinha Grande", "Marvão",
@@ -107,9 +107,38 @@ forecast_model_choices <- c(
 annual_metric_choices <- c(
   "Óbitos" = "deaths",
   "Mortalidade Bruta" = "crude",
-  "Mortalidade Padronizada" = "dsr",
+  "Mortalidade Padronizada (directa, ESP 2013)" = "dsr",
+  "SMR (padronização indirecta, referência = 100)" = "smr",
+  "Taxa Padronizada Indirecta (por 100.000)" = "isr",
   "Mortalidade Proporcional" = "proportional",
   "AVPP" = "ypll"
+)
+
+# Metrics that compare an area against a reference schedule rather than against
+# an external standard population. They need the reference area to be loaded
+# alongside the selected area.
+indirect_metric_ids <- c("smr", "isr")
+
+# Reference geography for indirect standardisation. Portugal is the default so
+# an SMR of 100 always means "national average"; the region is offered for
+# users who want to know whether a municipality is unusual *within* its region.
+smr_reference_choices <- c(
+  "Portugal" = "Portugal",
+  "Norte" = "Norte"
+)
+
+# How regional aggregates (Norte, Alentejo, ...) should be assembled.
+#
+# INE changed the NUTS boundaries in 2024: Lezíria do Tejo moved out of
+# Alentejo, so the regional rows of the current death indicator (0013166,
+# NUTS-2024) are not comparable with the historical indicator (0008206,
+# NUTS-2013) or with the population indicators (NUTS-2013 / NUTS-2002).
+# Municipality boundaries are unaffected, so the two honest options are to
+# rebuild the region from its municipalities or to keep INE's own rows and show
+# the break where it falls.
+region_mode_choices <- c(
+  "Aproximação por municípios (série contínua)" = "municipal",
+  "Dados originais INE (quebra em 2022)" = "original"
 )
 
 data_source_choices <- c(

@@ -26,6 +26,86 @@ Users can select one or more local areas. When more than one local area is selec
 
 `Portugal` and `Norte` are used as fixed comparator geographies in the annual metrics tab.
 
+### Ambiguous INE Labels
+
+The snapshot builders resolve a geography through the INE category *label*.
+Several labels are not unique, and when a label matches more than one category
+the download returns all of them and they are summed into one row. Three cases
+affect this archive:
+
+| Indicator | Label | Matches | Consequence |
+|---|---|---|---|
+| `0003182` | `Lisboa` | region `17` + município `1711106` | 1991-2013 population is region + município |
+| `0008206`, `0008273` | `Calheta` | `2004501` (Açores) + `3003101` (Madeira) | two municipalities added together |
+| `0008206`, `0008273` | `Lagoa` | `1500806` (Algarve) + `2004201` (Açores) | two municipalities added together |
+
+`Lisboa` is the damaging one. Deaths are always the município, so dividing them
+by a denominator that also contains the region understates Lisboa's mortality
+roughly six-fold for 1991-2013, and produces a spurious six-fold jump at the
+2013/2014 source seam (crude rate ~211 per 100,000 in 2013 against ~1,231 in
+2015). Any trend or forecast covering those years is affected.
+
+A scan of all 308 areas across the 2013/2014 seam found exactly these
+discontinuities, with a median population ratio of 1.0139 elsewhere, so the
+rest of the archive is unaffected.
+
+`0008273` and `0013166` name the Lisbon region `Área Metropolitana de Lisboa`,
+so `Lisboa` is unambiguous there and population from 2014 onward is correct.
+
+The repair requests each affected geography by its unique category code and
+stores it under an unambiguous label, splitting the conflated municipalities
+into `Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa` (Algarve) and
+`Lagoa (R.A.A.)`:
+
+```sh
+Rscript tools/fix_ambiguous_areas.R            # add dry_run=true to preview
+```
+
+Until that repair has run against a given archive, `Lisboa` before 2014 and
+both `Calheta` and `Lagoa` should not be used.
+
+### NUTS Vintages And Regional Aggregates
+
+The four source indicators do not share one geography version:
+
+| Indicator | Role | Geography | Years |
+|---|---|---|---|
+| `0003182` | population | NUTS-2002 | 1991-2013 |
+| `0008273` | population | NUTS-2013 | 2011-2023 |
+| `0008206` | deaths | NUTS-2013 | 1980-2022 |
+| `0013166` | deaths | NUTS-2024 | 2022-2024 |
+
+Municipality boundaries are identical across all three vintages, but the
+regional groupings are not: NUTS-2024 moved Lezíria do Tejo out of `Alentejo`
+into the new `Oeste e Vale do Tejo`. Reading INE's own regional rows across the
+2022 seam therefore compares two different Alentejos. For 2022 all-cause deaths
+`0008206` reports 11,327 and `0013166` reports 7,898, and because the app
+prefers the newer indicator while population remains NUTS-2013, the regional
+rate is understated by roughly 30%. `Portugal` and `Norte` are unaffected -
+they are identical under both vintages.
+
+The `Regiões` control offers the two honest responses:
+
+- `Aproximação por municípios` rebuilds the region by summing its
+  municipalities, using one fixed NUTS-2024 membership list for every year.
+  Regions are unions of whole municipalities, so no parish-level data is
+  needed. The series is continuous and means "this region as defined today".
+  Where a municipality cannot be matched by name the shortfall is reported, not
+  absorbed silently.
+- `Dados originais INE` keeps INE's own regional rows and warns when the
+  selected years span 2022, leaving the change of definition visible.
+
+The difference is not cosmetic. For Alentejo in 2022, against Portugal, the
+original rows give an SMR of 77.7 - implying below-average mortality in the
+country's oldest region - while the municipal rebuild gives 113.3.
+
+Municipality membership is read from `data/nuts_lookup.rds`, derived from INE's
+own hierarchical geography codes and rebuilt with:
+
+```sh
+Rscript tools/build_nuts_lookup.R
+```
+
 ## Age Groups
 
 The app harmonises INE age bands into these groups:
@@ -103,6 +183,72 @@ The multiplier is 100,000 and confidence intervals are requested at 95%.
 `calculate_dsr()` normalises by the sum of the supplied standard weights. For the all-age scope this is the full ESP-2013 (weights summing to 100,000). For the `Menos de 75 anos` scope only the 0-74 age bands are supplied, so the routine returns the conventional premature-mortality rate standardised to the ESP-2013 0-74 sub-population. This under-75 rate is a valid rate per 100,000, but it uses a different standard age structure from the all-age rate, so the two are not directly comparable. The app makes this explicit by labelling the under-75 standardised rate as `padrão ESP 0-74` rather than rescaling it onto the all-age standard.
 
 If the direct-standardisation routine cannot estimate a valid interval for very sparse selected data, the app reports the value as unavailable rather than silently substituting another method.
+
+### Indirect Standardisation (SMR and ISR)
+
+Direct standardisation needs stable age-specific rates in the area being
+standardised. In a small municipality most age bands contain one or two deaths,
+so the directly standardised rate becomes unstable, its interval very wide, and
+for the sparsest selections `calculate_dsr()` cannot estimate an interval at
+all. Indirect standardisation is the conventional alternative for small-area
+comparison and is offered as the `SMR` and `Taxa Padronizada Indirecta`
+metrics.
+
+Expected deaths apply the reference area's age-specific rates to the local age
+structure:
+
+```text
+expected = sum(local population in band i * reference deaths in band i / reference population in band i)
+SMR      = observed / expected * 100
+```
+
+An SMR of 100 means the area experienced exactly the number of deaths expected
+if it had the reference area's age-specific rates. The reference is selectable
+(`Portugal` by default, `Norte` also available) and is loaded for the same
+period, sex and cause as the area being compared, so both sides of the ratio
+rest on identical data.
+
+Intervals come from `PHEindicatormethods::calculate_ISRatio()`, which uses
+Byar's method and exact Poisson limits below 10 observed deaths. The app also
+reports whether the interval excludes the reference value, as
+`Acima da referência`, `Abaixo da referência` or
+`Sem diferença significativa`.
+
+`Taxa Padronizada Indirecta` is the same comparison expressed as a rate per
+100,000: the SMR multiplied by the reference crude rate. It carries no extra
+information beyond the SMR, but puts the result on a scale that can be read
+next to the crude and directly standardised rates.
+
+Age bands present locally but absent from the reference cannot produce an
+expected count. They are excluded and named in the result rather than being
+silently treated as zero risk.
+
+### Multi-Year Pooling
+
+Any metric can be computed over a rolling 3- or 5-year window instead of a
+single year. Deaths and population are both summed over the window, so the
+denominator becomes person-years and the pooled value stays a valid rate:
+
+```text
+pooled rate = sum(deaths over window) / sum(population over window) * 100,000
+```
+
+This is not the mean of the annual rates, which would weight small years
+equally with large ones. Windows are centred on the target year. At the ends of
+the series the window is truncated rather than dropped, so the most recent year
+stays visible; the reported period label names the real span and `n_years`
+records how many years actually contributed.
+
+Pooling trades resolution for stability. For Barrancos, all causes, 2022, the
+single-year SMR is 213.9 (153.5-290.2); pooled over 2018-2022 it is 145.2
+(123.1-170.1) - an interval roughly a third as wide, showing that 2022 was an
+unusually bad year rather than the local level. Genuine year-to-year signal is
+smoothed away in the same operation, so pooled and annual values answer
+different questions.
+
+Pooling applies to the annual comparison tab. Forecasting always uses unpooled
+annual series, because a moving-average filter induces autocorrelation that
+would invalidate the forecast intervals.
 
 ### Proportional Mortality
 

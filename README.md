@@ -33,6 +33,9 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Adds a base-R dependency installer and first-run package bootstrap.
 - Selects the recommended forecast model from out-of-sample accuracy (rolling validation or a single train/test split, with a user-set test-set percentage), instead of in-sample fit.
 - Renders the forecast and observed-rate charts as interactive `plotly` widgets: hover a point to read the year and value, plus zoom and pan.
+- Adds indirect standardisation: `SMR` (reference = 100) and an indirectly standardised rate per 100,000, with Byar/exact-Poisson intervals and a significance flag against the reference. This is the metric to use for small municipalities, where direct standardisation is unstable or unestimable.
+- Adds selectable 3- and 5-year pooling for the annual comparison, summing deaths and person-years so sparse local series become readable without averaging annual rates.
+- Adds a region mode for the NUTS-2024 boundary change: rebuild `Norte`/`Alentejo` from their municipalities for a continuous series, or keep INE's own rows with an explicit warning about the 2022 break.
 
 ## Running The App
 
@@ -95,6 +98,8 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 - `R/ine_client.R`: INE metadata and live data download helpers.
 - `R/snapshots.R`: flat/chunked RDS readers, source priority handling, and snapshot inventory helpers.
 - `R/metrics.R`: mortality-rate, direct-standardisation, and AVPP calculations.
+- `R/standardisation.R`: indirect standardisation (SMR/ISR) and multi-year pooling (unit tested).
+- `R/regions.R`: NUTS vintage handling and municipal rebuilds of regional aggregates (unit tested).
 - `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers (unit tested).
 - `R/data_access.R`: shared data assembly for snapshot and live INE sources.
 - `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
@@ -229,9 +234,15 @@ Available metrics:
 
 - deaths
 - crude mortality
-- standardised mortality
+- directly standardised mortality (ESP 2013)
+- SMR, indirectly standardised against a selectable reference (`Portugal` or `Norte`), expressed with the reference as 100
+- indirectly standardised rate per 100,000
 - proportional mortality, using all-cause deaths as the denominator for each location
 - years of potential life lost before age 70
+
+Each metric can be computed for a single year or pooled over a rolling 3- or
+5-year window. The region control chooses whether `Norte` and `Alentejo` are
+rebuilt from their municipalities or read from INE's own rows.
 
 Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
@@ -298,6 +309,41 @@ Optional environment variables:
 - `MORTALITY_DATA_CACHE_MAX_AGE`: data cache age in seconds, default 7 days
 
 If an INE request fails but a stale cached file exists, the app will use the stale file and show a warning.
+
+## Snapshot Maintenance
+
+`.github/workflows/refresh-snapshots.yml` runs the snapshot maintenance tasks on
+a GitHub runner, weekly and on demand. The work is almost entirely spent waiting
+on INE, and the driver is resumable: each run makes what progress fits in its
+time budget, commits it, and the next run continues.
+
+```sh
+Rscript tools/refresh_snapshots.R task=all minutes=300
+```
+
+| Task | What it does |
+|---|---|
+| `fixareas` | Repairs geographies stored under an ambiguous INE label (`Lisboa`, `Calheta`, `Lagoa`) by refetching them by category code |
+| `deaths2024` | Asks INE which death years exist and fetches those the archive lacks |
+| `nuts2` | Backfills regional rows, for the `Dados originais INE` region mode only |
+| `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
+| `inventory` | Rebuilds the snapshot manifest |
+
+Note that INE publishes no municipality-level population by age and sex beyond
+2023, so 2024 supports counts, proportional mortality and AVPP but not rates.
+
+## Known Issues
+
+- Until `fixareas` has run, `Lisboa` population before 2014 is the NUTS-2002
+  region rather than the município, understating its mortality about six-fold
+  for 1991-2013; and `Calheta` and `Lagoa` each conflate two municipalities.
+  See [METHODOLOGY.md](METHODOLOGY.md) for the diagnosis.
+- The area list names the disambiguated municipalities
+  (`Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa (R.A.A.)`). These have no data
+  until `fixareas` has run against the archive.
+- Municipal region rebuilds covering 1991-2013 inherit the `Lisboa` defect, so
+  any region containing Lisboa is overstated for those years until the repair
+  runs. Regions without Lisboa, including `Norte` and `Alentejo`, are unaffected.
 
 ## Limitations
 
