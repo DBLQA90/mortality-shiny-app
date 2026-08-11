@@ -58,11 +58,29 @@ jobs:
         run: |
           install.packages(
             setdiff(
-              c("dplyr", "tibble", "tidyr", "purrr", "glue", "ineptr2", "memoise", "cachem"),
+              # tidyverse is needed by tools/update_snapshot_inventory.R, which
+              # loads it wholesale; omitting it failed the inventory rebuild.
+              c("dplyr", "tibble", "tidyr", "purrr", "glue", "ineptr2", "memoise", "cachem", "tidyverse"),
               rownames(installed.packages())
             )
           )
         shell: Rscript {0}
+
+      # INE refuses connections from GitHub's hosted runners: every request from
+      # an Azure IP times out after ~135 s while the same call answers in under
+      # two seconds elsewhere. Fail fast and clearly rather than burning the
+      # whole time budget on connection timeouts. Use a self-hosted runner on a
+      # network INE will serve, or run tools/refresh_snapshots.R locally.
+      - name: Check INE is reachable
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+            "https://www.ine.pt/ine/json_indicador/pindicaMeta.jsp?varcd=0013166&lang=PT" || echo 000)
+          echo "INE metadata endpoint returned: $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::INE is not reachable from this runner (HTTP $code)." \
+                 "Hosted GitHub runners are blocked; run this job on a self-hosted runner or locally."
+            exit 1
+          fi
 
       - name: Refresh snapshots
         env:

@@ -1,46 +1,62 @@
 # Snapshot refresh status
 
-Last run: 2026-08-11 15:33:42 UTC
-Task: `all`  |  Duration: 30.6 min
+Last run: 2026-08-11 17:07:24 WEST
+Task: `all`  |  Duration: 38.7 min
 
 ```
-[15:33:42] Refresh started; task=all, budget=300 min
-[15:33:42] == Task: repair ambiguous geographies ==
-[15:33:42] -> fix ambiguous areas (Lisboa, Calheta, Lagoa)
-   ! Timeout was reached [www.ine.pt]:
-   Failed to connect to www.ine.pt port 443 after 135149 ms: Couldn't connect to server
-     0008206 Calheta (R.A.M.): no overlapping years in archive; skipped.
-   Failed to perform HTTP request.
-   Caused by error in `curl::curl_fetch_memory()`:
-   ! Timeout was reached [www.ine.pt]:
-   Failed to connect to www.ine.pt port 443 after 135148 ms: Couldn't connect to server
-     0008206 Lagoa: no overlapping years in archive; skipped.
-   Failed to perform HTTP request.
-   Caused by error in `curl::curl_fetch_memory()`:
-   ! Timeout was reached [www.ine.pt]:
-   Failed to connect to www.ine.pt port 443 after 135145 ms: Couldn't connect to server
-     0008206 Lagoa (R.A.A.): no overlapping years in archive; skipped.
+[17:07:24] Refresh started; task=all, budget=150 min
+[17:07:24] == Task: repair ambiguous geographies ==
+[17:07:24] -> fix ambiguous areas (Lisboa, Calheta, Lagoa)
+      2010: ok (66 cause files from 1 request)
+      2011: ok (66 cause files from 1 request)
+      2012: ok (66 cause files from 1 request)
+      2013: ok (66 cause files from 1 request)
+      2014: ok (66 cause files from 1 request)
+      2015: ok (66 cause files from 1 request)
+      2016: ok (66 cause files from 1 request)
+      2017: ok (66 cause files from 1 request)
+      2018: ok (66 cause files from 1 request)
+      2019: ok (66 cause files from 1 request)
+      2020: ok (66 cause files from 1 request)
+      2021: ok (66 cause files from 1 request)
+      2022: ok (66 cause files from 1 request)
    
-   Repaired 0 chunk(s); 0 already correct; 0 failed.
-[15:46:14]    done
-[15:46:14] == Task: latest death years ==
-[15:48:29] Could not read INE years for 0013166: Failed to retrieve metadata for indicator '0013166'.
-ℹ The API may be unavailable.
-[15:48:29] No missing death years for 0013166.
-[15:48:29] == Task: ambiguous municipality labels ==
-[15:57:30] == Task: regional (NUTS II) rows ==
-[15:57:30] Note: rarely needed. Years fetched by fetch_death_year.R already include INE's regional rows, because the all-areas response carries every NUTS level; and the municipal region mode derives regions by summing municipalities. This task only backfills regions into older chunks that were built area-by-area.
-[15:59:45] Could not read INE geographies for 0013166: Failed to retrieve metadata for indicator '0013166'.
-ℹ The API may be unavailable.
-[16:02:00] Could not read INE geographies for 0008206: Failed to retrieve metadata for indicator '0008206'.
-ℹ The API may be unavailable.
-[16:04:15] Could not read INE geographies for 0008273: Failed to retrieve metadata for indicator '0008273'.
-ℹ The API may be unavailable.
-[16:04:15] == Task: rebuild inventory ==
-[16:04:15] -> snapshot inventory
-   Error in library(tidyverse) : there is no package called ‘tidyverse’
-   Calls: suppressPackageStartupMessages -> withCallingHandlers -> library
-   Execution halted
-[16:04:16]    FAILED (exit 1)
-[16:04:16] Finished in 30.6 min.
+   Repaired 8580 chunk(s); 0 already correct; 0 failed.
+[17:40:56]    done
+[17:40:56] == Task: latest death years ==
+[17:40:57] Missing years: 2024
+[17:40:57] -> deaths 0013166 2024
+   Fetching 0013166 2024: 66 causes, all areas (1 request each)
+     10 causes written ...
+     20 causes written ...
+     30 causes written ...
+     40 causes written ...
+     50 causes written ...
+     60 causes written ...
+   Done: 66 written, 0 already present, 0 failed.
+[17:45:24]    done
+[17:45:24] == Task: ambiguous municipality labels ==
+[17:45:25] 0008206: Lagoa (1500806); Calheta (2004501); Lagoa (2004201); Calheta (3003101)  <-- AMBIGUOUS: Calheta, Lagoa
+[17:45:26] 0013166: Lagoa (1500806); Calheta (R.A.A.) (2004501); Lagoa (R.A.A.) (2004201); Calheta (R.A.M.) (3003101)  <-- unambiguous
+[17:45:26] 0008273: Lagoa (1500806); Calheta (2004501); Lagoa (2004201); Calheta (3003101)  <-- AMBIGUOUS: Calheta, Lagoa
+[17:45:27] 0003182: Lagoa (1500806); Calheta (R.A.A.) (2004501); Lagoa (R.A.A) (2004201); Calheta (R.A.M.) (3003101)  <-- unambiguous
+[17:45:27] Wrote data/snapshots/ambiguous_areas.rds
+[17:45:27] == Task: regional (NUTS II) rows ==
+[17:45:27] Note: rarely needed. Years fetched by fetch_death_year.R already include INE's regional rows, because the all-areas response carries every NUTS level; and the municipal region mode derives regions by summing municipalities. This task only backfills regions into older chunks that were built area-by-area.
+[17:45:27] 0013166 regions: Continente | Norte | Centro | Oeste e Vale do Tejo | Grande Lisboa | Península de Setúbal | Alentejo | Algarve | Região Autónoma dos Açores | Região Autónoma da Madeira
+[17:45:27] -> regional deaths 0013166
+   ERROR: error in running command
+[17:45:27]    done
+[17:45:28] 0008206 regions: Continente | Norte | Centro | Área Metropolitana de Lisboa | Alentejo | Algarve | Região Autónoma dos Açores | Região Autónoma da Madeira
+[17:45:28] -> regional deaths 0008206
+   ERROR: error in running command
+[17:45:28]    done
+[17:45:28] -> regional population
+   ERROR: error in running command
+[17:45:28]    done
+[17:45:28] == Task: rebuild inventory ==
+[17:45:28] -> snapshot inventory
+   Wrote 2343 snapshot inventory rows to /home/dblqa/Desktop/DGS/Mortality/scripts/mortality-app-smr/data/snapshots/snapshot_inventory.rdsPopulation chunks: 33; death chunks: 2310
+[17:46:06]    done
+[17:46:06] Finished in 38.7 min.
 ```

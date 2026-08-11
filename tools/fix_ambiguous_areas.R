@@ -80,6 +80,7 @@ repairs <- tibble::tribble(
   "population", "0003182",  "1711106",  "Lisboa",      "Lisboa",                1991L,    2013L,
   "population", "0003182",  "2004501",  "Calheta",     "Calheta (R.A.A.)",      1991L,    2013L,
   "population", "0003182",  "3003101",  "Calheta",     "Calheta (R.A.M.)",      1991L,    2013L,
+  "population", "0003182",  "1500806",  "Lagoa",       "Lagoa",                 1991L,    2013L,
   "population", "0003182",  "2004201",  "Lagoa",       "Lagoa (R.A.A.)",        1991L,    2013L,
   "population", "0008273",  "2004501",  "Calheta",     "Calheta (R.A.A.)",      2014L,    2100L,
   "population", "0008273",  "3003101",  "Calheta",     "Calheta (R.A.M.)",      2014L,    2100L,
@@ -94,6 +95,25 @@ repairs <- tibble::tribble(
 if (!identical(dataset_filter, "all")) {
   repairs <- repairs %>% dplyr::filter(dataset == dataset_filter)
 }
+
+# Optional single-code filter, for re-running one geography without redoing the
+# whole archive.
+code_filter <- get_arg("code", "")
+if (nzchar(code_filter)) {
+  repairs <- repairs %>% dplyr::filter(code == code_filter)
+}
+
+# Which labels each stored_label group produces. When the ambiguous label is
+# itself one of the outputs - "Lagoa" splits into "Lagoa" (Algarve) and
+# "Lagoa (R.A.A.)" - a repair must NOT clear rows by stored_label, or it would
+# delete the sibling repair's freshly written result. Clearing its own label is
+# always enough in that case, because the stale ambiguous row carries that same
+# name. Where the ambiguous label survives in no output ("Calheta" becomes
+# "Calheta (R.A.A.)" and "Calheta (R.A.M.)") it must still be cleared explicitly.
+repairs <- repairs %>%
+  dplyr::group_by(dataset, indicator, stored_label) %>%
+  dplyr::mutate(stored_label_is_output = stored_label %in% label) %>%
+  dplyr::ungroup()
 
 message("Ambiguous-area repair")
 message("  Repairs queued: ", nrow(repairs))
@@ -136,6 +156,11 @@ archive_years <- function(dataset, indicator) {
 
 # The two population indicators cover different periods; only touch a year the
 # indicator in question is actually the source for.
+# Returns NULL - not integer(0) - when the metadata cannot be read, so that an
+# unreachable API is never mistaken for "this indicator has no such years".
+# The first version swallowed connection timeouts into an empty year set and
+# reported "no overlapping years in archive; skipped", which made a total
+# network failure look like a completed no-op.
 indicator_years <- function(indicator) {
   tryCatch(
     {
@@ -145,7 +170,10 @@ indicator_years <- function(indicator) {
         dplyr::pull(categ_dsg)
       sort(unique(suppressWarnings(as.integer(as.character(years)))))
     },
-    error = function(e) integer(0)
+    error = function(e) {
+      message("   ! Could not read INE metadata for ", indicator, ": ", conditionMessage(e))
+      NULL
+    }
   )
 }
 
@@ -178,9 +206,17 @@ for (i in seq_len(nrow(repairs))) {
 
   job <- repairs[i, ]
   present <- archive_years(job$dataset, job$indicator)
+  published <- indicator_years(job$indicator)
+
+  if (is.null(published)) {
+    message("  ", job$indicator, " ", job$label, ": ABORTED - INE metadata unreachable.")
+    failed <- failed + 1L
+    next
+  }
+
   years <- Reduce(intersect, list(
     present,
-    indicator_years(job$indicator),
+    published,
     parse_years(years_arg, present),
     seq.int(job$year_min, job$year_max)
   ))
@@ -231,8 +267,9 @@ for (i in seq_len(nrow(repairs))) {
         dplyr::mutate(area = job$label, year = as.integer(year)) %>%
         dplyr::select(dplyr::any_of(names(existing)))
 
+      drop_labels <- if (isTRUE(job$stored_label_is_output)) job$label else c(job$stored_label, job$label)
       updated <- existing %>%
-        dplyr::filter(!area %in% c(job$stored_label, job$label)) %>%
+        dplyr::filter(!area %in% drop_labels) %>%
         dplyr::bind_rows(replacement) %>%
         dplyr::arrange(area, sex, age_band)
 
@@ -297,8 +334,9 @@ for (i in seq_len(nrow(repairs))) {
 
         # A cause absent from the response means no deaths, which still has to
         # replace the conflated row rather than leave it in place.
+        drop_labels <- if (isTRUE(job$stored_label_is_output)) job$label else c(job$stored_label, job$label)
         updated <- existing %>%
-          dplyr::filter(!area %in% c(job$stored_label, job$label)) %>%
+          dplyr::filter(!area %in% drop_labels) %>%
           dplyr::bind_rows(replacement) %>%
           dplyr::arrange(area, sex, age_band)
 
