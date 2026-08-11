@@ -14,7 +14,7 @@ on:
         description: "Which task to run"
         type: choice
         default: all
-        options: [all, deaths2024, nuts2, ambiguous, inventory]
+        options: [all, fixareas, deaths2024, nuts2, ambiguous, inventory]
       minutes:
         description: "Time budget in minutes (job hard-stops at 350)"
         default: "300"

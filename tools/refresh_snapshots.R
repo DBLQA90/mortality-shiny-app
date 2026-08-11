@@ -247,6 +247,19 @@ task_ambiguous <- function() {
   invisible(TRUE)
 }
 
+# Repairs geographies that were resolved through an ambiguous INE label and
+# stored as the sum of two different places. See tools/fix_ambiguous_areas.R for
+# the full diagnosis; the headline case is "Lisboa", where 1991-2013 population
+# is region + municipio and mortality is understated roughly six-fold.
+task_fixareas <- function() {
+  say("== Task: repair ambiguous geographies ==")
+  run_builder(
+    "fix_ambiguous_areas.R",
+    env = c(paste0("MINUTES=", max(5, floor(minutes_left() - 5)))),
+    label = "fix ambiguous areas (Lisboa, Calheta, Lagoa)"
+  )
+}
+
 task_inventory <- function() {
   say("== Task: rebuild inventory ==")
   run_builder("update_snapshot_inventory.R", label = "snapshot inventory")
@@ -256,7 +269,10 @@ task_inventory <- function() {
 
 say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 
-if (task %in% c("all", "deaths2024", "deaths")) task_deaths_latest()
+# Order matters: the geography repair corrects existing rows and is the highest
+# value work, so it runs before any new bulk download can consume the budget.
+if (task %in% c("all", "fixareas")) if (have_time(5)) task_fixareas()
+if (task %in% c("all", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
 if (task %in% c("all", "ambiguous")) if (have_time(5)) task_ambiguous()
 if (task %in% c("all", "nuts2")) if (have_time(20)) task_nuts2()
 if (task %in% c("all", "inventory")) if (have_time(3)) task_inventory()

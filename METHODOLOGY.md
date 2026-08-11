@@ -26,6 +26,44 @@ Users can select one or more local areas. When more than one local area is selec
 
 `Portugal` and `Norte` are used as fixed comparator geographies in the annual metrics tab.
 
+### Ambiguous INE Labels
+
+The snapshot builders resolve a geography through the INE category *label*.
+Several labels are not unique, and when a label matches more than one category
+the download returns all of them and they are summed into one row. Three cases
+affect this archive:
+
+| Indicator | Label | Matches | Consequence |
+|---|---|---|---|
+| `0003182` | `Lisboa` | region `17` + município `1711106` | 1991-2013 population is region + município |
+| `0008206`, `0008273` | `Calheta` | `2004501` (Açores) + `3003101` (Madeira) | two municipalities added together |
+| `0008206`, `0008273` | `Lagoa` | `1500806` (Algarve) + `2004201` (Açores) | two municipalities added together |
+
+`Lisboa` is the damaging one. Deaths are always the município, so dividing them
+by a denominator that also contains the region understates Lisboa's mortality
+roughly six-fold for 1991-2013, and produces a spurious six-fold jump at the
+2013/2014 source seam (crude rate ~211 per 100,000 in 2013 against ~1,231 in
+2015). Any trend or forecast covering those years is affected.
+
+A scan of all 308 areas across the 2013/2014 seam found exactly these
+discontinuities, with a median population ratio of 1.0139 elsewhere, so the
+rest of the archive is unaffected.
+
+`0008273` and `0013166` name the Lisbon region `Área Metropolitana de Lisboa`,
+so `Lisboa` is unambiguous there and population from 2014 onward is correct.
+
+The repair requests each affected geography by its unique category code and
+stores it under an unambiguous label, splitting the conflated municipalities
+into `Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa` (Algarve) and
+`Lagoa (R.A.A.)`:
+
+```sh
+Rscript tools/fix_ambiguous_areas.R            # add dry_run=true to preview
+```
+
+Until that repair has run against a given archive, `Lisboa` before 2014 and
+both `Calheta` and `Lagoa` should not be used.
+
 ### NUTS Vintages And Regional Aggregates
 
 The four source indicators do not share one geography version:

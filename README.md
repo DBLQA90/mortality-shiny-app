@@ -310,6 +310,41 @@ Optional environment variables:
 
 If an INE request fails but a stale cached file exists, the app will use the stale file and show a warning.
 
+## Snapshot Maintenance
+
+`.github/workflows/refresh-snapshots.yml` runs the snapshot maintenance tasks on
+a GitHub runner, weekly and on demand. The work is almost entirely spent waiting
+on INE, and the driver is resumable: each run makes what progress fits in its
+time budget, commits it, and the next run continues.
+
+```sh
+Rscript tools/refresh_snapshots.R task=all minutes=300
+```
+
+| Task | What it does |
+|---|---|
+| `fixareas` | Repairs geographies stored under an ambiguous INE label (`Lisboa`, `Calheta`, `Lagoa`) by refetching them by category code |
+| `deaths2024` | Asks INE which death years exist and fetches those the archive lacks |
+| `nuts2` | Backfills regional rows, for the `Dados originais INE` region mode only |
+| `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
+| `inventory` | Rebuilds the snapshot manifest |
+
+Note that INE publishes no municipality-level population by age and sex beyond
+2023, so 2024 supports counts, proportional mortality and AVPP but not rates.
+
+## Known Issues
+
+- Until `fixareas` has run, `Lisboa` population before 2014 is the NUTS-2002
+  region rather than the município, understating its mortality about six-fold
+  for 1991-2013; and `Calheta` and `Lagoa` each conflate two municipalities.
+  See [METHODOLOGY.md](METHODOLOGY.md) for the diagnosis.
+- The area list names the disambiguated municipalities
+  (`Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa (R.A.A.)`). These have no data
+  until `fixareas` has run against the archive.
+- Municipal region rebuilds covering 1991-2013 inherit the `Lisboa` defect, so
+  any region containing Lisboa is overstated for those years until the repair
+  runs. Regions without Lisboa, including `Norte` and `Alentejo`, are unaffected.
+
 ## Limitations
 
 - INE API calls can be slow or temporarily unavailable.
