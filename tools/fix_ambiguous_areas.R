@@ -243,56 +243,71 @@ for (i in seq_len(nrow(repairs))) {
       cause_files <- list.files(file.path(out_dir, "deaths", job$indicator, paste0("year_", year)),
                                 pattern = "^cause_.*\\.rds$", full.names = TRUE)
 
-      for (path in cause_files) {
-        if (minutes_left() < 1) break
-
+      outstanding <- Filter(function(path) {
         existing <- readRDS(path)
-        if (job$label %in% existing$area && !(job$stored_label %in% existing$area)) {
-          skipped <- skipped + 1L
-          next
-        }
+        !(job$label %in% existing$area && !(job$stored_label %in% existing$area))
+      }, cause_files)
 
+      if (length(outstanding) == 0) {
+        skipped <- skipped + length(cause_files)
+        next
+      }
+
+      if (dry_run) {
+        message("   [dry-run] would repair ", year, " (", length(outstanding), " cause files, 1 request)")
+        next
+      }
+
+      # One request per (year, area) returns every cause: omitting the cause
+      # dimension costs no more than asking for a single cause, so fetching the
+      # whole year at once turns 66 calls into 1. Across the repair that is 128
+      # requests instead of 8,448.
+      fetched <- tryCatch(
+        fetch_area(job$indicator, year, job$code, has_cause = TRUE),
+        error = function(e) {
+          message("   ", year, ": FAILED (", conditionMessage(e), ")")
+          NULL
+        }
+      )
+
+      if (is.null(fetched) || nrow(fetched) == 0) {
+        failed <- failed + 1L
+        next
+      }
+
+      by_cause <- fetched %>%
+        dplyr::rename(deaths = value) %>%
+        dplyr::mutate(age_band = dplyr::case_when(
+          age_band %in% c("Menos de 1 ano", "1 - 4 anos") ~ "0 - 4 anos",
+          TRUE ~ age_band
+        )) %>%
+        dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
+        dplyr::group_by(year, sex, cause, age_band) %>%
+        dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
+        dplyr::mutate(area = job$label, year = as.integer(year))
+
+      year_repaired <- 0L
+      for (path in outstanding) {
+        existing <- readRDS(path)
         cause_name <- unique(as.character(existing$cause))[[1]]
 
-        if (dry_run) {
-          message("   [dry-run] would repair ", year, " / ", cause_name)
-          next
-        }
-
-        fetched <- tryCatch(
-          fetch_area(job$indicator, year, job$code, has_cause = TRUE, cause = cause_name),
-          error = function(e) {
-            message("   ", year, " / ", cause_name, ": FAILED (", conditionMessage(e), ")")
-            NULL
-          }
-        )
-
-        if (is.null(fetched)) {
-          failed <- failed + 1L
-          next
-        }
-
-        replacement <- fetched %>%
-          dplyr::rename(deaths = value) %>%
-          dplyr::mutate(age_band = dplyr::case_when(
-            age_band %in% c("Menos de 1 ano", "1 - 4 anos") ~ "0 - 4 anos",
-            TRUE ~ age_band
-          )) %>%
-          dplyr::filter(!age_band %in% c("Idade ignorada", "Total")) %>%
-          dplyr::group_by(year, sex, cause, age_band) %>%
-          dplyr::summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop") %>%
-          dplyr::mutate(area = job$label, year = as.integer(year)) %>%
+        replacement <- by_cause %>%
+          dplyr::filter(cause == cause_name) %>%
           dplyr::select(dplyr::any_of(names(existing)))
 
+        # A cause absent from the response means no deaths, which still has to
+        # replace the conflated row rather than leave it in place.
         updated <- existing %>%
           dplyr::filter(!area %in% c(job$stored_label, job$label)) %>%
           dplyr::bind_rows(replacement) %>%
           dplyr::arrange(area, sex, age_band)
 
         save_rds_atomic(updated, path)
-        repaired <- repaired + 1L
+        year_repaired <- year_repaired + 1L
       }
-      message("   ", year, ": done")
+
+      repaired <- repaired + year_repaired
+      message("   ", year, ": ok (", year_repaired, " cause files from 1 request)")
     }
   }
 }

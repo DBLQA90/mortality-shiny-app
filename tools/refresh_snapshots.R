@@ -148,16 +148,13 @@ task_deaths_latest <- function() {
 
   say("Missing years: ", paste(missing, collapse = ", "))
   for (year in missing) {
-    if (!have_time(20)) break
+    if (!have_time(10)) break
+    # fetch_death_year.R issues one request per cause across all areas, which
+    # measured no slower than a single-area request: 66 calls for a year rather
+    # than the 20,394 that per-(area, cause) slicing would need.
     run_builder(
-      "build_death_snapshot_chunks.R",
-      env = c(
-        "INDICATOR=0013166",
-        paste0("YEARS=", year),
-        "AREAS=ALL",
-        "CAUSES=ALL",
-        "AREA_BATCH_SIZE=40"
-      ),
+      "fetch_death_year.R",
+      env = c("INDICATOR=0013166", paste0("YEAR=", year), paste0("MINUTES=", max(5, floor(minutes_left() - 3)))),
       label = paste0("deaths 0013166 ", year)
     )
   }
@@ -166,8 +163,11 @@ task_deaths_latest <- function() {
 
 task_nuts2 <- function() {
   say("== Task: regional (NUTS II) rows ==")
-  say("Note: the municipal region mode derives regions by summing municipalities ",
-      "and needs none of this. These rows are only for 'Dados originais INE'.")
+  say("Note: rarely needed. Years fetched by fetch_death_year.R already include ",
+      "INE's regional rows, because the all-areas response carries every NUTS ",
+      "level; and the municipal region mode derives regions by summing ",
+      "municipalities. This task only backfills regions into older chunks that ",
+      "were built area-by-area.")
 
   for (indicator in c("0013166", "0008206")) {
     if (!have_time(25)) break
