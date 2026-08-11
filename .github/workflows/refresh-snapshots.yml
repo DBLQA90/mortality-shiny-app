@@ -1,0 +1,94 @@
+name: Refresh INE snapshots
+
+# Unattended snapshot maintenance. The work is almost entirely spent waiting on
+# INE's API, so it belongs on a runner rather than a laptop.
+#
+# The driver is resumable: each run makes what progress it can inside its time
+# budget, commits it, and the next run continues. A run with nothing to do exits
+# without committing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Which task to run"
+        type: choice
+        default: all
+        options: [all, deaths2024, nuts2, ambiguous, inventory]
+      minutes:
+        description: "Time budget in minutes (job hard-stops at 350)"
+        default: "300"
+  schedule:
+    # Weekly, Monday 03:17 UTC. Off the hour because scheduled jobs cluster
+    # there and get queued.
+    - cron: "17 3 * * 1"
+
+concurrency:
+  # Never let two refreshes write to the archive at once.
+  group: refresh-snapshots
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The driver commits back to this branch.
+          ref: ${{ github.ref_name }}
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-rlibs-${{ hashFiles('renv.lock') }}
+          restore-keys: ${{ runner.os }}-rlibs-
+
+      - name: Install packages
+        run: |
+          install.packages(
+            setdiff(
+              c("dplyr", "tibble", "tidyr", "purrr", "glue", "ineptr2", "memoise", "cachem"),
+              rownames(installed.packages())
+            )
+          )
+        shell: Rscript {0}
+
+      - name: Refresh snapshots
+        env:
+          TASK: ${{ inputs.task || 'all' }}
+          MINUTES: ${{ inputs.minutes || '300' }}
+        run: Rscript tools/refresh_snapshots.R "task=$TASK" "minutes=$MINUTES"
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Nothing to commit; archive already up to date."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Refresh INE snapshots (${{ inputs.task || 'scheduled' }})
+
+          Automated run of tools/refresh_snapshots.R.
+          See data/snapshots/REFRESH_STATUS.md for the run log."
+          git push
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refresh-status
+          path: data/snapshots/REFRESH_STATUS.md
+          if-no-files-found: ignore
