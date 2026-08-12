@@ -100,3 +100,23 @@ test_that("the committed lookup covers the mainland regions completely", {
   # The Lezíria move is present in the real data, not just the fixture.
   expect_equal(lookup$nuts2[lookup$municipality == "Santarém"], "Oeste e Vale do Tejo")
 })
+
+test_that("overlapping area selections are flagged, disjoint ones are not", {
+  lookup <- test_lookup()
+
+  # Two distinct NUTS II regions are disjoint: summing them is legitimate.
+  expect_null(overlapping_selection_warning(c("Alentejo", "Norte"), lookup))
+  expect_null(overlapping_selection_warning(c("Beja", "Braga"), lookup))
+  expect_null(overlapping_selection_warning("Portugal", lookup))
+
+  # Portugal already contains everything else.
+  expect_match(overlapping_selection_warning(c("Portugal", "Beja"), lookup), "Portugal já inclui")
+
+  # A region alongside one of its own municipalities double-counts it.
+  msg <- overlapping_selection_warning(c("Alentejo", "Beja"), lookup)
+  expect_match(msg, "Alentejo já inclui Beja")
+  expect_match(msg, "duas vezes")
+
+  # A region alongside a municipality that is not part of it is fine.
+  expect_null(overlapping_selection_warning(c("Alentejo", "Braga"), lookup))
+})

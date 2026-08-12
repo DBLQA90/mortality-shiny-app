@@ -10,12 +10,37 @@ death_indicator_current      <- "0013166"
 population_indicators <- c(population_indicator_current, population_indicator_legacy)
 death_indicators <- c(death_indicator_legacy, death_indicator_current)
 
-fallback_year_of_interest <- 1991:2023
+# Deaths are published ahead of the population estimates: INE has deaths for
+# 2024 but no municipality-level population by age and sex beyond 2023. The
+# analysable range is therefore the union of the two, not the intersection -
+# otherwise the most recent year of deaths is invisible - with rate-based
+# metrics guarded for the years that have no denominator.
+fallback_year_of_interest <- 1991:2024
+fallback_population_years <- 1991:2023
+
+# Metrics that divide by population, and so cannot be produced for a year that
+# has deaths but no population estimate.
+metrics_requiring_population <- c("crude", "dsr", "smr", "isr")
+
+# NUTS II regions. Only Norte and Alentejo have INE regional rows in the
+# historical chunks; the rest are usable through the municipal region mode,
+# which sums their municipalities and so covers the whole series. See
+# R/regions.R for why that is the dependable route across NUTS vintages.
+fallback_nuts2_areas <- c(
+  "Norte",
+  "Centro",
+  "Oeste e Vale do Tejo",
+  "Grande Lisboa",
+  "Península de Setúbal",
+  "Alentejo",
+  "Algarve",
+  "Região Autónoma dos Açores",
+  "Região Autónoma da Madeira"
+)
 
 fallback_local_area <- c(
   "Portugal",
-  "Norte",
-  "Alentejo",
+  fallback_nuts2_areas,
   "Abrantes", "Águeda", "Aguiar da Beira", "Alandroal", "Albergaria-a-Velha",
   "Albufeira", "Alcácer do Sal", "Alcanena", "Alcobaça", "Alcochete",
   "Alcoutim", "Alenquer", "Alfândega da Fé", "Alijó", "Aljezur", "Aljustrel",

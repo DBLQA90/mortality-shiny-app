@@ -130,6 +130,45 @@ region_coverage_warning <- function(coverage) {
   ))
 }
 
+# Multiple selected areas are summed into one combined geography, which is only
+# meaningful when they do not overlap. Selecting Portugal alongside anything, or
+# a region alongside one of its own municipalities, double-counts those deaths
+# and that population. Distinct NUTS II regions are disjoint, so combining them
+# is legitimate and not flagged.
+overlapping_selection_warning <- function(areas, lookup = get_nuts_lookup()) {
+  areas <- unique(as.character(areas))
+
+  if (length(areas) < 2) {
+    return(NULL)
+  }
+
+  problems <- character(0)
+
+  if ("Portugal" %in% areas) {
+    problems <- c(problems, "Portugal já inclui todas as outras áreas seleccionadas")
+  }
+
+  regions <- setdiff(areas[is_region_label(areas, lookup)], "Portugal")
+  for (region in regions) {
+    inside <- intersect(setdiff(areas, region), region_municipalities(region, lookup))
+    if (length(inside) > 0) {
+      problems <- c(problems, as.character(glue::glue(
+        "{region} já inclui {paste(inside, collapse = ', ')}"
+      )))
+    }
+  }
+
+  if (length(problems) == 0) {
+    return(NULL)
+  }
+
+  as.character(glue::glue(
+    "Selecção sobreposta: {paste(problems, collapse = '; ')}. As áreas ",
+    "seleccionadas são somadas, pelo que estes óbitos e esta população seriam ",
+    "contados duas vezes."
+  ))
+}
+
 normalize_region_mode <- function(region_mode) {
   region_mode <- as.character(region_mode)[[1]]
 

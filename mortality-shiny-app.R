@@ -215,6 +215,15 @@ server <- function(input, output, session) {
   make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
     area_key <- sort(unique(area))
 
+    # Selected areas are summed into one geography, so overlapping choices
+    # (Portugal with anything, a region with its own municipalities) would be
+    # counted twice. Warn rather than block: a user may knowingly want the
+    # combination, but should not get it by accident.
+    overlap <- overlapping_selection_warning(area_key)
+    if (!is.null(overlap)) {
+      showNotification(overlap, type = "warning", duration = 20)
+    }
+
     list(
       area_key = area_key,
       area_label = get_selection_label(area_key, area_label),
@@ -2356,6 +2365,19 @@ server <- function(input, output, session) {
     pooling_window <- normalize_pooling_window(pooling_window)
     years <- get_pooled_years(year, pooling_window)
     period_label <- make_period_label(min(years), max(years))
+
+    # A rate needs a denominator for every year in the window. INE publishes
+    # deaths ahead of population, so the most recent year(s) can be selectable
+    # for counts while being impossible for rates; say so plainly instead of
+    # failing later with an empty join.
+    if (metric_id %in% metrics_requiring_population) {
+      validate(
+        need(
+          length(years_without_population(years)) == 0,
+          population_gap_message(years, get_annual_metric_label(metric_id))
+        )
+      )
+    }
 
     all_cause_deaths <- NA_real_
     all_cause_source <- NA_character_

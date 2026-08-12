@@ -334,16 +334,25 @@ Note that INE publishes no municipality-level population by age and sex beyond
 
 ## Known Issues
 
-- Until `fixareas` has run, `Lisboa` population before 2014 is the NUTS-2002
-  region rather than the município, understating its mortality about six-fold
-  for 1991-2013; and `Calheta` and `Lagoa` each conflate two municipalities.
-  See [METHODOLOGY.md](METHODOLOGY.md) for the diagnosis.
-- The area list names the disambiguated municipalities
-  (`Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa (R.A.A.)`). These have no data
-  until `fixareas` has run against the archive.
-- Municipal region rebuilds covering 1991-2013 inherit the `Lisboa` defect, so
-  any region containing Lisboa is overstated for those years until the repair
-  runs. Regions without Lisboa, including `Norte` and `Alentejo`, are unaffected.
+- **INE blocks GitHub's hosted runners.** Requests from Azure IP ranges time out
+  after ~135 s, while the same call answers a normal connection in under two
+  seconds. The workflow checks this and fails fast; run
+  `tools/refresh_snapshots.R` locally, or register a self-hosted runner.
+- **2024 has deaths but no population.** INE publishes no municipality-level
+  population by age and sex beyond 2023, so 2024 supports deaths, proportional
+  mortality and AVPP, but crude, standardised and SMR values are refused for
+  that year with an explanatory message.
+- Only `Norte` and `Alentejo` have INE regional rows in the historical chunks.
+  The other NUTS II regions are available through the municipal region mode,
+  which covers the whole series; under `Dados originais INE` they exist only
+  for years fetched all-areas (2024 onward).
+- Selecting overlapping areas (for example a region and one of its own
+  municipalities) sums them and double-counts. The app warns but does not block.
+
+The `Lisboa`, `Calheta` and `Lagoa` label defects described in
+[METHODOLOGY.md](METHODOLOGY.md) were repaired in the committed archive: the
+2013/2014 seam now shows no area moving more than 20%, and the municipal sum
+for 2000 matches the national row exactly.
 
 ## Limitations
 
