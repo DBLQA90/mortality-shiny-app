@@ -62,11 +62,22 @@ have_time <- function(need_minutes = 5) {
 
 run_builder <- function(script, env = character(0), label = script) {
   say("-> ", label)
+
+  # system2(env=) prepends NAME=value to the command line, where the shell word
+  # splits it. Region labels contain spaces ("Oeste e Vale do Tejo"), which the
+  # shell then tried to execute: "sh: 1: Oeste: not found". Quote the value of
+  # each assignment, leaving the name and the "=" alone.
+  quoted_env <- vapply(as.character(env), function(assignment) {
+    at <- regexpr("=", assignment, fixed = TRUE)
+    if (at < 1) return(assignment)
+    paste0(substr(assignment, 1, at), shQuote(substring(assignment, at + 1)))
+  }, character(1), USE.NAMES = FALSE)
+
   status <- tryCatch(
     system2(
       "Rscript",
       args = shQuote(file.path("tools", script)),
-      env = c(env, paste0("R_PROGRESSR_ENABLE=FALSE")),
+      env = c(quoted_env, "R_PROGRESSR_ENABLE=FALSE"),
       stdout = TRUE,
       stderr = TRUE
     ),
@@ -274,7 +285,10 @@ say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 if (task %in% c("all", "fixareas")) if (have_time(5)) task_fixareas()
 if (task %in% c("all", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
 if (task %in% c("all", "ambiguous")) if (have_time(5)) task_ambiguous()
-if (task %in% c("all", "nuts2")) if (have_time(20)) task_nuts2()
+# Not part of "all": regions are built by summing municipalities, so INE's own
+# regional rows are needed only to reproduce a published regional figure via
+# MORTALITY_REGION_MODE=original. Request it explicitly when that is the aim.
+if (identical(task, "nuts2")) if (have_time(20)) task_nuts2()
 if (task %in% c("all", "inventory")) if (have_time(3)) task_inventory()
 
 elapsed <- round(as.numeric(difftime(Sys.time(), started_at, units = "mins")), 1)

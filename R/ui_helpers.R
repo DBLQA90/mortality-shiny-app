@@ -71,12 +71,15 @@ pooling_help <- function() {
     "intervalos, mas suaviza variações anuais reais."
   )
 }
-region_mode_help <- function() {
+# Regions are always summed from their municipalities, so there is no choice to
+# explain - only a statement of what the numbers are, shown where a region is
+# actually in use.
+region_aggregation_note <- function() {
   helpText(
-    "O INE mudou as fronteiras NUTS em 2024 (a Lezíria do Tejo saiu do ",
-    "Alentejo). 'Aproximação por municípios' soma sempre os mesmos concelhos, ",
-    "dando uma série contínua; 'Dados originais INE' mantém as linhas do INE e ",
-    "assinala a quebra em 2022."
+    "As regiões são calculadas somando os seus municípios, com as fronteiras ",
+    "actuais aplicadas a todos os anos. Isto mantém a série contínua apesar da ",
+    "revisão NUTS de 2024, mas os totais regionais não coincidem exactamente ",
+    "com os publicados pelo INE."
   )
 }
 bias_adjust_help <- function() {
@@ -581,6 +584,7 @@ annual_metrics_tab_ui <- function() {
           selected = "deaths"
         ),
         annual_metric_help(),
+        region_aggregation_note(),
         conditionalPanel(
           "input.annual_metric == 'smr' || input.annual_metric == 'isr'",
           selectInput(
@@ -598,13 +602,6 @@ annual_metrics_tab_ui <- function() {
           selected = "1"
         ),
         pooling_help(),
-        selectInput(
-          "annual_region_mode",
-          "Regiões (Norte / Alentejo):",
-          choices = region_mode_choices,
-          selected = "municipal"
-        ),
-        region_mode_help(),
         data_source_input("annual_data_source"),
         actionButton("go_annual_metrics", "Carregar métricas"),
         br(), br(),

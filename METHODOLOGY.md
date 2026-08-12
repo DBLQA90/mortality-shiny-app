@@ -88,20 +88,44 @@ prefers the newer indicator while population remains NUTS-2013, the regional
 rate is understated by roughly 30%. `Portugal` and `Norte` are unaffected -
 they are identical under both vintages.
 
-The `Regiões` control offers the two honest responses:
+**The app therefore always builds a region by summing its municipalities**,
+using one fixed membership list for every year. This is not a user-facing
+option.
 
-- `Aproximação por municípios` rebuilds the region by summing its
-  municipalities, using one fixed NUTS-2024 membership list for every year.
-  Regions are unions of whole municipalities, so no parish-level data is
-  needed. The series is continuous and means "this region as defined today".
-  Where a municipality cannot be matched by name the shortfall is reported, not
-  absorbed silently.
-- `Dados originais INE` keeps INE's own regional rows and warns when the
-  selected years span 2022, leaving the change of definition visible.
+Three facts make it sound:
 
-The difference is not cosmetic. For Alentejo in 2022, against Portugal, the
-original rows give an SMR of 77.7 - implying below-average mortality in the
-country's oldest region - while the municipal rebuild gives 113.3.
+- Regions are unions of whole municipalities, so no parish-level data is needed.
+- Municipality boundaries have not moved: the archive holds the same 308
+  municipalities in every year from 1991 to 2023.
+- Regions whose definition never changed are unaffected. Only regions INE
+  redrew differ, and there the aggregate is the point.
+
+The alternative - reading INE's own regional rows - is not merely less tidy, it
+is wrong across the 2022 seam. For Alentejo in 2022, against Portugal, INE's
+rows give an SMR of 77.7, implying below-average mortality in the country's
+oldest region; the municipal aggregate gives 113.3. As a series, the
+standardised rate reads 1072 (2021), 722 (2022), 676 (2023) from INE's rows
+against 1093, 1060, 997 when aggregated. Presenting that as a toggle asked
+users to arbitrate a question about NUTS vintages they have no way to judge,
+and let the wrong answer through.
+
+What this costs, and why it is documented rather than offered as a choice:
+
+- Regional totals no longer match INE's published regional figures. Anyone
+  reproducing a published number needs INE's own rows.
+- Regions inherit only deaths that INE could assign to a municipality. The
+  national row exceeds the sum of all municipalities by roughly 0.3-1.0%
+  (1,030 deaths in 1991, 393 in 2022) - deaths with unknown or foreign
+  municipality of residence. Regional aggregates therefore do not add up to the
+  national total, and the shortfall varies by year.
+- A region means "this territory as defined today", applied backwards. That is
+  a deliberate choice, not a reconstruction of what was published at the time.
+
+Setting `MORTALITY_REGION_MODE=original` restores INE's own rows for anyone who
+needs to reproduce a published regional figure. Historical chunks hold regional
+rows only for `Norte` and `Alentejo`; other regions exist there only for years
+fetched all-areas (2024 onward), and `tools/refresh_snapshots.R task=nuts2`
+backfills the rest.
 
 Municipality membership is read from `data/nuts_lookup.rds`, derived from INE's
 own hierarchical geography codes and rebuilt with:

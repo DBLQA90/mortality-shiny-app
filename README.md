@@ -35,7 +35,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Renders the forecast and observed-rate charts as interactive `plotly` widgets: hover a point to read the year and value, plus zoom and pan.
 - Adds indirect standardisation: `SMR` (reference = 100) and an indirectly standardised rate per 100,000, with Byar/exact-Poisson intervals and a significance flag against the reference. This is the metric to use for small municipalities, where direct standardisation is unstable or unestimable.
 - Adds selectable 3- and 5-year pooling for the annual comparison, summing deaths and person-years so sparse local series become readable without averaging annual rates.
-- Adds a region mode for the NUTS-2024 boundary change: rebuild `Norte`/`Alentejo` from their municipalities for a continuous series, or keep INE's own rows with an explicit warning about the 2022 break.
+- Builds every region by summing its municipalities, so the NUTS-2024 boundary change does not break the series. Applies to the observed, forecast and annual tabs alike. Regional figures therefore differ slightly from INE's published regional rows; see [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Running The App
 
@@ -342,10 +342,11 @@ Note that INE publishes no municipality-level population by age and sex beyond
   population by age and sex beyond 2023, so 2024 supports deaths, proportional
   mortality and AVPP, but crude, standardised and SMR values are refused for
   that year with an explanatory message.
-- Only `Norte` and `Alentejo` have INE regional rows in the historical chunks.
-  The other NUTS II regions are available through the municipal region mode,
-  which covers the whole series; under `Dados originais INE` they exist only
-  for years fetched all-areas (2024 onward).
+- Regional totals are municipal sums and do not match INE's published regional
+  figures, nor do they add up to the national total: the national row includes
+  deaths INE cannot assign to a municipality, about 0.3-1.0% depending on year.
+  `MORTALITY_REGION_MODE=original` restores INE's own rows, but historical
+  chunks carry them only for `Norte` and `Alentejo`.
 - Selecting overlapping areas (for example a region and one of its own
   municipalities) sums them and double-counts. The app warns but does not block.
 

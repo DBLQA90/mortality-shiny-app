@@ -120,3 +120,33 @@ test_that("overlapping area selections are flagged, disjoint ones are not", {
   # A region alongside a municipality that is not part of it is fine.
   expect_null(overlapping_selection_warning(c("Alentejo", "Braga"), lookup))
 })
+
+test_that("the default region mode aggregates from municipalities", {
+  withr::with_envvar(c(MORTALITY_REGION_MODE = ""), {
+    expect_equal(default_region_mode(), "municipal")
+  })
+  # Documented escape hatch for reproducing a published INE regional figure.
+  withr::with_envvar(c(MORTALITY_REGION_MODE = "original"), {
+    expect_equal(default_region_mode(), "original")
+  })
+  # An unrecognised value must not silently disable the aggregation.
+  withr::with_envvar(c(MORTALITY_REGION_MODE = "lixo"), {
+    expect_equal(default_region_mode(), "municipal")
+  })
+})
+
+test_that("municipality membership is stable across the whole series", {
+  skip_if_not(file.exists("../../data/nuts_lookup.rds"), "lookup not built")
+  skip_if_not(dir.exists("../../data/snapshots/population"), "snapshots not present")
+
+  lookup <- readRDS("../../data/nuts_lookup.rds")
+  counts <- vapply(c(1991L, 2005L, 2013L, 2014L, 2023L), function(y) {
+    path <- sprintf("../../data/snapshots/population/year_%d.rds", y)
+    if (!file.exists(path)) return(NA_integer_)
+    length(intersect(unique(readRDS(path)$area), lookup$municipality))
+  }, integer(1))
+
+  # Rebuilding a region from one fixed municipality list is only valid because
+  # the municipalities themselves never change across the archive.
+  expect_true(all(stats::na.omit(counts) == nrow(lookup)))
+})

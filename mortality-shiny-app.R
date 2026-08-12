@@ -224,13 +224,43 @@ server <- function(input, output, session) {
       showNotification(overlap, type = "warning", duration = 20)
     }
 
+    # Expand any selected region into its municipalities. This applies to every
+    # tab that goes through a query spec - observed mortality and both forecast
+    # tabs - which previously used INE's regional rows directly and so carried
+    # the NUTS-2024 discontinuity into trends and projections.
+    resolved <- resolve_region_areas(
+      areas = area_key,
+      region_mode = default_region_mode(),
+      available_areas = get_available_areas(data_source)
+    )
+    for (message_text in resolved$warnings) {
+      showNotification(message_text, type = "warning", duration = 15)
+    }
+    # Label from what the user chose, not from the expansion: a region must stay
+    # named "Alentejo", not become a list of 47 municipalities.
+    selection_label <- get_selection_label(area_key, area_label)
+
     list(
-      area_key = area_key,
-      area_label = get_selection_label(area_key, area_label),
+      area_key = resolved$areas,
+      area_label = selection_label,
+      expanded_regions = resolved$expanded,
       cause = cause,
       sex = sex,
       data_source = normalize_data_source(data_source)
     )
+  }
+
+  # Footnote for outputs whose geography was rebuilt from municipalities, so the
+  # figures are explainable when they differ from an INE publication.
+  region_aggregation_caption <- function(expanded_regions) {
+    if (length(expanded_regions) == 0) {
+      return(NULL)
+    }
+
+    as.character(glue::glue(
+      "{paste(expanded_regions, collapse = ', ')}: soma dos municípios da região ",
+      "(fronteiras actuais aplicadas a todos os anos)."
+    ))
   }
 
   get_years_in_selected_range <- function(year_range, year_order = "asc") {
@@ -3060,7 +3090,7 @@ server <- function(input, output, session) {
     )
 
     pooling_window <- normalize_pooling_window(input$annual_pooling)
-    region_mode <- normalize_region_mode(input$annual_region_mode)
+    region_mode <- default_region_mode()
     reference_areas <- value_or_default(input$annual_smr_reference, "Portugal")
     pooled_years <- get_pooled_years(year, pooling_window)
 

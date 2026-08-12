@@ -166,6 +166,31 @@ region_mode_choices <- c(
   "Dados originais INE (quebra em 2022)" = "original"
 )
 
+# Regions are always built by summing their municipalities, and this is not a
+# user-facing choice.
+#
+# Municipality boundaries have not moved: the archive holds the same 308
+# municipalities in every year from 1991 to 2023. Regions are unions of whole
+# municipalities, so one fixed membership list reconstructs any region for any
+# year. Regions whose definition never changed are unaffected by this; regions
+# that INE redrew - Alentejo losing Lezíria do Tejo in NUTS-2024 - come out as
+# one continuous series instead of two incompatible halves.
+#
+# Presenting it as a toggle asked users to arbitrate a question about INE's
+# geography vintages that they have no way to judge, and let a wrong answer
+# through: reading INE's own rows across 2022 makes Alentejo look like it has
+# below-average mortality. The cost is that regional totals no longer match
+# INE's published regional rows, and fall short of the national total by the
+# deaths INE cannot assign to a municipality (about 0.3-1.0%, see
+# METHODOLOGY.md). That is documented rather than offered as an option.
+#
+# MORTALITY_REGION_MODE=original restores INE's own rows for anyone who needs
+# to reproduce a published regional figure.
+default_region_mode <- function() {
+  requested <- Sys.getenv("MORTALITY_REGION_MODE", unset = "municipal")
+  if (requested %in% unname(region_mode_choices)) requested else "municipal"
+}
+
 data_source_choices <- c(
   "INE em directo" = "ine",
   "Ficheiros RDS" = "snapshot"
