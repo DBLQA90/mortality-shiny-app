@@ -18,10 +18,19 @@ on:
       minutes:
         description: "Time budget in minutes (job hard-stops at 350)"
         default: "300"
-  schedule:
-    # Weekly, Monday 03:17 UTC. Off the hour because scheduled jobs cluster
-    # there and get queued.
-    - cron: "17 3 * * 1"
+  # No schedule.
+  #
+  # INE refuses connections from GitHub's hosted runners - every request from an
+  # Azure IP times out after ~135 s, while the same call answers a normal
+  # connection in under two seconds - so a scheduled run would fail every week
+  # and train everyone to ignore the notifications. Manual dispatch is kept so
+  # the job can still be used from a self-hosted runner on a network INE serves.
+  #
+  # Without one, run the same driver locally, which is where it currently works:
+  #   Rscript tools/refresh_snapshots.R task=all minutes=150
+  #
+  # INE publishes these indicators annually, so a manual run when new data lands
+  # is enough; there is little for a weekly schedule to do.
 
 concurrency:
   # Never let two refreshes write to the archive at once.

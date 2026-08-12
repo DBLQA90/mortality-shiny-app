@@ -61,8 +61,12 @@ into `Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa` (Algarve) and
 Rscript tools/fix_ambiguous_areas.R            # add dry_run=true to preview
 ```
 
-Until that repair has run against a given archive, `Lisboa` before 2014 and
-both `Calheta` and `Lagoa` should not be used.
+The repair has been applied to the committed archive. Afterwards, Lisboa's crude
+rate runs 1474.6 (2000), 1367.5 (2013), 1240.7 (2014), 1280.7 (2022) - continuous
+across the source seam that previously produced the six-fold jump - and a rescan
+of all areas across 2013/2014 finds none moving more than 20%. Re-run the tool
+after rebuilding any chunk from scratch, since the builders still resolve
+geographies by label.
 
 ### NUTS Vintages And Regional Aggregates
 
@@ -315,6 +319,17 @@ Missing or incomplete source data can also invalidate a forecast. When RDS snaps
 
 The model runner can fit models on transformed values and back-transform forecasts for display. The default workflow uses a log offset transformation where configured by the app controls. This can improve stability for positive rates but does not remove the need to inspect fit quality.
 
+Back-transforming a forecast of `log(rate)` with `exp()` returns the **median**,
+not the mean: for a lognormal, `E[Y] = exp(mu + sigma^2 / 2)`. Reported directly,
+the point forecast would therefore sit below the expected value, and the gap
+widens with the forecast variance - worst at the long horizons the app permits.
+The app recovers the standard deviation from the interval the model reported and
+adds the variance term, so the point forecast is the expected value. Interval
+limits are quantiles and map through a monotone transform unchanged, so they are
+back-transformed directly and are unaffected. The correction can be switched off
+in the advanced tab, which returns the median. In a 20-year projection the two
+differ by roughly 5%; at one year ahead, by about 0.3%.
+
 The offset is a data-dependent pseudo-count equal to half the smallest positive rate in the fitting series (or `1e-6` when every value is zero). Its value is shown in the transformation label (for example in the advanced model specification table), and when the series contains zeros the app flags that the offset materially affects the back-transformed forecast and intervals, since this is the case where a small additive constant has the largest effect.
 
 ### Model Comparison
@@ -346,7 +361,22 @@ Backtesting can evaluate forecasts against a holdout period from the end of the 
 
 Diagnostics include residual plots, ACF, PACF, Ljung-Box tables, and model summaries where available.
 
-Structural breaks are explored with `strucchange::breakpoints()` on the selected annual rate series. This is a screening tool: detected breakpoints should be interpreted with epidemiological context, data revisions, coding changes, and small-number instability in mind.
+Structural breaks are explored with `strucchange::breakpoints()` on the selected
+annual rate series, fitted as a **segmented trend** (`rate ~ time`): each segment
+gets its own intercept and slope, so a break is reported where the level or the
+rate of change shifts.
+
+A mean-only model (`rate ~ 1`) is the wrong tool for these series. Portuguese
+mortality falls steadily - the national standardised rate is down about 42% since
+1991 - and with no slope to fit, a mean-shift model explains a smooth decline by
+cutting it into a staircase of level shifts. On the national all-cause series it
+reports five breaks (1994, 1999, 2005, 2009, 2013), none of which is an event;
+the segmented trend reports one, in 2013. Where a series is too short to support
+per-segment trends the app falls back to the mean-only model and says so.
+
+This remains a screening tool: detected breakpoints should be interpreted with
+epidemiological context, data revisions, coding changes, and small-number
+instability in mind.
 
 ## Caching And Interruption
 

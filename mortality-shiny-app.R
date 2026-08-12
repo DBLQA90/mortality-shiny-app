@@ -951,10 +951,34 @@ server <- function(input, output, session) {
     )
 
     ts_y <- stats::ts(df$value, start = min(df$year), frequency = 1)
+    time_index <- seq_len(nrow(df))
+
+    # Segmented *trend* model, not a mean-shift model.
+    #
+    # `ts_y ~ 1` asks where the mean level changes. Portuguese mortality has
+    # fallen steadily - the national standardised rate is down about 42% since
+    # 1991 - and a mean-only model has no way to express a slope, so it explains
+    # a smooth decline by chopping it into a staircase of level shifts. Those
+    # breakpoints are artefacts of the trend, not events.
+    #
+    # `ts_y ~ time_index` gives each segment its own intercept and slope, so a
+    # break is reported only where the level or the rate of change actually
+    # shifts. It costs one extra parameter per segment, so it needs a longer
+    # series; where the trend model cannot be estimated the app falls back to
+    # the mean-only model and records which was used.
+    break_model <- "trend"
     bp_obj <- tryCatch(
-      strucchange::breakpoints(ts_y ~ 1),
+      strucchange::breakpoints(ts_y ~ time_index),
       error = function(e) NULL
     )
+
+    if (is.null(bp_obj)) {
+      break_model <- "mean"
+      bp_obj <- tryCatch(
+        strucchange::breakpoints(ts_y ~ 1),
+        error = function(e) NULL
+      )
+    }
 
     break_index <- integer(0)
 
@@ -981,6 +1005,16 @@ server <- function(input, output, session) {
         purrr::map2_dbl(segment_starts, segment_ends, ~ mean(df$value[.x:.y], na.rm = TRUE)),
         2
       ),
+      # Slope per year within the segment. With a segmented trend model this is
+      # the quantity a break is about, so showing it lets the reader see whether
+      # a detected break is a change of direction or only of level.
+      `Variação Anual` = round(
+        purrr::map2_dbl(segment_starts, segment_ends, function(from, to) {
+          if (to - from < 1) return(NA_real_)
+          stats::coef(stats::lm(df$value[from:to] ~ seq_len(to - from + 1)))[[2]]
+        }),
+        2
+      ),
       `Ano da Quebra` = c(break_years, NA_integer_)
     )
 
@@ -990,6 +1024,7 @@ server <- function(input, output, session) {
       breakpoints = bp_obj,
       break_index = break_index,
       break_years = break_years,
+      break_model = break_model,
       segments = segment_tbl
     )
   }
@@ -1044,18 +1079,31 @@ server <- function(input, output, session) {
     break_n <- length(break_info$break_years)
     segment_n <- nrow(break_info$segments)
 
+    # The wording has to match the model that was actually fitted: a break in a
+    # segmented trend means the level or the slope changed, whereas a break in
+    # a mean-only model means only the average level moved.
+    trend_model <- identical(break_info$break_model, "trend")
+    what_changed <- if (trend_model) "o nível ou a inclinação da tendência" else "o nível médio"
+    model_note <- if (trend_model) {
+      "O modelo ajusta uma tendência própria a cada segmento, pelo que uma descida contínua e regular não é assinalada como quebra."
+    } else {
+      "Atenção: a série é demasiado curta para ajustar tendências por segmento, pelo que foi usado um modelo apenas de nível médio; numa série com tendência marcada este modelo tende a assinalar quebras que são apenas o declive."
+    }
+
     if (break_n == 0) {
-      return("A rotina actual de breakpoint não detectou qualquer potencial mudança estrutural, pelo que o nível médio parece relativamente estável no histórico seleccionado.")
+      return(glue::glue(
+        "A rotina de breakpoint não detectou qualquer potencial mudança estrutural, pelo que {what_changed} parece relativamente estável no histórico seleccionado. {model_note}"
+      ))
     }
 
     if (break_n == 1) {
       return(glue::glue(
-        "Foi detectada uma potencial mudança estrutural em torno de {break_info$break_years[[1]]}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que o nível médio de mortalidade poderá ter mudado nessa altura."
+        "Foi detectada uma potencial mudança estrutural em torno de {break_info$break_years[[1]]}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá ter mudado nessa altura. {model_note}"
       ))
     }
 
     glue::glue(
-      "Foram detectadas {break_n} potenciais mudanças estruturais em torno de {paste(break_info$break_years, collapse = ', ')}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que o nível médio poderá não ser estável ao longo de todo o período observado."
+      "Foram detectadas {break_n} potenciais mudanças estruturais em torno de {paste(break_info$break_years, collapse = ', ')}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá não ser estável ao longo do período observado. {model_note}"
     )
   }
 
@@ -1485,7 +1533,8 @@ server <- function(input, output, session) {
         offset = 0,
         zero_count = 0L,
         forward = function(x) as.numeric(x),
-        inverse = function(x) as.numeric(x)
+        inverse = function(x) as.numeric(x),
+        inverse_mean = function(x, sigma) as.numeric(x)
       ))
     }
 
@@ -1515,7 +1564,19 @@ server <- function(input, output, session) {
       offset = log_offset,
       zero_count = as.integer(zero_count),
       forward = function(x) log(as.numeric(x) + log_offset),
-      inverse = function(x) pmax(exp(as.numeric(x)) - log_offset, 0)
+      # Back-transforming a forecast of log(rate) with exp() returns the
+      # *median*, not the mean: for a lognormal, E[Y] = exp(mu + sigma^2 / 2).
+      # `inverse` is therefore correct for interval limits, which are quantiles
+      # and map through any monotone transform unchanged.
+      inverse = function(x) pmax(exp(as.numeric(x)) - log_offset, 0),
+      # `inverse_mean` adds the variance term to recover the expected value.
+      # The gap grows with the forecast variance, so it is widest exactly where
+      # the app allows the longest horizons - the point forecast would otherwise
+      # sit increasingly below the mean the further out it goes.
+      inverse_mean = function(x, sigma) {
+        sigma <- if (length(sigma) == 0) 0 else sigma
+        pmax(exp(as.numeric(x) + sigma^2 / 2) - log_offset, 0)
+      }
     )
   }
 
@@ -1653,7 +1714,8 @@ server <- function(input, output, session) {
     token = NULL,
     conf_level = 95,
     transform_method = "log_offset",
-    model_specs = list()
+    model_specs = list(),
+    bias_adjust = TRUE
   ) {
     abort_if_requested <- function() {
       if (!is.null(kind) && !is.null(token)) {
@@ -1790,16 +1852,26 @@ server <- function(input, output, session) {
       fc <- fc_list[[m]]
       back_transform <- transform_setup$inverse
 
+      mean_t <- as.numeric(fc$mean)
+      lower_t <- if (is.null(dim(fc$lower))) as.numeric(fc$lower) else as.numeric(fc$lower[, ncol(fc$lower)])
+      upper_t <- if (is.null(dim(fc$upper))) as.numeric(fc$upper) else as.numeric(fc$upper[, ncol(fc$upper)])
+
+      # Forecast standard deviation on the modelling scale, recovered from the
+      # interval the model reported. Needed to turn the back-transformed median
+      # into a mean; see `inverse_mean` in get_transformation_setup().
+      level <- if (!is.null(fc$level)) utils::tail(as.numeric(fc$level), 1) else conf_level
+      z <- stats::qnorm(1 - (1 - level / 100) / 2)
+      sigma <- if (is.finite(z) && z > 0) pmax((upper_t - lower_t) / (2 * z), 0) else rep(0, length(mean_t))
+      sigma[!is.finite(sigma)] <- 0
+
       tibble(
         year  = seq(max(df_vals$year) + 1, by = 1, length.out = horizon),
         model = m,
-        mean  = back_transform(fc$mean),
-        lower = back_transform(
-          if (is.null(dim(fc$lower))) as.numeric(fc$lower) else as.numeric(fc$lower[, ncol(fc$lower)])
-        ),
-        upper = back_transform(
-          if (is.null(dim(fc$upper))) as.numeric(fc$upper) else as.numeric(fc$upper[, ncol(fc$upper)])
-        )
+        # Interval limits are quantiles and back-transform directly; only the
+        # point forecast needs the bias correction.
+        mean  = if (isTRUE(bias_adjust)) transform_setup$inverse_mean(mean_t, sigma) else back_transform(mean_t),
+        lower = back_transform(lower_t),
+        upper = back_transform(upper_t)
       )
     }))
 
@@ -1827,6 +1899,7 @@ server <- function(input, output, session) {
       horizon = horizon,
       conf_level = conf_level,
       transform_method = transform_method,
+      bias_adjust = isTRUE(bias_adjust),
       transform_label = transform_setup$label,
       transform_inverse = transform_setup$inverse,
       model_specs = model_specs,
@@ -1864,7 +1937,8 @@ server <- function(input, output, session) {
         horizon = 1L,
         conf_level = base_result$conf_level,
         transform_method = base_result$transform_method,
-        model_specs = base_result$model_specs
+        model_specs = base_result$model_specs,
+        bias_adjust = isTRUE(base_result$bias_adjust)
       )
       fold$fc %>%
         dplyr::filter(year == origin_year) %>%
@@ -1941,7 +2015,8 @@ server <- function(input, output, session) {
         horizon = nrow(split$holdout_actual),
         conf_level = base_result$conf_level,
         transform_method = base_result$transform_method,
-        model_specs = base_result$model_specs
+        model_specs = base_result$model_specs,
+        bias_adjust = isTRUE(base_result$bias_adjust)
       )
       metric_tbl <- build_holdout_metric_table(training_result, split$holdout_actual)
       plot_data <- list(
@@ -3154,6 +3229,7 @@ server <- function(input, output, session) {
       token = isolate(cancel_seq$forecast),
       conf_level = input$conf_level2,
       transform_method = input$transform2,
+      bias_adjust = value_or_default(input$bias_adjust2, TRUE),
       model_specs = build_advanced_model_specs()
     )
   }, ignoreNULL = TRUE)

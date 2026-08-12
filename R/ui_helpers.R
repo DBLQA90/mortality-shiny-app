@@ -79,6 +79,13 @@ region_mode_help <- function() {
     "assinala a quebra em 2022."
   )
 }
+bias_adjust_help <- function() {
+  helpText(
+    "Com transformação log, a retransformação directa devolve a mediana, não a ",
+    "média. Esta correcção devolve o valor esperado; a diferença cresce com o ",
+    "horizonte. Os intervalos não mudam, porque são quantis."
+  )
+}
 transform_help <- function() {
   helpText(
     "A transformação log estabiliza séries positivas e evita previsões negativas; ",
@@ -152,6 +159,15 @@ forecast_controls_panel <- function() {
       selected = "log_offset"
     ),
     transform_help(),
+    conditionalPanel(
+      "input.transform2 != 'none'",
+      checkboxInput(
+        "bias_adjust2",
+        "Corrigir enviesamento da retransformação",
+        value = TRUE
+      ),
+      bias_adjust_help()
+    ),
     uiOutput("advancedModelParameterPanels"),
     actionButton("go_forecast", "Carregar projecções"),
     br(), br(),
