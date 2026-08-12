@@ -11,16 +11,26 @@ population_years <- get_metadata_or_fallback(
   sort(get_indicator_years(population_indicators))
 )
 
-# The union, so the latest death year stays selectable. Rate metrics check
-# `population_years` before computing.
+# The union, so the latest death year stays selectable, but bounded below by the
+# first year with a population estimate.
+#
+# The historical death indicator reaches back to 1980 while population starts in
+# 1991, so an unbounded union offered 1980-1990: years with no denominator, no
+# downloaded death chunks, and nothing the app can compute. Deaths-only years
+# are useful going forward, where the denominator has yet to be published and
+# counts are still meaningful; they are not useful going backward, where no
+# denominator will ever exist. Rate metrics still check `population_years`
+# before computing, which is what keeps 2024 honest.
 year_of_interest <- get_metadata_or_fallback(
   "years",
   fallback_year_of_interest,
   {
-    sort(union(
+    years <- sort(union(
       get_indicator_years(population_indicators),
       get_indicator_years(death_indicators)
     ))
+    first_with_population <- suppressWarnings(min(population_years, na.rm = TRUE))
+    if (is.finite(first_with_population)) years[years >= first_with_population] else years
   }
 )
 

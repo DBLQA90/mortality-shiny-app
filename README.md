@@ -112,7 +112,20 @@ Unit tests for the calculation and forecast-helper modules live in `tests/testth
 Rscript run_tests.R
 ```
 
-The runner loads only the network-free calculation modules (`R/config.R`, `R/metrics.R`, `R/forecast_helpers.R`), so the tests do not contact INE. They require `testthat`, `tidyverse`, `PHEindicatormethods`, and `forecast`.
+The runner loads only the network-free calculation modules, so the tests do not contact INE. They require `testthat`, `tidyverse`, `PHEindicatormethods`, and `forecast`.
+
+Those cover the calculations in isolation. To exercise the Shiny server itself -
+inputs set, event observers fired, outputs read - against the committed
+snapshots, run the end-to-end smoke test:
+
+```sh
+Rscript tests/smoke_app.R
+```
+
+It needs no browser and makes no network calls. Wiring bugs live here rather
+than in the calculation modules: it caught a pooled window reaching into a year
+with no population estimate, and rate metrics being offered for years that have
+none.
 
 ## Optional RDS Snapshots
 

@@ -2391,12 +2391,25 @@ server <- function(input, output, session) {
   # Years contributing to a pooled value centred on `year`, clipped to the
   # years the app knows about so an edge window is truncated rather than
   # requesting data that cannot exist.
-  get_pooled_years <- function(year, window) {
+  get_pooled_years <- function(year, window, metric_id = NULL) {
     window <- normalize_pooling_window(window)
     half <- (window - 1L) %/% 2L
     candidate <- seq.int(as.integer(year) - half, as.integer(year) + half)
+    years <- sort(intersect(candidate, as.integer(year_of_interest)))
 
-    sort(intersect(candidate, as.integer(year_of_interest)))
+    # A rate pools deaths against person-years, so a year contributing deaths
+    # without a population estimate would inflate the numerator against a
+    # denominator that never included it. Those years are dropped from the
+    # window rather than failing the whole request: a window centred on 2022
+    # reaches 2024, which has deaths but no published population, and refusing
+    # outright would disable pooling exactly where it is most useful. The
+    # period label reports the span actually used.
+    if (!is.null(metric_id) && metric_id %in% annual_metrics_needing_population) {
+      usable <- intersect(years, as.integer(population_years))
+      if (length(usable) > 0) years <- usable
+    }
+
+    years
   }
 
   get_annual_metric_label <- function(metric_id) {
@@ -2468,7 +2481,7 @@ server <- function(input, output, session) {
     )
 
     pooling_window <- normalize_pooling_window(pooling_window)
-    years <- get_pooled_years(year, pooling_window)
+    years <- get_pooled_years(year, pooling_window, metric_id)
     period_label <- make_period_label(min(years), max(years))
 
     # A rate needs a denominator for every year in the window. INE publishes
@@ -3092,7 +3105,7 @@ server <- function(input, output, session) {
     pooling_window <- normalize_pooling_window(input$annual_pooling)
     region_mode <- default_region_mode()
     reference_areas <- value_or_default(input$annual_smr_reference, "Portugal")
-    pooled_years <- get_pooled_years(year, pooling_window)
+    pooled_years <- get_pooled_years(year, pooling_window, selected_metric)
 
     area_specs <- get_annual_area_specs(
       selected_areas = input$annual_area,
