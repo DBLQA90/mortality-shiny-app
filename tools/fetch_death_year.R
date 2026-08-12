@@ -62,13 +62,11 @@ save_rds_atomic <- function(x, path) {
   if (!file.rename(tmp, path)) stop("Could not move temporary file into ", path, call. = FALSE)
 }
 
-# Same tokenisation the app's snapshot reader expects for chunk filenames.
-cause_token <- function(cause) {
-  token <- tolower(as.character(cause))
-  token <- iconv(token, to = "ASCII//TRANSLIT")
-  token <- gsub("[^a-z0-9]+", "_", token)
-  gsub("^_|_$", "", token)
-}
+# Reuse the app's own tokeniser rather than reimplementing it. A second copy
+# has to agree with snapshot_file_token() exactly or the reader will not find
+# the files this tool writes, and the two had already drifted in the order of
+# tolower() and iconv() - harmless for the current cause list, but only by luck.
+cause_token <- function(cause) app_env$snapshot_file_token(cause)
 
 causes <- app_env$get_dim_values_cached(indicator) %>%
   dplyr::filter(as.integer(dim_num) == 5) %>%

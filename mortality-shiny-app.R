@@ -250,18 +250,6 @@ server <- function(input, output, session) {
     )
   }
 
-  # Footnote for outputs whose geography was rebuilt from municipalities, so the
-  # figures are explainable when they differ from an INE publication.
-  region_aggregation_caption <- function(expanded_regions) {
-    if (length(expanded_regions) == 0) {
-      return(NULL)
-    }
-
-    as.character(glue::glue(
-      "{paste(expanded_regions, collapse = ', ')}: soma dos municípios da região ",
-      "(fronteiras actuais aplicadas a todos os anos)."
-    ))
-  }
 
   get_years_in_selected_range <- function(year_range, year_order = "asc") {
     selected_bounds <- suppressWarnings(as.integer(year_range))
@@ -403,6 +391,25 @@ server <- function(input, output, session) {
 
     year_order <- normalize_year_order(year_order)
     years_to_load <- get_years_in_selected_range(year_range, year_order = year_order)
+
+    # Every consumer of a metric bundle computes a rate, so a year without a
+    # population estimate cannot contribute and would abort the whole load. The
+    # rate-bearing sliders are already bounded to `population_years`; this is the
+    # backstop for a bookmarked URL or an out-of-range value reaching here.
+    unusable <- years_without_population(years_to_load)
+    if (length(unusable) > 0) {
+      years_to_load <- setdiff(years_to_load, unusable)
+      validate(need(
+        length(years_to_load) > 0,
+        population_gap_message(unusable, "as taxas de mortalidade")
+      ))
+      showNotification(
+        population_gap_message(unusable, "as taxas de mortalidade"),
+        type = "warning",
+        duration = 15
+      )
+    }
+
     notify_snapshot_request_warnings(
       years = years_to_load,
       areas = query_spec$area_key,
@@ -2587,9 +2594,20 @@ server <- function(input, output, session) {
           # are applied to this area's age structure. The reference is loaded
           # over the same pooled window, cause and sex, so both sides of the
           # comparison rest on identical data.
+          # The reference must be built the same way as the areas it is compared
+          # against. Regions are summed from their municipalities, so a reference
+          # of "Norte" has to be expanded too - otherwise a municipal-sum area
+          # would be standardised against INE's own regional row, mixing the two
+          # conventions inside a single ratio.
+          reference_resolved <- resolve_region_areas(
+            areas = reference_areas,
+            region_mode = default_region_mode(),
+            available_areas = get_available_areas(data_source)
+          )
+
           reference_bands <- collapse_annual_cause_data(
             load_annual_cause_data(
-              area_spec = list(label = "referência", areas = reference_areas),
+              area_spec = list(label = "referência", areas = reference_resolved$areas),
               cause = cause,
               sex = sex,
               years = years,
@@ -2644,6 +2662,16 @@ server <- function(input, output, session) {
         list(value = NA_real_, lower = NA_real_, upper = NA_real_, source_detail = "N/D")
       )
 
+      # Pooling is presented as a moving average, and rates already behave that
+      # way: they divide by pooled person-years, so they stay per-year. Counts
+      # do not - summing three years of deaths triples the number, which reads
+      # as a tripling of mortality rather than as smoothing, and cannot be
+      # compared with an unpooled value. Averaging them over the contributing
+      # years puts every metric on the same per-year footing. Intervals are
+      # scaled with the estimate, so they remain the interval of the average.
+      count_metric <- metric_id %in% c("deaths", "ypll")
+      annualise <- if (count_metric && length(years) > 1L) length(years) else 1L
+
       tibble(
         location = area_spec$label,
         cause = cause,
@@ -2651,9 +2679,9 @@ server <- function(input, output, session) {
         metric = metric_label,
         period = period_label,
         n_years = length(years),
-        value = metric_values$value,
-        lower = metric_values$lower,
-        upper = metric_values$upper,
+        value = metric_values$value / annualise,
+        lower = metric_values$lower / annualise,
+        upper = metric_values$upper / annualise,
         source_detail = as.character(metric_values$source_detail)
       )
     }))
@@ -2750,7 +2778,12 @@ server <- function(input, output, session) {
       periods <- unique(as.character(plot_df$period))
       n_years <- if ("n_years" %in% names(plot_df)) max(plot_df$n_years, na.rm = TRUE) else 1L
       if (length(periods) == 1 && n_years > 1) {
-        glue::glue("{periods} ({n_years} anos agregados, pessoas-ano)")
+        basis <- if (identical(selected_metric, "deaths") || identical(selected_metric, "ypll")) {
+          "média anual"
+        } else {
+          "pessoas-ano"
+        }
+        glue::glue("{periods} ({n_years} anos agregados, {basis})")
       } else {
         paste(periods, collapse = ", ")
       }

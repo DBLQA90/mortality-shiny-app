@@ -2,12 +2,17 @@
 # UI Helpers
 # =========================================================
 
-year_range_slider <- function(input_id, label, value = range(year_of_interest)) {
+# `years` bounds the slider. Tabs that can only show rates pass `population_years`,
+# because a year with deaths but no published population cannot produce one: with
+# the full range the observed tab defaulted to 1991-2024 and failed on load, since
+# 2024 has no denominator. The data-availability tab keeps the full range, as its
+# job is to show what exists.
+year_range_slider <- function(input_id, label, years = year_of_interest, value = range(years)) {
   sliderInput(
     input_id,
     label,
-    min   = min(year_of_interest),
-    max   = max(year_of_interest),
+    min   = min(years),
+    max   = max(years),
     value = value,
     step  = 1,
     sep   = ""
@@ -123,7 +128,9 @@ forecast_controls_panel <- function() {
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
     rate_type_help(),
+    region_aggregation_note(),
     year_range_slider(
+      years = population_years,
       "years_fit",
       "Anos a importar / ajustar:"
     ),
@@ -202,6 +209,7 @@ beginner_forecast_controls_panel <- function() {
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
     rate_type_help(),
+    region_aggregation_note(),
     data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",
@@ -212,6 +220,7 @@ beginner_forecast_controls_panel <- function() {
     ),
     horizon_help(),
     year_range_slider(
+      years = population_years,
       "beginner_years_fit",
       "Janela de ajuste:"
     ),
@@ -489,7 +498,9 @@ observed_mortality_tab_ui <- function() {
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
         ),
         rate_type_help(),
+        region_aggregation_note(),
         year_range_slider(
+          years = population_years,
           "years_import",
           "Anos a importar:"
         ),
