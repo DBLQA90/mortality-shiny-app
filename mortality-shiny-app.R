@@ -31,10 +31,13 @@ for (app_file in c(
   "R/cache.R",
   "R/snapshots.R",
   "R/ine_client.R",
+  # regions before metadata: the area vocabulary is derived from the NUTS
+  # lookup, so the lookup readers have to exist first.
+  "R/regions.R",
   "R/metadata.R",
   "R/metrics.R",
   "R/standardisation.R",
-  "R/regions.R",
+  "R/infant.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -48,6 +51,7 @@ for (app_file in c(
 
 ui <- navbarPage(
   title = "PNS Monitorização",
+  header = nuts_vintage_control(),
 
   intro_tab_ui(),
   observed_mortality_tab_ui(),
@@ -64,6 +68,69 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L)
+
+  # -------------------------
+  # NUTS vintage
+  # -------------------------
+  # One app-wide choice of which region definition groups the municipalities.
+  # Every region expansion reads the lookup through these, so the whole app
+  # switches together and no tab can be left grouping by the other vintage.
+  active_nuts_vintage <- reactive({
+    chosen <- input$nuts_vintage
+    normalize_nuts_vintage(if (is.null(chosen) || !nzchar(chosen)) default_nuts_vintage() else chosen)
+  })
+
+  active_nuts_lookup <- reactive({
+    get_nuts_lookup(active_nuts_vintage())
+  })
+
+  # Swap the region entries of every area selector when the vintage changes.
+  #
+  # Municipality choices are identical across vintages, so a municipal selection
+  # survives untouched. A selected region may not exist in the new vintage -
+  # "Grande Lisboa" has no NUTS-2013 counterpart - and those are dropped and
+  # named, rather than silently left in place to be read as an unknown area.
+  observeEvent(input$nuts_vintage, {
+    vintage <- active_nuts_vintage()
+    lookup <- active_nuts_lookup()
+
+    if (nrow(lookup) == 0) {
+      return()
+    }
+
+    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area")
+    dropped <- character(0)
+
+    for (input_id in area_inputs) {
+      reconciled <- reconcile_area_selection(
+        selected = input[[input_id]],
+        vintage = vintage,
+        lookup = lookup,
+        # The annual tab's third column excludes the two fixed columns.
+        exclude = if (identical(input_id, "annual_area")) c("Portugal", "Norte") else character(0)
+      )
+
+      dropped <- c(dropped, reconciled$dropped)
+      updateSelectInput(
+        session,
+        input_id,
+        choices = reconciled$choices,
+        selected = reconciled$selected
+      )
+    }
+
+    dropped <- unique(dropped)
+    if (length(dropped) > 0) {
+      showNotification(
+        glue::glue(
+          "Estas regiões não existem na definição NUTS {vintage} e foram ",
+          "removidas da selecção: {paste(dropped, collapse = ', ')}."
+        ),
+        type = "warning",
+        duration = 20
+      )
+    }
+  }, ignoreInit = TRUE)
 
   observeEvent(input$cancel_rates, {
     cancel_seq$rates <- cancel_seq$rates + 1L
@@ -219,7 +286,14 @@ server <- function(input, output, session) {
     # (Portugal with anything, a region with its own municipalities) would be
     # counted twice. Warn rather than block: a user may knowingly want the
     # combination, but should not get it by accident.
-    overlap <- overlapping_selection_warning(area_key)
+    # A region belonging to the other vintage cannot be resolved and would
+    # otherwise reach the loader as an unknown place name.
+    validate(need(
+      is.null(vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())),
+      vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())
+    ))
+
+    overlap <- overlapping_selection_warning(area_key, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
     }
@@ -231,6 +305,7 @@ server <- function(input, output, session) {
     resolved <- resolve_region_areas(
       areas = area_key,
       region_mode = default_region_mode(),
+      lookup = active_nuts_lookup(),
       available_areas = get_available_areas(data_source)
     )
     for (message_text in resolved$warnings) {
@@ -2356,10 +2431,12 @@ server <- function(input, output, session) {
   # Build one area spec, expanding a region into its municipalities when the
   # municipal region mode is active. `warnings` carries any incomplete-coverage
   # message up to the caller so it can be shown rather than swallowed.
-  make_annual_area_spec <- function(label, areas, region_mode, available_areas) {
+  make_annual_area_spec <- function(label, areas, region_mode, available_areas,
+                                    lookup = active_nuts_lookup()) {
     resolved <- resolve_region_areas(
       areas = areas,
       region_mode = region_mode,
+      lookup = lookup,
       available_areas = available_areas
     )
 
@@ -2380,6 +2457,22 @@ server <- function(input, output, session) {
     validate(
       need(length(selected_areas) > 0, "Seleccione pelo menos um local adicional para a terceira coluna.")
     )
+
+    mismatch <- vintage_mismatch_message(
+      selected_areas,
+      active_nuts_vintage(),
+      active_nuts_lookup()
+    )
+    validate(need(is.null(mismatch), mismatch))
+
+    # The third column sums whatever is selected into one geography, so an
+    # overlapping choice double-counts exactly as it does on the other tabs.
+    # Only reachable since NUTS I regions became selectable: before that every
+    # offered region sat at one level and so was disjoint from the others.
+    overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
+    if (!is.null(overlap)) {
+      showNotification(overlap, type = "warning", duration = 20)
+    }
 
     list(
       # Portugal is a national total under every NUTS vintage, so it is never
@@ -2413,6 +2506,14 @@ server <- function(input, output, session) {
     # period label reports the span actually used.
     if (!is.null(metric_id) && metric_id %in% annual_metrics_needing_population) {
       usable <- intersect(years, as.integer(population_years))
+      if (length(usable) > 0) years <- usable
+    }
+
+    # Same reasoning for the infant metrics, whose windows are bounded by their
+    # own datasets rather than by population: the rate needs published live
+    # births, the count only the under-1 death archive.
+    if (!is.null(metric_id) && metric_id %in% infant_metric_ids) {
+      usable <- intersect(years, infant_metric_years(metric_id))
       if (length(usable) > 0) years <- usable
     }
 
@@ -2542,7 +2643,10 @@ server <- function(input, output, session) {
       )
 
       validate(
-        need(nrow(cause_data) > 0, glue::glue("Sem dados para {area_spec$label} / {cause}."))
+        need(
+          nrow(cause_data) > 0 || metric_id %in% infant_metric_ids,
+          glue::glue("Sem dados para {area_spec$label} / {cause}.")
+        )
       )
 
       deaths <- sum(cause_data$deaths, na.rm = TRUE)
@@ -2602,6 +2706,7 @@ server <- function(input, output, session) {
           reference_resolved <- resolve_region_areas(
             areas = reference_areas,
             region_mode = default_region_mode(),
+            lookup = active_nuts_lookup(),
             available_areas = get_available_areas(data_source)
           )
 
@@ -2650,13 +2755,61 @@ server <- function(input, output, session) {
             source_detail = glue::glue("Óbitos: {source_summary$death_source}; Denom.: {all_cause_source}")
           )
         },
+        infant_deaths = {
+          # The count on its own. Available wherever the under-1 archive
+          # reaches, with no birth denominator involved, so it is readable at
+          # municipal scale where the rate is not.
+          count <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex)
+          ci <- compute_count_interval(count)
+          list(
+            value = count,
+            lower = unname(ci[[1]]),
+            upper = unname(ci[[2]]),
+            source_detail = get_loaded_source_summary(
+              get_infant_death_data(years, area_spec$areas, cause = cause, sex = sex)
+            )$death_source
+          )
+        },
+        infant = {
+          # Reads the parallel under-1 and births datasets rather than the main
+          # pipeline, which cannot separate infant deaths from deaths at ages
+          # one to four.
+          imr <- compute_infant_mortality(
+            deaths = infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex),
+            births = get_births_total(years, area_spec$areas)
+          )
+
+          list(
+            value = imr$value,
+            lower = imr$lower,
+            upper = imr$upper,
+            # Marks a rate whose denominator is too small to be read as a rate.
+            # The value is still shown; see infant_instability_footnote().
+            flag = if (infant_rate_is_unstable(imr$births)) infant_instability_mark else "",
+            source_detail = glue::glue(
+              "Óbitos <1 ano: {imr$deaths}; Nados-vivos: {format(imr$births, big.mark = '')}"
+            )
+          )
+        },
         ypll = {
-          ci <- compute_ypll_interval(cause_data, cutoff = 70)
+          # Correct the weight of the `0 - 4 anos` band before summing years
+          # lost: nearly all of its deaths are infants, who lose almost the
+          # whole cutoff rather than the 67.5 years the band midpoint implies.
+          # Returns the frame unchanged when the under-1 counts do not cover the
+          # window, so AVPP is never half-corrected.
+          under_one <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex)
+          ypll_bands <- split_infant_age_band(pooled_bands, under_one)
+
+          ci <- compute_ypll_interval(ypll_bands, cutoff = 70)
           list(
             value = unname(ci[["estimate"]]),
             lower = unname(ci[["lower"]]),
             upper = unname(ci[["upper"]]),
-            source_detail = source_summary$death_source
+            source_detail = if (is.finite(under_one)) {
+              glue::glue("{source_summary$death_source}; <1 ano separado ({round(under_one)} óbitos)")
+            } else {
+              glue::glue("{source_summary$death_source}; <1 ano não separado")
+            }
           )
         },
         list(value = NA_real_, lower = NA_real_, upper = NA_real_, source_detail = "N/D")
@@ -2669,8 +2822,14 @@ server <- function(input, output, session) {
       # compared with an unpooled value. Averaging them over the contributing
       # years puts every metric on the same per-year footing. Intervals are
       # scaled with the estimate, so they remain the interval of the average.
-      count_metric <- metric_id %in% c("deaths", "ypll")
-      annualise <- if (count_metric && length(years) > 1L) length(years) else 1L
+      #
+      # Infant deaths are the exception and stay a window total - see
+      # annualised_metric_ids for why.
+      annualise <- if (metric_id %in% annualised_metric_ids && length(years) > 1L) {
+        length(years)
+      } else {
+        1L
+      }
 
       tibble(
         location = area_spec$label,
@@ -2682,6 +2841,10 @@ server <- function(input, output, session) {
         value = metric_values$value / annualise,
         lower = metric_values$lower / annualise,
         upper = metric_values$upper / annualise,
+        # Marks a value that should not be read at face value. Only the infant
+        # rate sets one today; every other metric carries an empty string so the
+        # column is always present and the table can paste it unconditionally.
+        flag = if (is.null(metric_values$flag)) "" else as.character(metric_values$flag),
         source_detail = as.character(metric_values$source_detail)
       )
     }))
@@ -2689,7 +2852,7 @@ server <- function(input, output, session) {
 
   round_annual_metric_value <- function(metric_id, value) {
     dplyr::case_when(
-      metric_id %in% c("deaths", "ypll") ~ round(value, 0),
+      metric_id %in% count_metric_ids ~ round(value, 0),
       metric_id %in% c("proportional", "smr", "isr") ~ round(value, 1),
       TRUE ~ round(value, 2)
     )
@@ -2724,18 +2887,48 @@ server <- function(input, output, session) {
       dplyr::pull(cause)
   }
 
+  # Rows carry a `flag` column marking values that should not be read at face
+  # value. Defaulted here so a frame built without one still renders.
+  with_annual_flags <- function(metric_long) {
+    if (!("flag" %in% names(metric_long))) {
+      metric_long$flag <- ""
+    }
+    metric_long$flag <- ifelse(is.na(metric_long$flag), "", metric_long$flag)
+    metric_long
+  }
+
+  # Which footnotes the current table needs. Only rendered when a flagged row is
+  # actually on screen, so the note never appears next to a table it explains
+  # nothing about.
+  annual_metrics_footnotes <- function(metric_long, selected_metric) {
+    shown <- with_annual_flags(metric_long) %>%
+      dplyr::filter(metric_id == selected_metric)
+
+    if (!any(nzchar(shown$flag))) {
+      return(character(0))
+    }
+
+    infant_instability_footnote()
+  }
+
   build_annual_metrics_table <- function(metric_long, selected_metric) {
     cause_order <- get_annual_cause_order(metric_long)
     sort_location <- get_annual_sort_location(metric_long)
     location_order <- unique(metric_long$location)
 
-    metric_long %>%
+    with_annual_flags(metric_long) %>%
       dplyr::filter(metric_id == selected_metric) %>%
       dplyr::mutate(
         cause = factor(cause, levels = cause_order),
-        display_value = purrr::pmap_chr(
-          list(metric_id, value, lower, upper),
-          format_annual_metric_interval
+        # The mark is appended to the formatted value so it travels into the
+        # CSV too: the caveat should follow the number rather than stay behind
+        # in the browser.
+        display_value = paste0(
+          purrr::pmap_chr(
+            list(metric_id, value, lower, upper),
+            format_annual_metric_interval
+          ),
+          flag
         )
       ) %>%
       dplyr::arrange(cause) %>%
@@ -2763,13 +2956,17 @@ server <- function(input, output, session) {
 
   build_annual_metrics_plot <- function(metric_long, selected_metric) {
     cause_order <- get_annual_cause_order(metric_long)
-    plot_df <- metric_long %>%
+    plot_df <- with_annual_flags(metric_long) %>%
       dplyr::filter(metric_id == selected_metric) %>%
       dplyr::mutate(
         cause = factor(cause, levels = rev(cause_order)),
         value = round_annual_metric_value(metric_id, value),
         lower = round_annual_metric_value(metric_id, lower),
-        upper = round_annual_metric_value(metric_id, upper)
+        upper = round_annual_metric_value(metric_id, upper),
+        # Bars carry the mark on the location label, since a chart has no cell
+        # to append it to. Flagging the whole series is right: the denominator
+        # is a property of the place and period, not of one cause.
+        location = paste0(location, ifelse(nzchar(flag), paste0(" ", flag), ""))
       )
 
     validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma causa de morte para apresentar."))
@@ -2778,8 +2975,10 @@ server <- function(input, output, session) {
       periods <- unique(as.character(plot_df$period))
       n_years <- if ("n_years" %in% names(plot_df)) max(plot_df$n_years, na.rm = TRUE) else 1L
       if (length(periods) == 1 && n_years > 1) {
-        basis <- if (identical(selected_metric, "deaths") || identical(selected_metric, "ypll")) {
+        basis <- if (selected_metric %in% annualised_metric_ids) {
           "média anual"
+        } else if (identical(selected_metric, infant_count_metric_id)) {
+          "total do período"
         } else {
           "pessoas-ano"
         }
@@ -2808,11 +3007,20 @@ server <- function(input, output, session) {
         geom_hline(yintercept = 100, linetype = "dashed", colour = "#0b2e4f", linewidth = 0.5)
     }
 
+    # Downloaded as a PNG, the chart leaves the app and loses the footnote under
+    # the table, so the caveat is drawn onto it.
+    caption_text <- if (any(nzchar(plot_df$flag))) {
+      paste(strwrap(infant_instability_footnote(), width = 95), collapse = "\n")
+    } else {
+      NULL
+    }
+
     plot +
       coord_flip() +
       labs(
         title = paste(unique(plot_df$metric), "por causa de morte"),
         subtitle = period_text,
+        caption = caption_text,
         x = NULL,
         y = unique(plot_df$metric)
       ) +
@@ -2820,6 +3028,7 @@ server <- function(input, output, session) {
       theme_minimal() +
       theme(
         plot.title = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0, size = 8, colour = "#4a4a4a"),
         legend.position = "bottom"
       )
   }
@@ -3170,6 +3379,20 @@ server <- function(input, output, session) {
       showNotification(vintage_warning, type = "warning", duration = 20)
     }
 
+    # The infant metrics are bounded by their own datasets, not by population:
+    # the rate needs published live births (1995-), the count only the under-1
+    # death archive. Years outside those are refused for that metric alone.
+    if (selected_metric %in% infant_metric_ids) {
+      infant_gap <- infant_gap_message(pooled_years, selected_metric)
+      validate(need(
+        length(intersect(pooled_years, infant_metric_years(selected_metric))) > 0,
+        if (is.null(infant_gap)) "Sem dados de mortalidade infantil para o período seleccionado." else infant_gap
+      ))
+      if (!is.null(infant_gap)) {
+        showNotification(infant_gap, type = "warning", duration = 15)
+      }
+    }
+
     notify_snapshot_request_warnings(
       years = pooled_years,
       areas = annual_areas_needed,
@@ -3224,6 +3447,17 @@ server <- function(input, output, session) {
   output$annualMetricsTable <- renderTable({
     annual_metrics_table()
   }, striped = TRUE, bordered = TRUE, spacing = "s", digits = 2)
+
+  output$annualMetricsFootnote <- renderUI({
+    req(input$go_annual_metrics > 0)
+    notes <- annual_metrics_footnotes(annual_metrics_long(), input$annual_metric)
+
+    if (length(notes) == 0) {
+      return(NULL)
+    }
+
+    tagList(lapply(notes, function(note) helpText(note)))
+  })
 
   output$annualSourcesTable <- renderTable({
     annual_sources_table()

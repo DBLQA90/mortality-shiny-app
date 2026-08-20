@@ -5,3 +5,6 @@ outputs/
 data/snapshots/raw/
 ine_portal_export_without_csv.html
 ine_portal_last_post.txt
+
+# Local pre-change safety copies of snapshot chunks. Not part of the archive.
+backups/

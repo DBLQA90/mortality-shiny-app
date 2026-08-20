@@ -14,7 +14,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Uses INE indicators `0008273` and `0003182` for population.
 - Uses INE indicators `0008206` and `0013166` for deaths by cause.
 - Detects available years and causes from INE metadata instead of hard-coding them.
-- Keeps the app geography list based on the original manual `local_area` vector, with `Norte` also available.
+- Derives the geography list from the NUTS lookup of the selected vintage, so the places offered are exactly the places the app can aggregate; the manual `local_area` vector remains only as a fallback.
 - Lets users select the year range to import from the years available in the source indicators.
 - Uses year-range sliders for the observed, guided forecast, and advanced forecast windows.
 - Adds a one-year annual metrics comparison tab for Portugal, Norte, and one selected local aggregation, with multiple causes sorted by the selected local value.
@@ -35,7 +35,12 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Renders the forecast and observed-rate charts as interactive `plotly` widgets: hover a point to read the year and value, plus zoom and pan.
 - Adds indirect standardisation: `SMR` (reference = 100) and an indirectly standardised rate per 100,000, with Byar/exact-Poisson intervals and a significance flag against the reference. This is the metric to use for small municipalities, where direct standardisation is unstable or unestimable.
 - Adds selectable 3- and 5-year pooling for the annual comparison, summing deaths and person-years so sparse local series become readable without averaging annual rates.
-- Builds every region by summing its municipalities, so the NUTS-2024 boundary change does not break the series. Applies to the observed, forecast and annual tabs alike. Regional figures therefore differ slightly from INE's published regional rows; see [METHODOLOGY.md](METHODOLOGY.md).
+- Adds infant mortality (deaths under 1 year per 1,000 live births), 1995-2024, from two datasets the main pipeline cannot supply: under-1 deaths, which the standard ingest folds into `0-4`, and live births, since no population indicator has an under-1 band. Reconciles with INE's published national series throughout. Offered both as a rate and as a plain death count, since at municipal scale the rate often is not one; rates on fewer than 1,000 births are marked with an asterisk rather than hidden.
+- Corrects the AVPP weight of the `0 - 4 anos` band using those under-1 counts. Most deaths in the band are infants — 254 of 286 nationally in 2024 — and the band midpoint credited each with 67.5 lost years instead of 69.5.
+- Builds every region by summing its municipalities, so the NUTS-2024 boundary change does not break the series. Applies to the observed, forecast and annual tabs alike.
+- Adds the NUTS I level: `Continente`, plus `R.A. dos Açores` and `R.A. da Madeira`, which the islands already carried at NUTS II. Built like every other region, from municipalities, under both vintages. The three partition the country exactly — 119,589 + 2,366 + 2,875 = 124,830 for 2021, which is INE's national row to the death.
+- Repaired `0013166` for 2022 and 2023, which were missing three municipalities entirely (`Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa (R.A.A.)`) because they were fetched area-by-area against a stale area list. Açores read 7.0% low and Madeira 6.5% low for those years. Both now reconcile to the national row exactly.
+- Makes the NUTS vintage a selection: **NUTS 2013** (7 regions, `Área Metropolitana de Lisboa`, Lezíria inside `Alentejo`) or **NUTS 2024** (9 regions, `Grande Lisboa` + `Península de Setúbal`, `Oeste e Vale do Tejo`). One selector in the page header, applying app-wide. Both cover the same 308 municipalities, so switching regroups the data rather than changing what is read, and either vintage gives a series continuous across 2022. Under NUTS 2013 the municipal sums reproduce INE's published regional rows exactly (`Norte` 37,121 and `Alentejo` 11,742 for 2021, seven regions summing to the national 124,830).
 
 ## Running The App
 
@@ -247,6 +252,8 @@ Available metrics:
 
 - deaths
 - crude mortality
+- infant mortality per 1,000 live births (1995-2024), asterisked where the period has fewer than 1,000 births
+- infant deaths under 1 year, as a count (1991-2024), which is what to read at municipal scale
 - directly standardised mortality (ESP 2013)
 - SMR, indirectly standardised against a selectable reference (`Portugal` or `Norte`), expressed with the reference as 100
 - indirectly standardised rate per 100,000
@@ -254,8 +261,8 @@ Available metrics:
 - years of potential life lost before age 70
 
 Each metric can be computed for a single year or pooled over a rolling 3- or
-5-year window. The region control chooses whether `Norte` and `Alentejo` are
-rebuilt from their municipalities or read from INE's own rows.
+5-year window. Regions are always rebuilt from their municipalities; the header
+control chooses which NUTS vintage groups them.
 
 Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
@@ -297,7 +304,7 @@ Main calculations:
 - crude confidence intervals: exact Poisson intervals scaled to the selected population
 - standardised mortality: direct standardisation with European Standard Population 2013 weights; the under-75 scope is the conventional premature-mortality rate standardised to the ESP 0-74 sub-population and is labelled as such
 - proportional mortality: selected-cause deaths divided by all-cause deaths for the same year, sex, and geography
-- AVPP: years of potential life lost before age 70, approximated from age-band midpoints, with Dobson intervals for sparse counts
+- AVPP: years of potential life lost before age 70, approximated from age-band midpoints, with Dobson intervals for sparse counts. `0 - 4 anos` is split into `< 1 ano` (midpoint 0.5) and `1 - 4 anos` (midpoint 3) using the under-1 death counts, because most of the band's deaths are infants and the band midpoint understates their lost years
 
 Forecasts are exploratory extrapolations of annual mortality-rate series using models from the `forecast` package. Model comparison uses common forecast accuracy metrics such as RMSE, MAE, MAPE, and MASE.
 
@@ -338,8 +345,9 @@ Rscript tools/refresh_snapshots.R task=all minutes=300
 |---|---|
 | `fixareas` | Repairs geographies stored under an ambiguous INE label (`Lisboa`, `Calheta`, `Lagoa`) by refetching them by category code |
 | `deaths2024` | Asks INE which death years exist and fetches those the archive lacks |
-| `nuts2` | Backfills regional rows, for the `Dados originais INE` region mode only |
+| `nuts2` | Backfills INE's own regional rows. **Do not run**: five region names denote two or three NUTS levels at once, so those rows are double- or triple-counted. The app does not read them; see [METHODOLOGY.md](METHODOLOGY.md) |
 | `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
+| `infant` | Fetches live births and under-1 deaths for infant mortality |
 | `inventory` | Rebuilds the snapshot manifest |
 
 Note that INE publishes no municipality-level population by age and sex beyond

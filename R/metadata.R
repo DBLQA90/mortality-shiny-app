@@ -56,7 +56,15 @@ population_gap_message <- function(years, metric_label = "esta métrica") {
   ))
 }
 
-local_area <- fallback_local_area
+# The area vocabulary of the default NUTS vintage. Built from the committed
+# lookup so the regions offered and the regions the app can actually rebuild are
+# the same list; the hand-written fallback only applies if no lookup shipped.
+# Switching vintage at runtime updates the selectors in place, so this is the
+# initial state rather than the only one.
+local_area <- local({
+  derived <- tryCatch(area_choices_for(), error = function(e) character(0))
+  if (length(derived) == 0) fallback_local_area else derived
+})
 
 diseases <- get_metadata_or_fallback(
   "causes",

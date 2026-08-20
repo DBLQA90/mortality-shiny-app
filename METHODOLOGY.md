@@ -16,7 +16,7 @@ Deaths by cause indicators:
 - `0008206`
 - `0013166`
 
-Available years, areas, and causes of death are read from INE metadata where possible. The app keeps the original manual area list for user-facing location choices, with `Norte` added explicitly.
+Available years and causes of death are read from INE metadata where possible. The user-facing location list is derived from the NUTS lookup of the selected vintage, so the places offered and the places the app can actually aggregate are the same list; a hand-written list is kept only as a fallback for when no lookup has been built.
 
 When a requested year can be found in more than one indicator, the app builds a non-overlapping source-year plan and de-duplicates loaded rows by year, area, sex, cause, and age band. Data are downloaded in small year, area, and cause slices so partial downloads can be cached and reused.
 
@@ -89,8 +89,8 @@ rate is understated by roughly 30%. `Portugal` and `Norte` are unaffected -
 they are identical under both vintages.
 
 **The app therefore always builds a region by summing its municipalities**,
-using one fixed membership list for every year. This is not a user-facing
-option.
+using one fixed membership list for every year. That much is not a user-facing
+option. *Which* membership list is - see *Choosing the NUTS vintage* below.
 
 Three facts make it sound:
 
@@ -109,30 +109,152 @@ against 1093, 1060, 997 when aggregated. Presenting that as a toggle asked
 users to arbitrate a question about NUTS vintages they have no way to judge,
 and let the wrong answer through.
 
-What this costs, and why it is documented rather than offered as a choice:
+What this costs:
 
-- Regional totals no longer match INE's published regional figures. Anyone
-  reproducing a published number needs INE's own rows.
-- Regions inherit only deaths that INE could assign to a municipality. The
-  national row exceeds the sum of all municipalities by roughly 0.3-1.0%
-  (1,030 deaths in 1991, 393 in 2022) - deaths with unknown or foreign
-  municipality of residence. Regional aggregates therefore do not add up to the
-  national total, and the shortfall varies by year.
-- A region means "this territory as defined today", applied backwards. That is
-  a deliberate choice, not a reconstruction of what was published at the time.
+- Regions inherit only deaths that INE could assign to a municipality. INE
+  publishes `Ignorado` and `Estrangeiro` geographies at every level - deaths
+  with unknown or foreign municipality of residence - and the archive excludes
+  them, because they are not places and must not join a regional aggregate.
+  For most years this is nothing at all: 1991-2023 the municipal rows sum to
+  INE's national row exactly. **2024 is the exception**, with 545 deaths (0.46%)
+  unattributed - 355 on the mainland and 190 on the islands. Re-fetching 2024
+  returned byte-identical data, so this is INE's published position for a
+  recent year rather than an incomplete download.
+- A region means "this territory as defined by the selected vintage", applied to
+  every year. That is a deliberate choice, not a reconstruction of what was
+  published at the time.
 
 Setting `MORTALITY_REGION_MODE=original` restores INE's own rows for anyone who
-needs to reproduce a published regional figure. Historical chunks hold regional
-rows only for `Norte` and `Alentejo`; other regions exist there only for years
-fetched all-areas (2024 onward), and `tools/refresh_snapshots.R task=nuts2`
-backfills the rest.
+needs to reproduce a published regional figure. Note that those rows are not
+trustworthy for five regions: see *A defect in INE's own regional rows* below.
 
-Municipality membership is read from `data/nuts_lookup.rds`, derived from INE's
-own hierarchical geography codes and rebuilt with:
+### NUTS I: Continente, Açores And Madeira
+
+INE's geography has a NUTS I level above the regions: `Continente` and the two
+autonomous regions. The islands carry the same name at NUTS I, II and III -
+they are the same territory - so `Continente` is the only label this level adds.
+It is built like every other region, by summing its 278 mainland municipalities,
+and is available under both vintages (the 2024 reform did not move anything
+between the mainland and the islands, so the two vintages give identical
+figures for all three).
+
+The three NUTS I units partition the country, and the partition closes exactly
+against INE's national row for the years whose municipal rows are complete:
+
+| All-cause deaths | Continente | Açores | Madeira | Sum | INE national row |
+|---|---:|---:|---:|---:|---:|
+| 2021 | 119,589 | 2,366 | 2,875 | 124,830 | 124,830 |
+| 2022 | 118,517 | 2,712 | 3,104 | 124,333 | 124,333 |
+| 2023 | 113,164 | 2,369 | 2,791 | 118,324 | 118,324 |
+
+NUTS III is deliberately not offered in the selectors - it would add 21 entries
+to a list already 316 long, and every one sits inside an offered NUTS II region
+- but `region_municipalities()` resolves a NUTS III name if one is supplied.
+
+### Overlapping Selections
+
+Selected areas are summed into one geography, so an overlapping selection has to
+be flagged. The two cases behave differently, and the warning says which:
+
+- **`Portugal` with anything else** is genuinely double-counted. Portugal is not
+  a region label, so it is never expanded into municipalities: its own row is
+  loaded and added to whatever else is selected. `Portugal + Beja` for 2021
+  gives 125,382 against a true 124,830.
+- **A region with something inside it** is *absorbed*, not double-counted. The
+  region is expanded into a sorted unique set of municipalities, so
+  `Alentejo + Beja` yields Alentejo (8,248, not 8,800) and
+  `Continente + Centro` yields Continente. Nothing is counted twice, but the
+  user does not get the combination they asked for.
+
+Disjoint selections sum as expected: `Centro + Alentejo` gives 31,464, which is
+23,216 + 8,248.
+
+Containment is detected by comparing municipality *sets*. An earlier version
+intersected a region's municipalities with the other selected area *names*,
+which caught `Alentejo + Beja` but never `Continente + Norte`, because `Norte`
+is a region label and so appears in nobody's municipality list. That was
+harmless only while every offered region sat at one NUTS level and was therefore
+disjoint from the others; NUTS I regions contain NUTS II ones.
+
+### Choosing The NUTS Vintage
+
+Which grouping is used is the user's choice. The app ships one lookup per
+vintage and a single app-wide selector in the page header:
+
+| | Regions | Lisbon | Lezíria do Tejo, Oeste, Médio Tejo |
+|---|---:|---|---|
+| NUTS 2013 | 7 | one region, `Área Metropolitana de Lisboa` | inside `Alentejo` and `Centro` |
+| NUTS 2024 | 9 | `Grande Lisboa` + `Península de Setúbal` | form `Oeste e Vale do Tejo` |
+
+Both lookups cover the same 308 municipalities under the same labels, verified
+by test. Switching vintage therefore never changes which data is read, only how
+it is grouped - and every year remains available under either, so both series
+are continuous across the 2022 seam.
+
+Six region names exist in both vintages and mean different things in each:
+NUTS-2013 `Centro` has 100 municipalities, NUTS-2024 `Centro` has 77. The
+selector is in the header rather than in a tab so the active definition is on
+screen wherever a regional figure is read, and a selection naming a region the
+new vintage does not have is dropped and reported rather than silently
+misread.
+
+Under NUTS 2013 the municipal aggregates reproduce INE's published regional
+rows **exactly**, where those rows exist in the archive. For 2021 all-cause
+deaths: `Norte` 37,121 and `Alentejo` 11,742 from the municipal sum against
+37,121 and 11,742 from INE's own rows, and the seven regions sum to 124,830,
+which is the national total to the death. That is the strongest available check
+that the lookup is right: it is the same arithmetic INE did, from the same
+parts.
+
+`Grande Lisboa` (2024) plus `Península de Setúbal` (2024) reproduce
+`Área Metropolitana de Lisboa` (2013) exactly - 33,288 deaths in 2021 - which
+is the reform's own definition, recovered from the data rather than asserted.
+
+### A Defect In INE's Own Regional Rows
+
+Five region names denote both a NUTS II and a NUTS III unit, and the autonomous
+regions are a NUTS I level as well. The archive stores rows by label, so those
+levels collapse into one row and the deaths are counted two or three times:
+
+| Region, 2024 | INE rows as stored | Municipal sum | Ratio |
+|---|---:|---:|---:|
+| Grande Lisboa | 41,430 | 20,715 | 2.00 |
+| Península de Setúbal | 18,240 | 9,120 | 2.00 |
+| Algarve | 11,268 | 5,616 | 2.01 |
+| Região Autónoma da Madeira | 7,722 | 2,531 | 3.05 |
+| Região Autónoma dos Açores | 7,362 | 2,308 | 3.19 |
+
+The four regions with no name collision are all within 0.3%. The app never
+reads these rows, because regions are always summed from municipalities and the
+area selectors only ever offer NUTS II names and municipalities. The check that
+the municipal figures are the correct ones: `Continente` (113,357) plus the two
+islands' single-counted figures reconstructs the 2024 national total of 118,386.
+
+This is a further reason not to use `MORTALITY_REGION_MODE=original`, and it
+means `tools/refresh_snapshots.R task=nuts2` would deepen the problem rather
+than fix it.
+
+### Rebuilding The Lookups
+
+Municipality membership is read from `data/nuts_lookup_2013.rds` and
+`data/nuts_lookup_2024.rds`, derived from INE's own hierarchical geography
+codes - a municipality's code is prefixed by its NUTS III and NUTS II parents -
+and rebuilt with:
 
 ```sh
-Rscript tools/build_nuts_lookup.R
+Rscript tools/build_nuts_lookup.R indicator=0013166 out=data/nuts_lookup_2024.rds
+Rscript tools/build_nuts_lookup.R indicator=0008206 out=data/nuts_lookup_2013.rds \
+  canonical=data/nuts_lookup_2024.rds
 ```
+
+`canonical=` relabels municipalities to the archive's vocabulary, because
+0008206 publishes two municipalities called `Calheta` while 0013166
+distinguishes `Calheta (R.A.A.)` from `Calheta (R.A.M.)`. Matching is by
+geography code first and by name second: the code encodes the hierarchy, so it
+is stable only for municipalities the reform did not move (132 of 308), and the
+ambiguous island labels are all in that group, so no name is ever matched
+against two candidates. Anything resolving by neither route is an error rather
+than a guess.
 
 ## Age Groups
 
@@ -278,6 +400,70 @@ Pooling applies to the annual comparison tab. Forecasting always uses unpooled
 annual series, because a moving-average filter induces autocorrelation that
 would invalidate the forecast intervals.
 
+### Infant Mortality
+
+`Mortalidade Infantil` is deaths under one year of age per 1,000 live births.
+Neither part comes from the main pipeline, and neither could:
+
+- **Numerator.** Both death indicators publish `Menos de 1 ano` as its own age
+  band, but the ingest recodes it into `0 - 4 anos`, so the main death archive
+  cannot separate an infant death from a death at age four. For Portugal 2024 it
+  holds 286 deaths in `0 - 4 anos`, being 254 infant deaths plus 32 at ages one
+  to four. `tools/fetch_infant_deaths.R` writes a parallel dataset holding only
+  the under-1 band, leaving every existing rate untouched.
+- **Denominator.** Live births, not population. Neither population indicator has
+  an under-1 age band, so infant deaths per under-1 population is not computable
+  at all. `tools/fetch_births.R` writes live births, assembled from three INE
+  vintages.
+
+```text
+infant mortality rate = deaths under 1 year / live births * 1,000
+```
+
+The interval is an exact Poisson interval on the death count, scaled by births.
+Births are treated as a fixed denominator, the usual convention: the sampling
+variation that matters is in the small number of deaths.
+
+Coverage is 1995-2024, bounded by births. The three source vintages are used
+only for the years the others do not cover, and they agree where they overlap -
+`0008084` and `0012434` both report 83,671 live births for Portugal in 2022 -
+which is what confirms the dimension handling is right in each. The assembled
+series runs continuously across both seams: 2.94 (2013), 2.87 (2014), 2.44
+(2020), 2.43 (2021) per 1,000.
+
+The national series reconciles with INE's published figures throughout: 7.43 in
+1995, 5.52 in 2000, 3.51 in 2005, 2.53 in 2010, 3.00 in 2024.
+
+At municipality level the metric is extremely sparse - a small municipality may
+record fewer than ten births in a year, so a single death moves the rate by
+hundreds per 1,000 and the interval is correspondingly enormous. Barrancos in
+2024 had 9 live births and no infant deaths, giving 0.0 with an upper limit of
+409.9. Multi-year pooling helps but cannot manufacture events that did not
+happen.
+
+The app handles this in two ways, neither of which suppresses a value.
+
+**The count is offered as its own metric.** `Óbitos infantis (< 1 ano)` reports
+the number of deaths under one year with an exact Poisson interval and no
+denominator at all. It is the honest answer at municipal scale: it says what
+happened and cannot be misread as a comparable rate. Because it needs only the
+numerator it also covers 1991-1994, where the rate cannot be computed. Unlike
+the other counts it is *not* annualised when a window is pooled - a
+municipality with two infant deaths in three years would read as `1`, a rounded
+fraction, when what happened is two deaths. Left as a window total it is also
+exactly the numerator of the pooled rate beside it.
+
+**Rates on thin denominators are marked.** A rate computed on fewer than 1,000
+live births in the period is shown with an asterisk, in the table, in the CSV
+and on the chart. The threshold is not a significance test but a statement about
+resolution: below 1,000 births, one additional death moves the rate by more than
+one whole unit per 1,000 - larger than the entire national rate of about 3.
+Ranking such places, or reading a change between years, is reading noise. Most
+Portuguese municipalities fall below the threshold, which is the point: the mark
+describes the ordinary case rather than singling out a few outliers. The value
+is still shown, still exact, and its interval already states the uncertainty;
+the mark only stops a reader skimming the table from treating it as comparable.
+
 ### Proportional Mortality
 
 Proportional mortality is calculated for a selected cause as:
@@ -298,7 +484,18 @@ Annual proportional mortality intervals use an exact binomial interval for selec
 AVPP = sum(deaths in age band * max(70 - age midpoint, 0))
 ```
 
-For `0 - 4 anos`, the midpoint is 2.5. For five-year age bands, the midpoint is the average of the lower and upper bound. Age groups with midpoints at or above 70 contribute zero years lost.
+For five-year age bands, the midpoint is the average of the lower and upper bound. Age groups with midpoints at or above 70 contribute zero years lost.
+
+`0 - 4 anos` is a special case, because most of its deaths are not spread across it. Its nominal midpoint of 2.5 credits every death in the band with 67.5 lost years, but infant deaths sit at the very bottom of it and lose close to the whole 70 — and they are the majority of the band, not a fringe of it: of the 286 deaths Portugal recorded in `0 - 4 anos` in 2024, 254 were infants. Applying the band midpoint to all of them understates AVPP.
+
+The under-1 counts fetched for infant mortality make the correction possible, so the app applies it. `split_infant_age_band()` divides the band into two before the weights are applied:
+
+| Band | Midpoint | Years lost against a cutoff of 70 |
+|---|---:|---:|
+| `< 1 ano` | 0.5 | 69.5 |
+| `1 - 4 anos` | 3.0 | 67.0 |
+
+The `1 - 4 anos` midpoint is 3, not 2.5: the band spans exact ages 1 up to 5. Deaths are unchanged by the split; only their weights move. The under-1 archive covers 1980-2024, so the correction applies to every year the app offers, but it is applied only when the counts cover the whole pooled window — with partial coverage the band is left undivided and AVPP falls back to its previous behaviour, rather than silently assigning the uncovered years' infant deaths to ages one to four.
 
 Annual AVPP intervals use the Dobson et al. (1991) method for a weighted sum of Poisson counts. With `estimate = sum(deaths * years_lost)`, `variance = sum(deaths * years_lost^2)`, and `O` the total number of premature deaths (before the cutoff), the exact Poisson confidence limits of `O` are scaled by `sqrt(variance / O)` and centred on the estimate. This yields asymmetric limits that behave better for sparse local counts than a plain normal approximation; deaths at or after the cutoff contribute no years lost and are excluded from `O`. When there are no premature deaths the interval is reported as zero. These intervals remain approximate because age at death is inferred from grouped age-band midpoints.
 

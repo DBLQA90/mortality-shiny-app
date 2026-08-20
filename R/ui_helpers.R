@@ -60,7 +60,11 @@ annual_metric_help <- function() {
     "Padronizada (directa): compara com a população-padrão europeia; instável ",
     "em concelhos pequenos. SMR (indirecta): compara os óbitos observados com ",
     "os esperados se o local tivesse as taxas da referência — 100 = igual à ",
-    "referência. É a métrica indicada para concelhos com poucos óbitos."
+    "referência. É a métrica indicada para concelhos com poucos óbitos. ",
+    "Mortalidade infantil: disponível como taxa (por 1.000 nados-vivos) e como ",
+    "contagem de óbitos. Num concelho com poucos nascimentos a taxa oscila ",
+    "centenas de pontos com um único óbito; nesses casos o valor é assinalado ",
+    "com * e a contagem é mais informativa."
   )
 }
 smr_reference_help <- function() {
@@ -76,15 +80,50 @@ pooling_help <- function() {
     "intervalos, mas suaviza variações anuais reais."
   )
 }
-# Regions are always summed from their municipalities, so there is no choice to
-# explain - only a statement of what the numbers are, shown where a region is
-# actually in use.
+# Regions are always summed from their municipalities; what the user does choose
+# is which NUTS vintage groups them. The note states what the numbers are and
+# points at the selector, which sits in the header and is visible from here.
 region_aggregation_note <- function() {
   helpText(
-    "As regiões são calculadas somando os seus municípios, com as fronteiras ",
-    "actuais aplicadas a todos os anos. Isto mantém a série contínua apesar da ",
-    "revisão NUTS de 2024, mas os totais regionais não coincidem exactamente ",
-    "com os publicados pelo INE."
+    "As regiões são calculadas somando os seus municípios, com a mesma ",
+    "definição aplicada a todos os anos. Isto mantém a série contínua apesar ",
+    "da revisão NUTS de 2024, mas os totais regionais não coincidem ",
+    "exactamente com os publicados pelo INE. A definição em uso (NUTS 2013 ou ",
+    "2024) escolhe-se no topo da página."
+  )
+}
+
+# A single app-wide control, in the navbar header rather than in each tab: the
+# vintage is a definition, not a per-analysis parameter, and six region names
+# mean different things under the two vintages, so it must be on screen
+# wherever a regional figure is read.
+nuts_vintage_control <- function() {
+  tags$div(
+    class = "nuts-vintage-header",
+    style = paste(
+      "display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;",
+      "padding:0.35rem 0.9rem; margin:0 0 0.4rem 0;",
+      "border-bottom:1px solid rgba(128,128,128,0.25);"
+    ),
+    tags$label(
+      "Definição das regiões:",
+      `for` = "nuts_vintage",
+      style = "margin:0; font-weight:600; white-space:nowrap;"
+    ),
+    tags$div(
+      style = "min-width:16rem;",
+      selectInput(
+        "nuts_vintage",
+        label = NULL,
+        choices = nuts_vintage_choices,
+        selected = default_nuts_vintage(),
+        width = "100%"
+      )
+    ),
+    tags$span(
+      style = "font-size:0.85em; opacity:0.75;",
+      "Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
+    )
   )
 }
 bias_adjust_help <- function() {
@@ -583,6 +622,7 @@ annual_metrics_tab_ui <- function() {
         selectInput(
           "annual_area",
           "Local adicional:",
+          # Portugal and Norte are always the first two columns.
           choices = setdiff(local_area, c("Portugal", "Norte")),
           multiple = TRUE,
           selected = character(0)
@@ -620,6 +660,7 @@ annual_metrics_tab_ui <- function() {
       ),
       mainPanel(
         tableOutput("annualMetricsTable"),
+        uiOutput("annualMetricsFootnote"),
         br(),
         downloadButton("downloadAnnualMetricsCSV", "Descarregar tabela (CSV)"),
         br(), br(),

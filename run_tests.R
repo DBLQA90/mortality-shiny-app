@@ -27,7 +27,13 @@ for (pkg in c("PHEindicatormethods", "forecast")) {
 # Load the modules under test into one environment. Only the network-free,
 # calculation modules are needed; INE/Shiny wiring is intentionally excluded.
 app_env <- new.env(parent = globalenv())
-for (f in c("R/config.R", "R/metrics.R", "R/standardisation.R", "R/regions.R", "R/forecast_helpers.R")) {
+
+# The modules resolve committed data files (the NUTS lookups) relative to
+# `app_dir`, exactly as they do when the app runs. Setting it here lets the
+# tests exercise that resolution instead of reading the files by hand.
+assign("app_dir", root, envir = app_env)
+
+for (f in c("R/config.R", "R/regions.R", "R/metrics.R", "R/standardisation.R", "R/infant.R", "R/forecast_helpers.R")) {
   sys.source(file.path(root, f), envir = app_env)
 }
 

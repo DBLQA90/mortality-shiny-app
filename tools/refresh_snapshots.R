@@ -6,6 +6,7 @@
 # Tasks:
 #   deaths2024  fetch the latest death years missing from the archive
 #   nuts2       backfill regional (NUTS II) rows into existing chunks
+#   infant      fetch live births and under-1 deaths for infant mortality
 #   ambiguous   report municipalities INE labels ambiguously (Calheta, Lagoa)
 #   inventory   rebuild data/snapshots/snapshot_inventory.rds
 #   all         every task above, in that order
@@ -271,6 +272,25 @@ task_fixareas <- function() {
   )
 }
 
+# Live births and under-1 deaths back the infant mortality rate. Both are small
+# - one request per year each - so they are cheap to keep current.
+task_infant <- function() {
+  say("== Task: births and under-1 deaths ==")
+  run_builder(
+    "fetch_births.R",
+    env = c("YEARS=ALL", paste0("MINUTES=", max(5, floor(minutes_left() / 3)))),
+    label = "live births"
+  )
+  if (have_time(5)) {
+    run_builder(
+      "fetch_infant_deaths.R",
+      env = c("YEARS=ALL", paste0("MINUTES=", max(5, floor(minutes_left() - 5)))),
+      label = "under-1 deaths"
+    )
+  }
+  invisible(TRUE)
+}
+
 task_inventory <- function() {
   say("== Task: rebuild inventory ==")
   run_builder("update_snapshot_inventory.R", label = "snapshot inventory")
@@ -284,6 +304,7 @@ say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 # value work, so it runs before any new bulk download can consume the budget.
 if (task %in% c("all", "fixareas")) if (have_time(5)) task_fixareas()
 if (task %in% c("all", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
+if (task %in% c("all", "infant")) if (have_time(10)) task_infant()
 if (task %in% c("all", "ambiguous")) if (have_time(5)) task_ambiguous()
 # Not part of "all": regions are built by summing municipalities, so INE's own
 # regional rows are needed only to reproduce a published regional figure via
