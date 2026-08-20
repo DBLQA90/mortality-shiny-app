@@ -11,7 +11,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 ## Current Version Highlights
 
 - Replaced `ineptR` with the CRAN package `ineptr2`.
-- Uses INE indicators `0008273` and `0003182` for population.
+- Uses INE indicators `0012918`, `0008273` and `0003182` for population. `0012918` is the NUTS-2024 series, 2021-2025, and is a **revision** rather than a continuation: it runs +1.71% above the older series for 2021, rising to +5.31% for 2023. It is used across its whole range so the single seam falls at 2020/2021 rather than a 5.3% cliff at 2023/2024, and the app warns when a rate series crosses it. Every rate from 2021 onward changed as a result — Portugal's 2023 crude mortality reads 1,056 per 100,000 against 1,112 before.
 - Uses INE indicators `0008206` and `0013166` for deaths by cause.
 - Detects available years and causes from INE metadata instead of hard-coding them.
 - Derives the geography list from the NUTS lookup of the selected vintage, so the places offered are exactly the places the app can aggregate; the manual `local_area` vector remains only as a fallback.
@@ -350,8 +350,9 @@ Rscript tools/refresh_snapshots.R task=all minutes=300
 | `infant` | Fetches live births and under-1 deaths for infant mortality |
 | `inventory` | Rebuilds the snapshot manifest |
 
-Note that INE publishes no municipality-level population by age and sex beyond
-2023, so 2024 supports counts, proportional mortality and AVPP but not rates.
+Note that population now runs *ahead* of deaths: `0012918` publishes 2025 while
+cause-specific deaths stop at 2024. 2025 is therefore selectable for infant
+mortality only, and refused for everything else with an explanatory message.
 
 ## Known Issues
 
@@ -359,10 +360,11 @@ Note that INE publishes no municipality-level population by age and sex beyond
   after ~135 s, while the same call answers a normal connection in under two
   seconds. The workflow checks this and fails fast; run
   `tools/refresh_snapshots.R` locally, or register a self-hosted runner.
-- **2024 has deaths but no population.** INE publishes no municipality-level
-  population by age and sex beyond 2023, so 2024 supports deaths, proportional
-  mortality and AVPP, but crude, standardised and SMR values are refused for
-  that year with an explanatory message.
+- **2025 has population but no deaths by cause.** `0013166` ends at 2024, so
+  2025 supports infant mortality only. 2025 deaths exist in `0013331` and
+  `0013332` but carry no cause dimension. All rates work for 2024.
+- **The population series changes basis at 2021**, by about 1.7%. See
+  [METHODOLOGY.md](METHODOLOGY.md); the app warns when a series crosses it.
 - Regional totals are municipal sums and do not match INE's published regional
   figures, nor do they add up to the national total: the national row includes
   deaths INE cannot assign to a municipality, about 0.3-1.0% depending on year.

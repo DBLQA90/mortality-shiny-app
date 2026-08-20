@@ -19,12 +19,18 @@
 # Keeping both outside the main pipeline means no existing rate changes, and the
 # `0 - 4 anos` band keeps behaving exactly as before everywhere else.
 #
-# Coverage of the rate is bounded by births, currently 1995-2024 with no gap,
+# Coverage of the rate is bounded by births, currently 1995-2025 with no gap,
 # assembled from three INE vintages (see tools/fetch_births.R). The count of
-# infant deaths needs only the numerator and so reaches back to 1980. Years
-# outside those report as unavailable rather than being filled in, and both
-# spans are read from the files present rather than hard-coded, so they follow
-# whatever has been fetched.
+# infant deaths needs only the numerator and reaches 1980-2025. Years outside
+# those report as unavailable rather than being filled in, and both spans are
+# read from the files present rather than hard-coded, so they follow whatever
+# has been fetched.
+#
+# 2025 is a thinner year than the rest: the by-cause death indicators stop at
+# 2024, so it comes from 0012540, which publishes under-1 deaths by
+# municipality and month only. That year therefore holds a single all-cause,
+# both-sexes total per area, and a cause- or sex-specific request has to be
+# refused rather than answered with zero - see infant_year_has_detail().
 #
 # The under-1 death counts are also used outside this module, to correct the
 # years-of-life-lost weight of the `0 - 4 anos` band - see
@@ -213,6 +219,62 @@ infant_instability_footnote <- function(threshold = infant_stable_births_min) {
     "único óbito altera a taxa em mais de 1 por 1.000, pelo que o valor não é ",
     "comparável entre locais nem entre anos. Prefira a métrica «Óbitos ",
     "infantis (< 1 ano)», ou agregue vários anos."
+  ))
+}
+
+# Whether a year holds the requested cause/sex breakdown.
+#
+# The by-cause indicators end at 2024. 2025 comes from 0012540, which publishes
+# under-1 deaths by municipality and month only, so that year holds a single
+# all-cause, both-sexes total per area. Asking it for a specific cause or sex
+# returns no rows, which without this check reads as "no deaths" rather than
+# "not published at that detail".
+infant_year_has_detail <- function(year,
+                                   cause = "Todas as causas de morte",
+                                   sex = "HM") {
+  chunk <- read_year_file("infant_deaths", year)
+
+  if (is.null(chunk) || nrow(chunk) == 0) {
+    return(FALSE)
+  }
+
+  any(chunk$cause == cause & chunk$sex == sex)
+}
+
+# Years in the selection that can answer at the requested detail.
+infant_detail_years <- function(years,
+                                cause = "Todas as causas de morte",
+                                sex = "HM") {
+  years <- intersect(as.integer(years), infant_death_years())
+
+  if (length(years) == 0) {
+    return(integer(0))
+  }
+
+  years[vapply(years, infant_year_has_detail, logical(1), cause = cause, sex = sex)]
+}
+
+# Years in the selection that cannot answer at the requested detail.
+infant_detail_message <- function(years,
+                                  cause = "Todas as causas de morte",
+                                  sex = "HM") {
+  years <- intersect(as.integer(years), infant_death_years())
+
+  if (length(years) == 0) {
+    return(NULL)
+  }
+
+  lacking <- years[!vapply(years, infant_year_has_detail, logical(1), cause = cause, sex = sex)]
+
+  if (length(lacking) == 0) {
+    return(NULL)
+  }
+
+  as.character(glue::glue(
+    "Para {paste(sort(lacking), collapse = ', ')} o INE publica óbitos com ",
+    "menos de 1 ano apenas no total (todas as causas, ambos os sexos). ",
+    "Seleccione «Todas as causas de morte» e o sexo «HM» para incluir ",
+    "esse(s) ano(s)."
   ))
 }
 

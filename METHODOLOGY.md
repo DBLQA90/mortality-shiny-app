@@ -8,13 +8,14 @@ The app fetches data from INE through `ineptr2`.
 
 Population indicators:
 
-- `0008273`
-- `0003182`
+- `0012918` (NUTS-2024, 2021-2025 — a revision of the series below, not a continuation; see *The 2021 population revision*)
+- `0008273` (NUTS-2013, 2011-2023)
+- `0003182` (NUTS-2002, 1991-2013)
 
 Deaths by cause indicators:
 
-- `0008206`
-- `0013166`
+- `0008206` (NUTS-2013, 1980-2022)
+- `0013166` (NUTS-2024, 2022-2024)
 
 Available years and causes of death are read from INE metadata where possible. The user-facing location list is derived from the NUTS lookup of the selected vintage, so the places offered and the places the app can actually aggregate are the same list; a hand-written list is kept only as a fallback for when no lookup has been built.
 
@@ -76,10 +77,11 @@ The four source indicators do not share one geography version:
 |---|---|---|---|
 | `0003182` | population | NUTS-2002 | 1991-2013 |
 | `0008273` | population | NUTS-2013 | 2011-2023 |
+| `0012918` | population | NUTS-2024 | 2021-2025 |
 | `0008206` | deaths | NUTS-2013 | 1980-2022 |
 | `0013166` | deaths | NUTS-2024 | 2022-2024 |
 
-Municipality boundaries are identical across all three vintages, but the
+Municipality boundaries are identical across every vintage, but the
 regional groupings are not: NUTS-2024 moved Lezíria do Tejo out of `Alentejo`
 into the new `Oeste e Vale do Tejo`. Reading INE's own regional rows across the
 2022 seam therefore compares two different Alentejos. For 2022 all-cause deaths
@@ -255,6 +257,60 @@ is stable only for municipalities the reform did not move (132 of 308), and the
 ambiguous island labels are all in that group, so no name is ever matched
 against two candidates. Anything resolving by neither route is an error rather
 than a guess.
+
+### The 2021 Population Revision
+
+INE publishes two overlapping population estimates, and they do not agree.
+`0008273` (NUTS-2013) runs to 2023; `0012918` (NUTS-2024) covers 2021-2025 and
+carries a revised estimate that is progressively higher on the same years:
+
+| Portugal, resident population | `0012918` | `0008273` | |
+|---|---:|---:|---:|
+| 2021 | 10,599,117 | 10,421,117 | +1.71% |
+| 2022 | 10,929,704 | 10,516,621 | +3.93% |
+| 2023 | 11,204,347 | 10,639,726 | +5.31% |
+| 2024 | 11,387,222 | not published | |
+| 2025 | 11,424,031 | not published | |
+
+Both were updated within two months of each other, so this is two published
+series rather than stale data on one side. The divergence growing year on year
+is the signature of revised migration estimates.
+
+**The archive uses `0012918` for the whole of its range**, not only for the
+years `0008273` lacks. Taking 2024 from the revised series while leaving 2023 on
+the old one would put a 5.3% step at the seam: mortality rates would fall about
+5% from 2023 to 2024 for reasons that have nothing to do with mortality, and any
+forecast fitted across it would inherit the step. Using the revised series from
+2021 moves the single seam to 2020/2021, where the two differ by 1.7%.
+
+That seam is still there, and the app says so: a rate series or a pooled window
+crossing 2020/2021 raises a warning naming the year and the direction of the
+effect. `population_revision_warning()` is skipped for counts, AVPP and infant
+mortality, none of which divide by this denominator.
+
+The practical consequence is that **every rate from 2021 onward changed** when
+this was adopted. Portugal's crude mortality for 2023 reads 1,056 per 100,000
+against 1,112 on the previous basis.
+
+### Which Years Support What
+
+The two sides of a rate no longer end together, and it is now population that
+runs ahead:
+
+| | Range | Notes |
+|---|---|---|
+| Population | 1991-2025 | `0012918` publishes 2025 |
+| Deaths by cause | 1980-2024 | `0013166` ends at 2024 |
+| Live births | 1995-2025 | |
+| Under-1 deaths | 1980-2025 | 2025 is all-cause, both sexes only |
+
+So 2025 is selectable for infant mortality and refused for everything else, and
+the year selector stops there rather than offering 2026. The observed and
+forecast tabs, which work only in rates, bound their sliders by `rate_years` -
+the intersection of population and deaths - rather than by either side alone.
+
+2025 deaths do exist in `0013331` and `0013332`, but without a cause-of-death
+dimension, so they cannot serve this app.
 
 ## Age Groups
 

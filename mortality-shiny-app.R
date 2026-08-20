@@ -34,10 +34,12 @@ for (app_file in c(
   # regions before metadata: the area vocabulary is derived from the NUTS
   # lookup, so the lookup readers have to exist first.
   "R/regions.R",
+  # infant before metadata too: the selectable year range includes years only
+  # the infant datasets reach, so metadata has to be able to ask them.
+  "R/infant.R",
   "R/metadata.R",
   "R/metrics.R",
   "R/standardisation.R",
-  "R/infant.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -415,6 +417,13 @@ server <- function(input, output, session) {
 
   make_series_spec <- function(query_spec, population, rate_type, year_range = range(year_of_interest)) {
     selected_years <- get_years_in_selected_range(year_range)
+
+    # Observed rates and forecasts are always rate series, so any window
+    # crossing the population revision inherits its step.
+    revision_warning <- population_revision_warning(selected_years, "crude")
+    if (!is.null(revision_warning)) {
+      showNotification(revision_warning, type = "warning", duration = 20)
+    }
 
     c(
       query_spec,
@@ -2537,6 +2546,17 @@ server <- function(input, output, session) {
   annual_metrics_needing_population <- c("crude", "dsr", "smr", "isr")
 
   load_annual_cause_data <- function(area_spec, cause, sex, years, metric_id, data_source = "ine") {
+    # The infant metrics read their own parallel datasets and take nothing from
+    # the main archive. Loading it anyway is not merely wasted work: 2025 has
+    # infant deaths and live births but no by-cause deaths, so the loader would
+    # throw about a missing snapshot file for a year the metric can answer.
+    if (metric_id %in% infant_metric_ids) {
+      return(tibble(
+        year = integer(0), area = character(0), sex = character(0),
+        cause = character(0), age_band = character(0), deaths = numeric(0)
+      ))
+    }
+
     data <- if (metric_id %in% annual_metrics_needing_population) {
       get_data_for(
         area = area_spec$areas,
@@ -2601,6 +2621,18 @@ server <- function(input, output, session) {
         need(
           length(years_without_population(years)) == 0,
           population_gap_message(years, get_annual_metric_label(metric_id))
+        )
+      )
+    }
+
+    # Everything except the infant pair reads the by-cause death archive, which
+    # now ends a year before population does. Say so, rather than failing deep
+    # in the loader with a message about a missing snapshot file.
+    if (!(metric_id %in% infant_metric_ids)) {
+      validate(
+        need(
+          length(years_without_deaths(years)) == 0,
+          death_gap_message(years, get_annual_metric_label(metric_id))
         )
       )
     }
@@ -3379,6 +3411,12 @@ server <- function(input, output, session) {
       showNotification(vintage_warning, type = "warning", duration = 20)
     }
 
+    # A pooled window straddling 2020/2021 mixes the two population series.
+    revision_warning <- population_revision_warning(pooled_years, selected_metric)
+    if (!is.null(revision_warning)) {
+      showNotification(revision_warning, type = "warning", duration = 20)
+    }
+
     # The infant metrics are bounded by their own datasets, not by population:
     # the rate needs published live births (1995-), the count only the under-1
     # death archive. Years outside those are refused for that metric alone.
@@ -3390,6 +3428,24 @@ server <- function(input, output, session) {
       ))
       if (!is.null(infant_gap)) {
         showNotification(infant_gap, type = "warning", duration = 15)
+      }
+
+      # A year published only as an all-cause, both-sexes total cannot answer a
+      # cause- or sex-specific request; say which, rather than reporting zero.
+      detail_cause <- if (length(selected_causes) == 1) selected_causes else "Todas as causas de morte"
+      detail_gap <- infant_detail_message(
+        pooled_years,
+        cause = detail_cause,
+        sex = input$annual_sex
+      )
+      if (!is.null(detail_gap)) {
+        # Refuse outright when no year in the window can answer; warn when only
+        # part of it cannot, since the rest still produces a usable figure.
+        validate(need(
+          length(infant_detail_years(pooled_years, detail_cause, input$annual_sex)) > 0,
+          detail_gap
+        ))
+        showNotification(detail_gap, type = "warning", duration = 20)
       }
     }
 

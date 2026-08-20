@@ -176,3 +176,22 @@ test_that("count and proportion intervals match the exact reference tests", {
   # invalid denominator -> NA bounds
   expect_true(all(is.na(compute_proportion_interval(5, 0))))
 })
+
+test_that("the population revision seam is announced when a window crosses it", {
+  # Crossing 2020/2021 changes the denominator basis by about 1.7%.
+  msg <- population_revision_warning(2019:2022, "crude")
+  expect_match(msg, "2021")
+  expect_match(msg, "denominador")
+
+  # Wholly on one side of the seam, nothing to say.
+  expect_null(population_revision_warning(2015:2019, "crude"))
+  expect_null(population_revision_warning(2021:2024, "crude"))
+
+  # Counts do not divide by population, so the seam does not reach them.
+  expect_null(population_revision_warning(2019:2022, "deaths"))
+  expect_null(population_revision_warning(2019:2022, "ypll"))
+  expect_null(population_revision_warning(2019:2022, "infant"))
+
+  # Unspecified metric errs toward warning.
+  expect_match(population_revision_warning(2019:2022), "2021")
+})

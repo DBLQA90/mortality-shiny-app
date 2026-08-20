@@ -2,21 +2,81 @@
 # Parameters
 # =========================================================
 
-population_indicator_current <- "0008273"
-population_indicator_legacy  <- "0003182"
+# Population comes from three indicators, newest first.
+#
+# 0012918 is not simply a continuation of 0008273. It carries a revised
+# estimate that runs progressively higher on the same years - +1.71% for 2021,
+# +3.93% for 2022, +5.31% for 2023 on the national total - and both indicators
+# were updated within two months of each other, so this is two published series
+# rather than stale data on one side.
+#
+# It is therefore used for the whole of its range, not only for the years the
+# older one lacks. Taking 2024 from the revised series while leaving 2023 on
+# the old one would put a 5.3% step at the seam, which reads as a real fall in
+# mortality and would be inherited by any forecast fitted across it. Using the
+# revised series from 2021 moves the seam to 2020/2021, where the two differ by
+# 1.7%. See METHODOLOGY.md.
+population_indicator_revised <- "0012918"   # NUTS-2024, 2021-2025
+population_indicator_current <- "0008273"   # NUTS-2013, 2011-2023
+population_indicator_legacy  <- "0003182"   # NUTS-2002, 1991-2013
 death_indicator_legacy       <- "0008206"
 death_indicator_current      <- "0013166"
 
-population_indicators <- c(population_indicator_current, population_indicator_legacy)
+population_indicators <- c(
+  population_indicator_revised,
+  population_indicator_current,
+  population_indicator_legacy
+)
 death_indicators <- c(death_indicator_legacy, death_indicator_current)
 
-# Deaths are published ahead of the population estimates: INE has deaths for
-# 2024 but no municipality-level population by age and sex beyond 2023. The
-# analysable range is therefore the union of the two, not the intersection -
-# otherwise the most recent year of deaths is invisible - with rate-based
-# metrics guarded for the years that have no denominator.
+# The year the population series changes basis, and the size of the step. Used
+# to warn when a selection spans it rather than leaving the reader to discover
+# a 1.7% discontinuity by eye.
+POPULATION_REVISION_YEAR <- 2021L
+
+# The population series changes basis in 2021, and the step is large enough to
+# read as a real change in mortality if it goes unmentioned.
+#
+# INE publishes two overlapping estimates: 0008273 on NUTS-2013 (to 2023) and
+# 0012918 on NUTS-2024 (2021-2025), the latter revised progressively upward -
+# +1.71% for 2021, +3.93% for 2022, +5.31% for 2023 nationally. The archive uses
+# the revised series wherever it reaches, which puts the one seam at 2020/2021
+# rather than a much larger one at 2023/2024. A rate series crossing it gains
+# roughly 1.7% of denominator, so mortality dips by about that much for reasons
+# that have nothing to do with mortality.
+population_revision_warning <- function(years, metric_id = NULL) {
+  if (!is.null(metric_id) && !(metric_id %in% metrics_requiring_population)) {
+    return(NULL)
+  }
+
+  years <- as.integer(years)
+  years <- years[is.finite(years)]
+
+  spans_break <- length(years) > 0 &&
+    any(years < POPULATION_REVISION_YEAR) &&
+    any(years >= POPULATION_REVISION_YEAR)
+
+  if (!spans_break) {
+    return(NULL)
+  }
+
+  as.character(glue::glue(
+    "Atenção: a partir de {POPULATION_REVISION_YEAR} a população vem da série ",
+    "revista do INE (NUTS-2024), cerca de 1,7% acima da anterior em ",
+    "{POPULATION_REVISION_YEAR} e a divergir nos anos seguintes. As taxas ",
+    "descem ligeiramente ao atravessar {POPULATION_REVISION_YEAR - 1}/",
+    "{POPULATION_REVISION_YEAR} por mudança de denominador, não por mudança de ",
+    "mortalidade."
+  ))
+}
+
+# The two sides no longer end together, and now it is population that runs
+# ahead: 0012918 publishes 2025 while cause-specific deaths stop at 2024.
+# (2025 deaths exist, in 0013331 and 0013332, but without a cause dimension, so
+# they cannot serve this app.) The analysable range is the union rather than the
+# intersection, with rate metrics guarded for any year missing either side.
 fallback_year_of_interest <- 1991:2024
-fallback_population_years <- 1991:2023
+fallback_population_years <- 1991:2025
 
 # Metrics that divide by population, and so cannot be produced for a year that
 # has deaths but no population estimate.

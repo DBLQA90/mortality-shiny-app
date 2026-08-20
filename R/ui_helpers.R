@@ -2,11 +2,13 @@
 # UI Helpers
 # =========================================================
 
-# `years` bounds the slider. Tabs that can only show rates pass `population_years`,
-# because a year with deaths but no published population cannot produce one: with
-# the full range the observed tab defaulted to 1991-2024 and failed on load, since
-# 2024 has no denominator. The data-availability tab keeps the full range, as its
-# job is to show what exists.
+# `years` bounds the slider. Tabs that can only show rates pass `rate_years`,
+# the years that have both a numerator and a denominator: with the full range
+# the observed tab defaulted to a span whose last year had no denominator and
+# failed on load. It has to be the intersection, not either side - population
+# now runs a year further than deaths by cause, having previously run a year
+# behind. The data-availability tab keeps the full range, as its job is to show
+# what exists.
 year_range_slider <- function(input_id, label, years = year_of_interest, value = range(years)) {
   sliderInput(
     input_id,
@@ -169,7 +171,7 @@ forecast_controls_panel <- function() {
     rate_type_help(),
     region_aggregation_note(),
     year_range_slider(
-      years = population_years,
+      years = rate_years,
       "years_fit",
       "Anos a importar / ajustar:"
     ),
@@ -259,7 +261,7 @@ beginner_forecast_controls_panel <- function() {
     ),
     horizon_help(),
     year_range_slider(
-      years = population_years,
+      years = rate_years,
       "beginner_years_fit",
       "Janela de ajuste:"
     ),
@@ -539,7 +541,7 @@ observed_mortality_tab_ui <- function() {
         rate_type_help(),
         region_aggregation_note(),
         year_range_slider(
-          years = population_years,
+          years = rate_years,
           "years_import",
           "Anos a importar:"
         ),

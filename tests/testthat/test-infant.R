@@ -97,6 +97,35 @@ test_that("the count covers years the rate cannot", {
   })
 })
 
+test_that("a year published only as a total is refused at finer detail", {
+  skip_if_not(dir.exists("../../data/snapshots/infant_deaths"), "infant snapshots not built")
+
+  with_snapshots({
+    latest <- max(infant_death_years())
+
+    # The by-cause indicators end a year before the total-only one, so the last
+    # year holds a single all-cause, both-sexes figure per area.
+    expect_true(infant_year_has_detail(latest, "Todas as causas de morte", "HM"))
+
+    detailed <- infant_detail_years(latest, "Doenças do aparelho circulatório", "HM")
+    if (length(detailed) == 0) {
+      # Asking it for a cause must be refused, not answered with zero - which
+      # is what an unguarded filter on no matching rows would produce.
+      msg <- infant_detail_message(latest, "Doenças do aparelho circulatório", "HM")
+      expect_match(msg, as.character(latest))
+      expect_match(msg, "apenas no total")
+      expect_true(is.na(infant_deaths_total(latest, "Portugal",
+                                            cause = "Doenças do aparelho circulatório")))
+
+      # And the same request one year earlier still works.
+      expect_null(infant_detail_message(latest - 1L, "Doenças do aparelho circulatório", "HM"))
+    }
+
+    # An all-cause request is never blocked.
+    expect_null(infant_detail_message(infant_death_years(), "Todas as causas de morte", "HM"))
+  })
+})
+
 test_that("a thin denominator is marked, not suppressed", {
   # The threshold is about resolution: below it a single death moves the rate
   # by more than one whole unit per 1,000.
