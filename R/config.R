@@ -34,6 +34,25 @@ death_indicators <- c(death_indicator_legacy, death_indicator_current)
 # a 1.7% discontinuity by eye.
 POPULATION_REVISION_YEAR <- 2021L
 
+# Which indicator serves a year the sources disagree about.
+#
+# get_source_year_plan() resolves overlaps by DESCENDING priority: the largest
+# number wins, not the first listed. Stated here as a named vector so the
+# ordering is visible and testable - written inline it reads as a list of
+# indicators with 1, 2, 3 beside them and invites exactly the wrong reading.
+#
+#   0012918  2021-2025, revised. Wins every year it covers.
+#   0003182  1991-2013, NUTS-2002. Keeps the 2011-2013 overlap, as it always
+#            has: it is the contiguous source for 1991-2013 and the one the
+#            Lisboa label repair was applied to.
+#   0008273  2011-2023, NUTS-2013. Serves 2014-2020, between the other two.
+population_source_priorities <- c(3L, 2L, 1L)
+names(population_source_priorities) <- c(
+  population_indicator_revised,
+  population_indicator_legacy,
+  population_indicator_current
+)
+
 # The population series changes basis in 2021, and the step is large enough to
 # read as a real change in mortality if it goes unmentioned.
 #

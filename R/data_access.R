@@ -125,15 +125,9 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
   year_order <- normalize_year_order(year_order)
   years <- order_years(years, year_order)
 
-  # Highest priority first: the revised NUTS-2024 series wins wherever it
-  # reaches, so a year it covers is never served by the older estimate.
   population_plan <- get_source_year_plan(
-    indicators = c(
-      population_indicator_revised,
-      population_indicator_current,
-      population_indicator_legacy
-    ),
-    priorities = c(1L, 2L, 3L),
+    indicators = names(population_source_priorities),
+    priorities = unname(population_source_priorities),
     requested_years = years,
     year_order = year_order
   )

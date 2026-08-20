@@ -195,3 +195,24 @@ test_that("the population revision seam is announced when a window crosses it", 
   # Unspecified metric errs toward warning.
   expect_match(population_revision_warning(2019:2022), "2021")
 })
+
+test_that("the revised population series outranks the older ones", {
+  # get_source_year_plan() resolves overlaps by DESCENDING priority, so the
+  # largest number wins. Listing the revised indicator first and giving it 1
+  # made it lose every overlapping year to the series it was meant to replace -
+  # invisible in snapshot mode, where the files had already been overwritten,
+  # and wrong only when reading INE live.
+  expect_equal(
+    names(which.max(population_source_priorities)),
+    population_indicator_revised
+  )
+
+  # The 2011-2013 overlap keeps its existing winner.
+  expect_gt(
+    population_source_priorities[[population_indicator_legacy]],
+    population_source_priorities[[population_indicator_current]]
+  )
+
+  # Distinct, or the tie-break is arbitrary.
+  expect_equal(length(unique(population_source_priorities)), 3L)
+})

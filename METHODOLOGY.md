@@ -292,6 +292,25 @@ The practical consequence is that **every rate from 2021 onward changed** when
 this was adopted. Portugal's crude mortality for 2023 reads 1,056 per 100,000
 against 1,112 on the previous basis.
 
+Before 2021 nothing was revised. INE's national long series `0001223`
+(1970-2025, updated 22 June 2026) matches this archive exactly for 1995, 2000,
+2005, 2010, 2014, 2016, 2018, 2019 and 2020 - to the person, +0.00% in every
+case. The revision applies only from 2021, which is why the seam sits there and
+why there is no revised municipal series to splice onto the earlier years.
+
+One small exception, unrelated to the revision: **2011-2013 run 0.16% below
+INE's current national figure**, because the app serves those years from
+`0003182` (NUTS-2002, last updated June 2014) rather than `0008273`, which
+publishes them too. That preference is deliberate - `0003182` is the contiguous
+source for 1991-2013 and the one the `Lisboa` label repair was applied to, so
+switching would move the source seam from 2013/2014 to 2010/2011 rather than
+remove it. At a sixth of one per cent it is an order of magnitude below the
+2021 step the app already warns about.
+
+Which indicator serves which year is set by `population_source_priorities` in
+`R/config.R`. Note that `get_source_year_plan()` resolves overlaps by
+*descending* priority - the largest number wins, not the first listed.
+
 ### Which Years Support What
 
 The two sides of a rate no longer end together, and it is now population that
