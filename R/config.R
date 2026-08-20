@@ -22,11 +22,13 @@ fallback_population_years <- 1991:2023
 # has deaths but no population estimate.
 metrics_requiring_population <- c("crude", "dsr", "smr", "isr")
 
-# NUTS II regions. Only Norte and Alentejo have INE regional rows in the
-# historical chunks; the rest are usable through the municipal region mode,
-# which sums their municipalities and so covers the whole series. See
-# R/regions.R for why that is the dependable route across NUTS vintages.
+# Fallback region list, used only when no NUTS lookup has been built - the live
+# vocabulary is derived from the lookup of the selected vintage. `Continente` is
+# a NUTS I unit and the two autonomous regions carry the same name at NUTS I and
+# NUTS II, so this list is the whole regional vocabulary of NUTS-2024, not only
+# its second level. See R/regions.R.
 fallback_nuts2_areas <- c(
+  "Continente",
   "Norte",
   "Centro",
   "Oeste e Vale do Tejo",
@@ -136,8 +138,40 @@ annual_metric_choices <- c(
   "SMR (padronização indirecta, referência = 100)" = "smr",
   "Taxa Padronizada Indirecta (por 100.000)" = "isr",
   "Mortalidade Proporcional" = "proportional",
-  "AVPP" = "ypll"
+  "AVPP" = "ypll",
+  "Óbitos infantis (< 1 ano)" = "infant_deaths",
+  "Mortalidade Infantil (por 1.000 nados-vivos)" = "infant"
 )
+
+# Infant mortality needs live births and under-1 deaths, neither of which comes
+# from the main pipeline. It is therefore excluded from the population guard -
+# it does not use population at all - and has its own coverage check.
+#
+# The count is offered alongside the rate because at municipal scale the rate is
+# often not worth reading: a place with a handful of births produces a figure
+# that swings by hundreds per 1,000 on a single death. The count says what
+# actually happened and cannot mislead that way, so both are available and the
+# reader chooses. The count is also available over a wider span: it needs only
+# the under-1 death archive, so it covers 1991-1994 as well, where the rate
+# cannot be computed because published births start in 1995.
+infant_metric_id <- "infant"
+infant_count_metric_id <- "infant_deaths"
+infant_metric_ids <- c(infant_metric_id, infant_count_metric_id)
+
+# Metrics reported as whole counts rather than as rates, so they are rounded to
+# integers.
+count_metric_ids <- c("deaths", "ypll", infant_count_metric_id)
+
+# Counts that are divided by the length of a pooled window, so a 3-year window
+# reads as a yearly average instead of a tripled total.
+#
+# Infant deaths are deliberately left out. Annualising them would put back the
+# very problem the count exists to avoid: a municipality with two infant deaths
+# in three years would read as "1", a rounded fraction, when what happened is
+# two deaths. Accumulating events is the whole reason to pool a count this
+# rare. Left as a window total it is also exactly the numerator of the pooled
+# rate shown beside it, so the two metrics agree.
+annualised_metric_ids <- c("deaths", "ypll")
 
 # Metrics that compare an area against a reference schedule rather than against
 # an external standard population. They need the reference area to be loaded

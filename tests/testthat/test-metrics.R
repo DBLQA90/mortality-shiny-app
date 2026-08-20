@@ -63,6 +63,69 @@ test_that("under-75 DSR keeps the conventional 0-74 renormalisation (not rescale
   expect_false(isTRUE(all.equal(got$dsr, rescaled)))
 })
 
+test_that("get_age_midpoint places the split infant bands correctly", {
+  expect_equal(get_age_midpoint("< 1 ano"), 0.5)
+  # Not 2.5: the band covers exact ages 1 up to 5, so the generic
+  # (lower + upper) / 2 rule would read the wrong interval.
+  expect_equal(get_age_midpoint("1 - 4 anos"), 3)
+})
+
+test_that("split_infant_age_band moves weight without moving deaths", {
+  df <- tibble(
+    age_band = c("0 - 4 anos", "30 - 34 anos"),
+    deaths = c(286, 10)
+  )
+  # Portugal 2024: 254 of the 286 deaths in the band were infants.
+  split <- split_infant_age_band(df, 254)
+
+  expect_setequal(split$age_band, c("< 1 ano", "1 - 4 anos", "30 - 34 anos"))
+  expect_equal(sum(split$deaths), sum(df$deaths))
+  expect_equal(split$deaths[split$age_band == "< 1 ano"], 254)
+  expect_equal(split$deaths[split$age_band == "1 - 4 anos"], 32)
+
+  # The point of the split: infants lose nearly the whole cutoff, so AVPP rises.
+  expect_equal(compute_ypll(df, cutoff = 70), 286 * 67.5 + 10 * 38)
+  expect_equal(compute_ypll(split, cutoff = 70), 254 * 69.5 + 32 * 67 + 10 * 38)
+  expect_gt(compute_ypll(split, cutoff = 70), compute_ypll(df, cutoff = 70))
+})
+
+test_that("split_infant_age_band declines rather than guessing", {
+  df <- tibble(age_band = c("0 - 4 anos", "30 - 34 anos"), deaths = c(286, 10))
+
+  # An unknown count leaves AVPP exactly as it was, rather than half-corrected.
+  expect_equal(split_infant_age_band(df, NA_real_), df)
+
+  # Nothing to split.
+  no_band <- tibble(age_band = "30 - 34 anos", deaths = 10)
+  expect_equal(split_infant_age_band(no_band, 254), no_band)
+
+  # The two counts come from different indicators. More infant deaths than the
+  # band holds must cap, never produce a negative count for ages one to four.
+  capped <- split_infant_age_band(df, 400)
+  expect_equal(capped$deaths[capped$age_band == "< 1 ano"], 286)
+  expect_equal(capped$deaths[capped$age_band == "1 - 4 anos"], 0)
+  expect_equal(sum(capped$deaths), sum(df$deaths))
+})
+
+test_that("split_infant_age_band handles factors and repeated band rows", {
+  # An ordered factor of the original levels cannot hold the new labels.
+  df <- tibble(age_band = as_bands("0 - 4 anos"), deaths = 100)
+  split <- split_infant_age_band(df, 80)
+  expect_equal(split$deaths[split$age_band == "< 1 ano"], 80)
+
+  # An unpooled frame still split by year collapses into the two new rows.
+  multi <- tibble(age_band = c("0 - 4 anos", "0 - 4 anos"), deaths = c(60, 40))
+  collapsed <- split_infant_age_band(multi, 70)
+  expect_equal(nrow(collapsed), 2)
+  expect_equal(sum(collapsed$deaths), 100)
+  expect_equal(collapsed$deaths[collapsed$age_band == "1 - 4 anos"], 30)
+
+  # Population does not divide with the deaths, so it is marked unknown rather
+  # than apportioned. No rate is computed from a split frame.
+  with_pop <- tibble(age_band = "0 - 4 anos", deaths = 100, pop = 50000)
+  expect_true(all(is.na(split_infant_age_band(with_pop, 80)$pop)))
+})
+
 test_that("compute_ypll sums deaths x years-lost with a 70-year cutoff", {
   df <- tibble(
     age_band = as_bands(c("0 - 4 anos", "30 - 34 anos", "60 - 64 anos", "80 - 84 anos")),

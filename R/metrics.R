@@ -61,6 +61,12 @@ get_age_midpoint <- function(age_band) {
 
   dplyr::case_when(
     age_band == "0 - 4 anos" ~ 2.5,
+    # The two halves of `0 - 4 anos`, produced by split_infant_age_band(). Both
+    # are stated explicitly because the generic rule below would read
+    # "1 - 4 anos" as (1 + 4) / 2 = 2.5, which is the midpoint of the wrong
+    # interval: the band covers exact ages 1 up to 5, so its midpoint is 3.
+    age_band == "< 1 ano" ~ 0.5,
+    age_band == "1 - 4 anos" ~ 3,
     grepl("^[0-9]+\\s*-\\s*[0-9]+", age_band) ~ {
       lower <- suppressWarnings(as.numeric(sub("^([0-9]+).*", "\\1", age_band)))
       upper <- suppressWarnings(as.numeric(sub("^[0-9]+\\s*-\\s*([0-9]+).*", "\\1", age_band)))
@@ -68,6 +74,58 @@ get_age_midpoint <- function(age_band) {
     },
     TRUE ~ NA_real_
   )
+}
+
+# Split `0 - 4 anos` into `< 1 ano` and `1 - 4 anos` using a known count of
+# infant deaths.
+#
+# Years of potential life lost weight each death by how far short of the cutoff
+# it fell, taken from the midpoint of its age band. Infant deaths are the
+# extreme case: they sit at the very bottom of a five-year band, so the band
+# midpoint of 2.5 credits each one with 67.5 lost years against a cutoff of 70
+# when the true figure is close to 70. And they are not a minor part of the
+# band - for Portugal in 2024, 254 of the 286 deaths in `0 - 4 anos` were
+# infants - so the band's weight is wrong for most of the deaths in it.
+#
+# The under-1 counts fetched for infant mortality make the correction possible:
+# subtract them out and the remainder sits at ages one to four, where a midpoint
+# of 3 is right. Deaths are unchanged; only their weights move.
+#
+# Applied only when the count is known for the whole window. With NA infant
+# deaths the frame is returned untouched, so AVPP falls back to its previous
+# behaviour rather than to a half-corrected figure.
+split_infant_age_band <- function(df, infant_deaths, band = "0 - 4 anos") {
+  if (!is.finite(infant_deaths) || !(band %in% as.character(df$age_band))) {
+    return(df)
+  }
+
+  # The new labels are not levels of whatever factor the caller supplied.
+  df$age_band <- as.character(df$age_band)
+
+  # More than one row for the band (an unpooled frame still split by year or
+  # area) collapses into the two new rows, which is what AVPP sums anyway.
+  band_row <- df[df$age_band == band, , drop = FALSE]
+  band_deaths <- sum(band_row$deaths, na.rm = TRUE)
+
+  # The two counts come from different indicators, and a vintage revision could
+  # in principle leave more infant deaths on record than the band holds. Cap
+  # rather than emit a negative count for ages one to four.
+  under_one <- max(min(infant_deaths, band_deaths), 0)
+
+  rest <- df[df$age_band != band, , drop = FALSE]
+  split_rows <- band_row[c(1, 1), , drop = FALSE]
+  split_rows$age_band <- c("< 1 ano", "1 - 4 anos")
+  split_rows$deaths <- c(under_one, band_deaths - under_one)
+
+  # Population is a property of the original band and does not divide with the
+  # deaths. No rate is computed from a split frame - the correction exists for
+  # AVPP, which uses deaths alone - so mark it unknown rather than invent a
+  # share of it.
+  if ("pop" %in% names(split_rows)) {
+    split_rows$pop <- NA_real_
+  }
+
+  dplyr::bind_rows(rest, split_rows)
 }
 
 compute_ypll <- function(df, cutoff = 70) {
