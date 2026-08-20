@@ -336,6 +336,30 @@ format_snapshot_year_span <- function(years) {
   paste0(min(years), " - ", max(years), " (", length(years), ")")
 }
 
+# Years held by a per-year snapshot directory, read from the filenames.
+#
+# The births and under-1 death datasets sit outside the inventory manifest,
+# which describes only the population and by-cause death chunks and carries
+# columns (cause, age_band) that neither of them has. The infant module reads
+# their directories directly, so the app works without them being catalogued -
+# but the coverage panel would show no trace of two datasets that are present,
+# which reads as "not shipped". Reporting their spans here closes that without
+# forcing them into a schema that does not fit.
+snapshot_directory_years <- function(dataset, snapshot_dir = get_snapshot_dir()) {
+  dir_path <- snapshot_path_join(snapshot_dir, dataset)
+
+  files <- tryCatch(
+    list.files(dir_path, pattern = "^year_[0-9]+\\.rds$"),
+    error = function(e) character(0)
+  )
+
+  if (length(files) == 0) {
+    return(integer(0))
+  }
+
+  sort(as.integer(sub("^year_([0-9]+)\\.rds$", "\\1", files)))
+}
+
 build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory()) {
   inventory_path <- get_snapshot_inventory_file()
 
@@ -363,6 +387,9 @@ build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory(
     NA_integer_
   }
 
+  birth_years <- snapshot_directory_years("births")
+  infant_years <- snapshot_directory_years("infant_deaths")
+
   tibble::tibble(
     Item = c(
       "Inventário",
@@ -374,6 +401,8 @@ build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory(
       "Indicadores de óbitos",
       "Anos de óbitos",
       "Causas de óbito",
+      "Anos de nados-vivos",
+      "Anos de óbitos < 1 ano",
       "Máximo de áreas por chunk"
     ),
     Valor = c(
@@ -386,6 +415,8 @@ build_snapshot_inventory_summary <- function(inventory = get_snapshot_inventory(
       format_snapshot_values(deaths$indicator),
       format_snapshot_year_span(deaths$year),
       as.character(dplyr::n_distinct(deaths$cause)),
+      format_snapshot_year_span(birth_years),
+      format_snapshot_year_span(infant_years),
       as.character(max_area_count)
     )
   )

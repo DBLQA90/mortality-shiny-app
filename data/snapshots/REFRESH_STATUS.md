@@ -1,5 +1,19 @@
 # Snapshot refresh status
 
+> **Note (2026-08-20):** the archive has been updated since the run logged below,
+> by targeted tools rather than by `tools/refresh_snapshots.R`, so the log that
+> follows describes only the 2026-08-11 run. Changes since then:
+>
+> | What | How |
+> |---|---|
+> | `0013166` 2022-2023 refetched (three municipalities were missing) | `tools/fetch_death_year.R` |
+> | Population 2021-2025 replaced with the revised `0012918` series | `tools/fetch_population_year.R` |
+> | Under-1 deaths extended to 2025 | `tools/fetch_infant_deaths.R` |
+> | Inventory manifest rebuilt | `tools/update_snapshot_inventory.R` |
+>
+> Coverage now: population 1991-2025, deaths by cause 1991-2024, live births
+> 1995-2025, under-1 deaths 1980-2025.
+
 Last run: 2026-08-11 17:07:24 WEST
 Task: `all`  |  Duration: 38.7 min
 
