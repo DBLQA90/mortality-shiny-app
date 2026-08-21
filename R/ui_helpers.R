@@ -697,6 +697,57 @@ annual_metrics_tab_ui <- function() {
   )
 }
 
+avoidable_tab_ui <- function() {
+  tabPanel(
+    "Mortalidade Evitável",
+    sidebarLayout(
+      sidebarPanel(
+        selectInput(
+          "avoidable_year",
+          "Ano:",
+          choices = sort(rate_years),
+          selected = max(rate_years)
+        ),
+        selectInput(
+          "avoidable_area",
+          "Local de residência:",
+          choices = local_area,
+          multiple = TRUE,
+          selected = "Portugal"
+        ),
+        textInput("avoidable_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ULS"),
+        selectInput("avoidable_sex", "Sexo:", choices = sex_levels, selected = "HM"),
+        selectInput(
+          "avoidable_pooling",
+          "Agregação plurianual:",
+          choices = POOLING_WINDOW_CHOICES,
+          selected = "1"
+        ),
+        pooling_help(),
+        region_aggregation_note(),
+        data_source_input("avoidable_data_source"),
+        actionButton("go_avoidable", "Carregar"),
+        br(), br(),
+        actionButton("cancel_avoidable", "Interromper carregamento")
+      ),
+      mainPanel(
+        helpText(avoidable_scope_note()),
+        h4("Repartição dos óbitos com menos de 75 anos"),
+        tableOutput("avoidableTable"),
+        uiOutput("avoidableNote"),
+        downloadButton("downloadAvoidableCSV", "Descarregar tabela (CSV)"),
+        br(), br(),
+        plotOutput("avoidablePlot", height = "360px"),
+        downloadButton("downloadAvoidablePlot", "Descarregar gráfico (PNG)"),
+        br(), br(),
+        h4("Que causas entram em cada grupo"),
+        tableOutput("avoidableCausesTable"),
+        downloadButton("downloadAvoidableCausesCSV", "Descarregar lista de causas (CSV)")
+      )
+    )
+  )
+}
+
 advanced_model_spec_tab_ui <- function() {
   tabPanel(
     "Especificação do Modelo",

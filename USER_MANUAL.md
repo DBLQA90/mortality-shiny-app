@@ -715,6 +715,81 @@ Cuidados:
 - a definição NUTS activa, no topo da página, muda o que `Centro` ou `Alentejo` significam;
 - as taxas exigem denominador: os anos sem população publicada são recusados com uma explicação, e as contagens, a mortalidade proporcional e os AVPP continuam disponíveis.
 
+## 10-A. Separador Mortalidade Evitável
+
+Mortalidade evitável são os óbitos **antes dos 75 anos** que poderiam ter sido
+evitados. A distinção que este separador faz é a que o Eurostat e a OCDE usam
+desde a revisão conjunta de 2019, e separa duas responsabilidades diferentes:
+
+- **Prevenível** — evitável por saúde pública e prevenção primária: tabaco,
+  álcool, segurança rodoviária, prevenção do suicídio. É matéria de política de
+  saúde pública.
+- **Tratável** — evitável por cuidados de saúde atempados e eficazes: rastreio,
+  diagnóstico, tratamento. É matéria de organização e qualidade dos serviços.
+
+Ler as duas em conjunto responde a perguntas diferentes, e é por isso que
+aparecem separadas em vez de somadas num único indicador de "evitável".
+
+Os 75 anos fazem parte da definição, não são uma opção: o separador aplica
+sempre esse limite.
+
+### O que a tabela mostra
+
+Uma repartição dos óbitos com menos de 75 anos que **fecha no total**:
+
+| Linha | O que é |
+|---|---|
+| Prevenível | as 16 causas atribuídas à prevenção primária |
+| Tratável | as 17 causas atribuídas aos cuidados de saúde |
+| Evitável (total) | a soma das duas |
+| Não classificada (por resolver) `*` | seis causas deixadas de fora, ver abaixo |
+| Não evitável / fora das listas | tudo o resto |
+| Todas as causas, < 75 anos | o total |
+
+Para cada linha são apresentados os óbitos, a percentagem do total com menos de
+75 anos, e a taxa padronizada por 100.000 nessa faixa etária. A segunda tabela
+lista exactamente que causas entram em cada grupo, e pode ser exportada.
+
+### As seis causas excluídas
+
+O Eurostat define as listas ao nível da CID-10. Os dados do INE vêm na lista
+sucinta europeia, que é menos detalhada, e há seis rubricas que não podem ser
+atribuídas a um dos grupos sem um juízo clínico:
+
+| Causa | Porquê |
+|---|---|
+| Doenças isquémicas do coração | o Eurostat reparte-a em 50% prevenível e 50% tratável; a lista sucinta não permite separar |
+| Doenças cérebro-vasculares | classificada como tratável, mas parte é atribuível a prevenção primária |
+| Tumor maligno do estômago | consta de umas revisões da lista e não de outras |
+| Tumor maligno do tecido linfático e hematopoético | só o linfoma de Hodgkin e a leucemia infantil são tratáveis; a rubrica agrega tudo |
+| Tumor maligno do ovário | consta de umas revisões e não de outras |
+| Hepatite viral | a hepatite B é prevenível por vacinação, a C é tratável |
+
+**Estas seis causas ficaram de fora dos totais**, e não são uma nota de rodapé:
+representam cerca de 18% dos óbitos com menos de 75 anos, dos quais dois terços
+são as duas rubricas cardiovasculares. Por isso aparecem como linha própria na
+tabela, marcada com `*`, em vez de desaparecerem.
+
+### Como ler estes números
+
+**São um limite inferior, não uma estimativa.** Além das seis excluídas, a lista
+sucinta não tem rubrica para alguns grupos CID que constam das listas do
+Eurostat — os 16 tumores que nomeia somam menos do que o seu próprio total de
+tumores malignos. O que falta não está contabilizado.
+
+**Servem para comparar, não para citar.** A base é consistente entre locais e
+entre anos, pelo que as comparações são válidas. Mas os valores não reproduzem
+os números publicados pelo Eurostat para Portugal e não devem ser apresentados
+como tal.
+
+Cuidados:
+
+- em concelhos pequenos aplicam-se os mesmos cuidados de sempre: use a agregação
+  plurianual e leia os intervalos;
+- a definição NUTS activa, no topo da página, muda o que uma região significa;
+- as taxas exigem denominador, pelo que os anos sem população publicada não
+  estão disponíveis neste separador.
+
 ## 11. Separador Disponibilidade de Dados
 
 Este separador mostra a cobertura dos ficheiros RDS. É útil antes de carregar análises pesadas.

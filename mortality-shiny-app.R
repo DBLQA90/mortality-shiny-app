@@ -40,6 +40,7 @@ for (app_file in c(
   "R/metadata.R",
   "R/metrics.R",
   "R/standardisation.R",
+  "R/avoidable.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -60,6 +61,7 @@ ui <- navbarPage(
   beginner_forecasting_tab_ui(),
   advanced_forecasting_tab_ui(),
   annual_metrics_tab_ui(),
+  avoidable_tab_ui(),
   data_availability_tab_ui(),
   glossary_tab_ui()
 )
@@ -69,7 +71,7 @@ ui <- navbarPage(
 # =========================================================
 
 server <- function(input, output, session) {
-  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L)
+  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L, avoidable = 0L)
 
   # -------------------------
   # NUTS vintage
@@ -100,7 +102,7 @@ server <- function(input, output, session) {
       return()
     }
 
-    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area")
+    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area", "avoidable_area")
     dropped <- character(0)
 
     for (input_id in area_inputs) {
@@ -154,6 +156,229 @@ server <- function(input, output, session) {
     showNotification("Pedido de interrupção recebido (Métricas anuais).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
 
+  observeEvent(input$cancel_avoidable, {
+    cancel_seq$avoidable <- cancel_seq$avoidable + 1L
+    showNotification("Pedido de interrupção recebido (Mortalidade evitável).", type = "warning", duration = 3)
+  }, ignoreInit = TRUE)
+
+  abort_if_cancelled <- function(kind, token) {
+    if (!identical(cancel_seq[[kind]], token)) {
+      validate(need(FALSE, "Operação interrompida. A cache foi preservada."))
+    }
+  }
+
+  year_load_state <- reactiveValues(
+    rates_range = NULL,
+    rates_order = "desc",
+    beginner_range = NULL,
+    beginner_order = "desc",
+    forecast_range = NULL,
+    forecast_order = "desc"
+  )
+
+  clean_year_range <- function(year_range) {
+    year_range <- suppressWarnings(as.integer(year_range))
+    year_range <- year_range[!is.na(year_range)]
+
+    if (length(year_range) < 2) {
+      return(NULL)
+    }
+
+    range(year_range)
+  }
+
+  detect_year_load_order <- function(previous_range, current_range) {
+    current_range <- clean_year_range(current_range)
+    previous_range <- clean_year_range(previous_range)
+
+    if (is.null(current_range) || is.null(previous_range)) {
+      return("desc")
+    }
+
+    current_mid <- mean(current_range)
+    previous_mid <- mean(previous_range)
+
+    if (current_mid < previous_mid) {
+      return("desc")
+    }
+    if (current_mid > previous_mid) {
+      return("asc")
+    }
+    if (current_range[[2]] < previous_range[[2]]) {
+      return("desc")
+    }
+    if (current_range[[1]] > previous_range[[1]]) {
+      return("asc")
+    }
+
+    "desc"
+  }
+
+  observeEvent(input$years_import, {
+    current_range <- clean_year_range(input$years_import)
+    year_load_state$rates_order <- detect_year_load_order(year_load_state$rates_range, current_range)
+    year_load_state$rates_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+  observeEvent(input$years_fit, {
+    current_range <- clean_year_range(input$years_fit)
+    year_load_state$forecast_order <- detect_year_load_order(year_load_state$forecast_range, current_range)
+    year_load_state$forecast_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+  observeEvent(input$beginner_years_fit, {
+    current_range <- clean_year_range(input$beginner_years_fit)
+    year_load_state$beginner_order <- detect_year_load_order(year_load_state$beginner_range, current_range)
+    year_load_state$beginner_range <- current_range
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+  get_rate_mapping <- function(rate_type, population = "Total") {
+    if (identical(rate_type, "crude")) {
+      list(
+        value_col = "crude_rate",
+        lower_col = "crude_lower",
+        upper_col = "crude_upper",
+        y_label = "Taxa Bruta por 100.000",
+        rate_label = "Bruta"
+      )
+    } else {
+      # The under-75 scope is standardised to the ESP-2013 0-74 sub-population
+      # (conventional premature mortality), a different standard from the
+      # all-age rate, so the label names the standard used to avoid implying
+      # the two standardised rates share one basis.
+      under75 <- identical(population, "Menos de 75 anos")
+      list(
+        value_col = "dsr",
+        lower_col = "dsr_lower",
+        upper_col = "dsr_upper",
+        y_label = if (under75) {
+          "Taxa Padronizada por 100.000 (padrão ESP 0-74)"
+        } else {
+          "Taxa Padronizada por 100.000"
+        },
+        rate_label = if (under75) "Padronizada (padrão ESP 0-74)" else "Padronizada"
+      )
+    }
+  }
+
+  write_csv_utf8 <- function(x, file) {
+    utils::write.csv(
+      x,
+      file,
+      row.names = FALSE,
+      fileEncoding = "UTF-8"
+    )
+  }
+
+  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150) {
+    grDevices::png(file, width = width, height = height, res = res)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    print(plot_obj)
+  }
+
+  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150) {
+    grDevices::png(file, width = width, height = height, res = res)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    force(plot_expr)
+  }
+
+  # Shared historical-series pipeline:
+  # 1) Build a stable query spec with the inputs that determine which raw data
+  #    need to be downloaded and aggregated.
+  # 2) Load one metric bundle (both population scopes, both rate outputs) for
+  #    that query.
+  # 3) Apply the final population/rate/year filter to get a reusable series.
+  make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
+    area_key <- sort(unique(area))
+
+    # Selected areas are summed into one geography, so overlapping choices
+    # (Portugal with anything, a region with its own municipalities) would be
+    # counted twice. Warn rather than block: a user may knowingly want the
+    # combination, but should not get it by accident.
+    # A region belonging to the other vintage cannot be resolved and would
+    # otherwise reach the loader as an unknown place name.
+    validate(need(
+      is.null(vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())),
+      vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())
+    ))
+
+    overlap <- overlapping_selection_warning(area_key, lookup = active_nuts_lookup())
+    if (!is.null(overlap)) {
+      showNotification(overlap, type = "warning", duration = 20)
+    }
+
+    # Expand any selected region into its municipalities. This applies to every
+    # tab that goes through a query spec - observed mortality and both forecast
+    # tabs - which previously used INE's regional rows directly and so carried
+    # the NUTS-2024 discontinuity into trends and projections.
+    resolved <- resolve_region_areas(
+      areas = area_key,
+      region_mode = default_region_mode(),
+      lookup = active_nuts_lookup(),
+      available_areas = get_available_areas(data_source)
+    )
+    for (message_text in resolved$warnings) {
+      showNotification(message_text, type = "warning", duration = 15)
+    }
+    # Label from what the user chose, not from the expansion: a region must stay
+    # named "Alentejo", not become a list of 47 municipalities.
+    selection_label <- get_selection_label(area_key, area_label)
+
+    list(
+      area_key = resolved$areas,
+      area_label = selection_label,
+      expanded_regions = resolved$expanded,
+      cause = cause,
+      sex = sex,
+      data_source = normalize_data_source(data_source)
+    )
+  }
+
+
+  get_years_in_selected_range <- function(year_range, year_order = "asc") {
+    selected_bounds <- suppressWarnings(as.integer(year_range))
+    selected_bounds <- selected_bounds[!is.na(selected_bounds)]
+
+    validate(
+      need(length(selected_bounds) >= 2, "Seleccione um intervalo de anos para importar.")
+    )
+
+    lower_year <- min(selected_bounds)
+    upper_year <- max(selected_bounds)
+
+    validate(
+      need(lower_year <= upper_year, "O ano inicial não pode ser posterior ao ano final.")
+    )
+
+    selected_years <- year_of_interest[
+      year_of_interest >= lower_year &
+        year_of_interest <= upper_year
+    ]
+
+    validate(
+      need(length(selected_years) > 0, "O intervalo seleccionado não contém anos disponíveis nos indicadores.")
+    )
+
+    order_years(selected_years, year_order)
+  }
+
+  format_year_selection <- function(years) {
+    years <- sort(unique(as.integer(years)))
+
+    if (length(years) == 0) {
+      return("Nenhum")
+    }
+
+    if (identical(years, seq.int(min(years), max(years)))) {
+      return(glue::glue("{min(years)} - {max(years)}"))
+    }
+
+    paste(years, collapse = ", ")
+  }
+
+  snapshot_inventory_data <- reactive({
+    get_snapshot_inventory()
+  })
   abort_if_cancelled <- function(kind, token) {
     if (!identical(cancel_seq[[kind]], token)) {
       validate(need(FALSE, "Operação interrompida. A cache foi preservada."))
@@ -3591,6 +3816,191 @@ server <- function(input, output, session) {
     content = function(file) {
       save_ggplot_png(file, annual_metrics_plot())
     }
+  )
+
+  # -------------------------
+  # Avoidable mortality
+  # -------------------------
+  # One load serves the whole tab: the two lists, the deliberately unresolved
+  # set and the all-cause denominator, all under 75. Loading them together is
+  # what lets the reconciliation add up to the whole - computing the groups
+  # separately would leave no way to show what is missing from them.
+  avoidable_data <- eventReactive(input$go_avoidable, {
+    token <- isolate(cancel_seq$avoidable)
+    year <- as.integer(input$avoidable_year)
+    pooling_window <- normalize_pooling_window(input$avoidable_pooling)
+    years <- get_pooled_years(year, pooling_window, "dsr")
+
+    validate(need(length(input$avoidable_area) > 0, "Seleccione pelo menos um local."))
+    validate(need(
+      length(years_without_population(years)) == 0,
+      population_gap_message(years, "a mortalidade evitável")
+    ))
+
+    # Not get_annual_area_specs(): that one strips Portugal and Norte, because
+    # the annual tab keeps them as fixed comparator columns. Here they are
+    # ordinary selections, and Portugal is the default.
+    selected_areas <- sort(unique(as.character(input$avoidable_area)))
+
+    mismatch <- vintage_mismatch_message(
+      selected_areas,
+      active_nuts_vintage(),
+      active_nuts_lookup()
+    )
+    validate(need(is.null(mismatch), mismatch))
+
+    overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
+    if (!is.null(overlap)) {
+      showNotification(overlap, type = "warning", duration = 20)
+    }
+
+    area_spec <- make_annual_area_spec(
+      label = get_selection_label(selected_areas, input$avoidable_area_label),
+      areas = selected_areas,
+      region_mode = default_region_mode(),
+      available_areas = get_available_areas(input$avoidable_data_source)
+    )
+
+    for (message_text in area_spec$warnings) {
+      showNotification(message_text, type = "warning", duration = 15)
+    }
+    revision_warning <- population_revision_warning(years, "dsr")
+    if (!is.null(revision_warning)) {
+      showNotification(revision_warning, type = "warning", duration = 20)
+    }
+
+    causes <- avoidable_required_causes()
+
+    shiny::withProgress(message = "A carregar mortalidade evitável...", value = 0, {
+      loaded <- dplyr::bind_rows(lapply(seq_along(causes), function(i) {
+        abort_if_cancelled("avoidable", token)
+        incProgress(1 / length(causes))
+        get_data_for(
+          area = area_spec$areas,
+          cause = causes[[i]],
+          years = years,
+          year_order = "desc",
+          data_source = input$avoidable_data_source
+        )$full %>%
+          dplyr::filter(sex == input$avoidable_sex)
+      }))
+
+      validate(need(nrow(loaded) > 0, "Sem dados para a selecção."))
+
+      list(
+        data = loaded,
+        years = years,
+        period = make_period_label(min(years), max(years)),
+        label = area_spec$label,
+        n_years = length(years)
+      )
+    })
+  }, ignoreNULL = TRUE)
+
+  # Deaths, share of under-75 mortality, and the under-75 standardised rate for
+  # each part. Counts are annualised over a pooled window, as elsewhere; the
+  # standardised rate divides by pooled person-years and is already per year.
+  avoidable_table <- reactive({
+    req(input$go_avoidable > 0)
+    dat <- avoidable_data()
+    breakdown <- avoidable_breakdown(dat$data)
+
+    rate_for <- function(group) {
+      avoidable_group_dsr(
+        df = dat$data,
+        causes = switch(
+          group,
+          preventable = AVOIDABLE_PREVENTABLE,
+          treatable = AVOIDABLE_TREATABLE,
+          avoidable = avoidable_group_causes("avoidable"),
+          unresolved = AVOIDABLE_UNRESOLVED$cause,
+          total = "Todas as causas de morte",
+          character(0)
+        ),
+        year = dat$years[[1]]
+      )
+    }
+
+    annualise <- if (dat$n_years > 1L) dat$n_years else 1L
+
+    breakdown %>%
+      dplyr::mutate(
+        dsr = vapply(group, rate_for, numeric(1)),
+        Óbitos = round(.data$deaths / annualise, 0),
+        `% dos óbitos < 75 anos` = round(.data$share, 1),
+        `Taxa padronizada < 75 (por 100.000)` = round(.data$dsr, 1)
+      ) %>%
+      dplyr::select(
+        Grupo = label,
+        Óbitos,
+        `% dos óbitos < 75 anos`,
+        `Taxa padronizada < 75 (por 100.000)`
+      )
+  })
+
+  avoidable_causes_table <- reactive({
+    dplyr::bind_rows(
+      tibble(Grupo = "Prevenível", `Causa de morte` = AVOIDABLE_PREVENTABLE, Nota = ""),
+      tibble(Grupo = "Tratável", `Causa de morte` = AVOIDABLE_TREATABLE, Nota = ""),
+      tibble(
+        Grupo = "Excluída *",
+        `Causa de morte` = AVOIDABLE_UNRESOLVED$cause,
+        Nota = AVOIDABLE_UNRESOLVED$reason
+      )
+    )
+  })
+
+  avoidable_plot <- reactive({
+    req(input$go_avoidable > 0)
+    dat <- avoidable_data()
+    plot_df <- avoidable_table() %>%
+      dplyr::filter(Grupo %in% c("Prevenível", "Tratável", "Não classificada (por resolver) *")) %>%
+      dplyr::mutate(Grupo = factor(Grupo, levels = rev(unique(Grupo))))
+
+    ggplot(plot_df, aes(x = Grupo, y = Óbitos, fill = Grupo)) +
+      geom_col(width = 0.6) +
+      coord_flip() +
+      labs(
+        title = glue::glue("Mortalidade evitável < 75 anos - {dat$label}"),
+        subtitle = glue::glue("{dat$period}{if (dat$n_years > 1) ' (media anual)' else ''}"),
+        x = NULL,
+        y = "Óbitos"
+      ) +
+      scale_fill_brewer(palette = "Set2", guide = "none") +
+      theme_minimal() +
+      theme(plot.title = element_text(hjust = 0.5))
+  })
+
+  output$avoidableTable <- renderTable({
+    avoidable_table()
+  }, striped = TRUE, bordered = TRUE, spacing = "s", digits = 1)
+
+  output$avoidableNote <- renderUI({
+    req(input$go_avoidable > 0)
+    helpText(avoidable_unresolved_note())
+  })
+
+  output$avoidableCausesTable <- renderTable({
+    avoidable_causes_table()
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$avoidablePlot <- renderPlot({
+    avoidable_plot()
+  })
+
+  output$downloadAvoidableCSV <- downloadHandler(
+    filename = function() paste0("evitavel_", input$avoidable_year, "_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(avoidable_table(), file)
+  )
+
+  output$downloadAvoidableCausesCSV <- downloadHandler(
+    filename = function() paste0("evitavel_causas_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(avoidable_causes_table(), file)
+  )
+
+  output$downloadAvoidablePlot <- downloadHandler(
+    filename = function() paste0("evitavel_", input$avoidable_year, "_", Sys.Date(), ".png"),
+    content = function(file) save_ggplot_png(file, avoidable_plot())
   )
 
   # -------------------------
