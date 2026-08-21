@@ -477,7 +477,25 @@ glossary_tab_ui <- function() {
     list("Mortalidade proporcional", "Percentagem das mortes de uma causa face ao total de mortes, no mesmo ano, sexo e local."),
     list("AVPP (anos de vida potencialmente perdidos)", "Medida do impacto da morte prematura: soma os anos que faltavam até aos 70 em cada morte antes dessa idade. Dá mais peso às mortes em idades jovens."),
     list("Mortalidade prematura", "Mortes antes de uma certa idade (aqui, antes dos 75 anos), muitas vezes consideradas potencialmente evitáveis."),
-    list("Intervalo de confiança", "A margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos.")
+    list("Padronização directa", "Aplica as taxas por idade do local a uma população padrão externa. Dá a Taxa padronizada. Precisa de uma taxa estimável em cada idade, por isso é instável em locais pequenos."),
+    list("Padronização indirecta", "Aplica as taxas por idade da referência à estrutura etária do local, para calcular quantos óbitos seriam de esperar. Dá o SMR. É estável em locais pequenos porque só precisa do total de óbitos observados."),
+    list("SMR", "Óbitos observados a dividir pelos esperados, vezes 100. A referência vale 100; 120 são 20% mais óbitos do que o esperado. Compare cada SMR com 100, nunca com outro SMR."),
+    list("Óbitos esperados", "Os óbitos que o local teria tido com as taxas por idade da referência e a sua própria estrutura etária."),
+    list("Agregação plurianual", "Calcular a métrica sobre 3 ou 5 anos em vez de 1, para estabilizar locais pequenos e causas raras."),
+    list("Pessoas-ano", "O denominador de uma taxa agregada. Cinco anos de um concelho com 10.000 habitantes são 50.000 pessoas-ano, o que mantém a taxa por ano e comparável com um ano isolado."),
+    list("Mortalidade infantil", "Óbitos antes do primeiro ano de vida por 1.000 nados-vivos."),
+    list("Nados-vivos", "Nascimentos com vida. São o denominador da mortalidade infantil, em vez da população, porque nenhum indicador de população tem uma banda 'menos de 1 ano' e porque correspondem melhor ao grupo em risco."),
+    list("Asterisco (*)", "Marca uma taxa de mortalidade infantil calculada sobre menos de 1.000 nados-vivos, em que um único óbito desloca o valor em mais de uma unidade por 1.000. O valor é exacto; a marca avisa que não é comparável."),
+    list("Intervalo de confiança", "A margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos. Um intervalo largo não é um defeito: é o que há a dizer quando os acontecimentos são poucos.")
+  )
+
+  geography_terms <- list(
+    list("NUTS", "A nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (Continente, Açores, Madeira) e NUTS II (as regiões)."),
+    list("Definição das regiões (NUTS 2013 / NUTS 2024)", "As duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes: seis nomes existem nas duas e significam coisas diferentes em cada uma."),
+    list("Área Metropolitana de Lisboa", "A região de Lisboa em NUTS 2013. Em NUTS 2024 está dividida em Grande Lisboa e Península de Setúbal."),
+    list("Oeste e Vale do Tejo", "Região criada em NUTS 2024 com o Oeste, o Médio Tejo e a Lezíria do Tejo. Apesar do nome, não inclui Lisboa."),
+    list("Agregação por municípios", "As regiões são sempre somadas a partir dos seus municípios, com a mesma lista aplicada a todos os anos. Mantém a série contínua apesar da revisão NUTS de 2024, mas os totais não coincidem exactamente com os publicados pelo INE."),
+    list("Revisão da população (2021)", "O INE publica duas estimativas de população que não coincidem; a aplicação usa a revista a partir de 2021. Todas as taxas desde esse ano mudaram, e há um degrau de cerca de 1,7% em 2020/2021.")
   )
 
   forecast_terms <- list(
@@ -511,6 +529,7 @@ glossary_tab_ui <- function() {
         h2("Glossário"),
         p("Explicações simples dos termos usados na aplicação. Não é preciso conhecê-los todos para começar."),
         glossary_section("Conceitos de mortalidade", mortality_terms),
+        glossary_section("Geografia", geography_terms),
         glossary_section("Conceitos de previsão", forecast_terms),
         glossary_section("Dados", data_terms)
       )

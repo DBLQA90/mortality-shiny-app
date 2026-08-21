@@ -10,7 +10,11 @@ A aplicação permite:
 
 - consultar mortalidade observada por ano, local, causa de morte, sexo e grupo populacional;
 - comparar Portugal, Norte e uma localização adicional num ano específico;
-- calcular óbitos, mortalidade bruta, mortalidade padronizada, mortalidade proporcional e AVPP;
+- calcular nove métricas: óbitos, mortalidade bruta, mortalidade padronizada (directa),
+  SMR e taxa padronizada indirecta, mortalidade proporcional, AVPP, óbitos infantis e
+  mortalidade infantil;
+- agregar três ou cinco anos numa só janela, para estabilizar concelhos pequenos e causas raras;
+- escolher a definição das regiões, NUTS 2013 ou NUTS 2024;
 - gerar previsões exploratórias até 30 anos no futuro;
 - comparar modelos de previsão;
 - avaliar diagnósticos, erros de previsão e possíveis quebras estruturais;
@@ -28,6 +32,8 @@ A ordem dos separadores é:
 7. `Glossário`
 
 O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
+
+Acima dos separadores há um controlo que se aplica a toda a aplicação, `Definição das regiões`. Escolhe se as regiões seguem a definição NUTS 2013 ou NUTS 2024. Não altera os dados lidos, apenas a forma como os municípios são agrupados — ver a secção *Definição das Regiões (NUTS)*.
 
 ## 2. Como Começar
 
@@ -47,11 +53,60 @@ Em geral:
 
 ### Local de Residência
 
-Define a área geográfica usada na análise. Pode seleccionar uma única localização, como `Alentejo`, ou várias localizações.
+Define a área geográfica usada na análise. A lista tem três tipos de entrada:
 
-Quando selecciona mais do que uma localização, a aplicação soma os óbitos e a população dessas localizações antes de calcular as taxas. Isto é útil para criar uma área agregada, por exemplo uma área de influência ou um conjunto de concelhos.
+- `Portugal`, o total nacional;
+- as regiões: `Continente`, as duas regiões autónomas e as regiões NUTS II;
+- os 308 municípios.
+
+Pode seleccionar uma única localização ou várias. Quando selecciona mais do que uma, a aplicação soma os óbitos e a população dessas localizações antes de calcular as taxas. Isto é útil para criar uma área agregada, por exemplo uma área de influência, um conjunto de concelhos ou uma ULS.
 
 O campo `Nome da Selecção (opcional)` permite dar um nome a essa agregação. Se for deixado em branco, a aplicação usa uma designação automática.
+
+**As regiões são sempre somadas a partir dos seus municípios.** Quando escolhe `Alentejo`, a aplicação não lê a linha «Alentejo» publicada pelo INE: soma os municípios que hoje pertencem ao Alentejo, e aplica essa mesma lista a todos os anos da série. Isto tem uma razão e uma consequência.
+
+A razão é que o INE mudou as fronteiras das regiões em 2024, e a Lezíria do Tejo passou do Alentejo para a nova região Oeste e Vale do Tejo. Ler as linhas regionais do INE ao longo da série significaria comparar dois Alentejos diferentes: os óbitos de 2022 seriam 11.327 numa definição e 7.898 na outra. Somando sempre os mesmos municípios, a série mantém-se contínua e comparável.
+
+A consequência é que os totais regionais **não coincidem exactamente com os publicados pelo INE**. A diferença é pequena — vem dos óbitos que o INE não conseguiu atribuir a nenhum município — mas existe. Quem precisar de reproduzir um número publicado deve usar a fonte oficial, não esta aplicação.
+
+Duas notas práticas:
+
+- Seleccionar uma região **e** um município que lhe pertence não duplica nada. Como a região é expandida numa lista de municípios sem repetições, `Alentejo` + `Beja` dá o Alentejo. A aplicação avisa quando isso acontece, porque provavelmente não era o que pretendia.
+- Seleccionar `Portugal` com qualquer outra coisa **duplica**, porque `Portugal` é lido como uma linha própria e não expandido. Também aqui há aviso.
+
+### Definição das Regiões (NUTS)
+
+O controlo `Definição das regiões`, no topo de qualquer página, escolhe qual das duas versões da nomenclatura NUTS agrupa os municípios:
+
+| | Regiões | Lisboa | Lezíria do Tejo, Oeste, Médio Tejo |
+|---|---:|---|---|
+| **NUTS 2013** | 7 | uma região, `Área Metropolitana de Lisboa` | dentro de `Alentejo` e `Centro` |
+| **NUTS 2024** | 9 | `Grande Lisboa` + `Península de Setúbal` | formam `Oeste e Vale do Tejo` |
+
+As duas definições cobrem exactamente os mesmos 308 municípios. Mudar de definição **não altera os dados lidos**, apenas a forma como são agrupados, e qualquer das duas dá uma série contínua em todos os anos.
+
+O ponto a que deve prestar atenção: **seis nomes existem nas duas definições e significam coisas diferentes em cada uma**. O `Centro` de 2013 tem 100 municípios; o de 2024 tem 77. O `Alentejo` de 2013 inclui a Lezíria do Tejo; o de 2024 não. É por isso que o controlo está no topo da página e não escondido num separador: a definição activa tem de estar à vista sempre que lê um número regional.
+
+Se mudar de definição com uma região seleccionada que não existe na outra — `Grande Lisboa` não existe em NUTS 2013 — essa região é retirada da selecção e a aplicação diz quais foram retiradas. Os municípios seleccionados nunca são afectados.
+
+Quando usar NUTS 2013:
+
+- para acompanhar documentos, relatórios ou séries publicadas antes da revisão de 2024;
+- quando precisa da Área Metropolitana de Lisboa como uma única região;
+- quando quer reproduzir aproximadamente uma linha regional publicada pelo INE: nesta definição, e nos anos em que o arquivo tem a linha do INE para comparação, as somas municipais coincidem com ela.
+
+Quando usar NUTS 2024 (predefinição):
+
+- para trabalho corrente e para qualquer coisa que vá ser comparada com publicações recentes;
+- quando quer distinguir a Grande Lisboa da Península de Setúbal.
+
+### Continente, Açores e Madeira
+
+`Continente`, `Região Autónoma dos Açores` e `Região Autónoma da Madeira` são o nível NUTS I, acima das regiões. Estão disponíveis nas duas definições e comportam-se como qualquer outra região: são somados a partir dos seus municípios — 278 no Continente, 19 nos Açores, 11 na Madeira.
+
+Os três repartem o país sem sobreposição nem falha. Para 2021, 119.589 + 2.366 + 2.875 = 124.830 óbitos, que é exactamente o total nacional publicado pelo INE.
+
+Seleccionar `Continente` junto com uma região que lhe pertence, como `Norte`, não duplica: o Continente já inclui o Norte, e o resultado é apenas o Continente. A aplicação avisa.
 
 ### Causa de Morte
 
@@ -155,6 +210,46 @@ Quando usar:
 - para comparar uma mesma região ao longo de muitos anos;
 - para previsões em que o interesse principal é o padrão de mortalidade ajustado à idade.
 
+### SMR (Padronização Indirecta)
+
+O `SMR` compara os óbitos que um local teve com os que teria tido se tivesse as taxas por idade de uma referência. A referência vale 100.
+
+```text
+SMR = óbitos observados / óbitos esperados * 100
+```
+
+Os óbitos esperados calculam-se aplicando as taxas por idade da referência à estrutura etária do local. Se o Alentejo tem muitas pessoas idosas, espera-se que tenha muitos óbitos mesmo que a mortalidade em cada idade seja igual à do país; o SMR pergunta se teve mais ou menos do que isso.
+
+Leitura:
+
+- `SMR = 100`: o local tem a mortalidade que se esperaria dada a sua estrutura etária;
+- `SMR = 120`: 20% mais óbitos do que o esperado;
+- `SMR = 85`: 15% menos óbitos do que o esperado.
+
+**A diferença face à padronização directa** está em que estrutura é usada. A padronização directa aplica as taxas *do local* a uma população padrão externa (a europeia de 2013): precisa de uma taxa estimável em cada banda etária, e num concelho pequeno muitas bandas têm zero óbitos, o que torna a taxa instável ou impossível de calcular. A padronização indirecta faz o inverso — aplica as taxas *da referência*, que são estáveis porque vêm de uma população grande, à estrutura do local. Só precisa do total de óbitos observados no local, não de uma taxa por cada idade.
+
+Por isso o SMR é a métrica indicada para concelhos pequenos e causas raras, onde a padronizada directa é instável ou nem sequer estimável.
+
+Vantagens:
+
+- estável em populações pequenas, onde a padronização directa falha;
+- leitura imediata: 100 é a referência;
+- usa toda a informação disponível sem exigir taxas por idade no local.
+
+Limitações:
+
+- **dois SMR não se comparam bem entre si.** Cada um é calculado contra a estrutura etária do seu próprio local, por isso «Beja 120» e «Braga 110» não significam que Beja tenha 9% mais mortalidade do que Braga. Cada SMR compara-se com a referência, não com outro SMR;
+- depende da referência escolhida;
+- como qualquer indicador local, tem intervalos largos quando há poucos óbitos.
+
+`Referência da padronização indirecta` escolhe contra quem a comparação é feita. `Portugal` é a predefinição, e faz com que 100 signifique sempre «igual à média nacional».
+
+### Taxa Padronizada Indirecta
+
+A mesma conta do SMR, expressa como taxa por 100.000 em vez de como índice. Obtém-se multiplicando o SMR pela taxa bruta da referência.
+
+Serve para quem prefere ler uma taxa a ler um índice. As vantagens, limitações e cuidados são exactamente os do SMR — em particular, duas taxas padronizadas indirectas de locais diferentes continuam a não ser directamente comparáveis entre si.
+
 ### Mortalidade Proporcional
 
 A mortalidade proporcional mostra que percentagem dos óbitos totais pertence a uma causa específica.
@@ -196,11 +291,71 @@ Limitações:
 - depende do ponto de corte escolhido;
 - não deve ser comparado como se fosse uma taxa padronizada, salvo se houver uma metodologia adicional para isso.
 
+Uma nota sobre a banda `0 - 4 anos`. Como a idade de cada morte é aproximada pelo ponto médio da sua banda, todas as mortes entre os 0 e os 4 anos contariam 67,5 anos perdidos. Mas a maioria delas são mortes no primeiro ano de vida — em 2024, 254 dos 286 óbitos nacionais nessa banda — e essas perdem quase os 70 anos completos. A aplicação separa a banda em `< 1 ano` e `1 - 4 anos` usando as contagens de óbitos infantis, o que corrige a subestimação. O efeito é pequeno no total (+0,17% em todas as causas) e maior nas causas perinatais e congénitas (+2,9% e +1,7%).
+
+### Óbitos Infantis (< 1 ano)
+
+Número de mortes antes do primeiro ano de vida, sem denominador.
+
+É a métrica a usar à escala municipal. A taxa de mortalidade infantil (abaixo) precisa de um denominador que, num concelho pequeno, é minúsculo; a contagem diz o que aconteceu e não pode ser mal lida como se fosse comparável entre locais.
+
+Duas particularidades:
+
+- ao contrário das outras contagens, **não é convertida em média anual** quando agrega vários anos. Dois óbitos em três anos apareceriam como «1», uma fracção arredondada, quando o que aconteceu foram dois óbitos. Fica o total do período, que é também exactamente o numerador da taxa apresentada ao lado;
+- cobre 1991-2025, mais do que a taxa, porque só precisa do numerador.
+
+### Mortalidade Infantil (por 1.000 nados-vivos)
+
+Óbitos com menos de 1 ano por 1.000 nados-vivos.
+
+```text
+mortalidade infantil = óbitos com menos de 1 ano / nados-vivos * 1.000
+```
+
+**O denominador são os nados-vivos, não a população.** Esta é a única taxa da aplicação cujo denominador não é uma população, e a razão é simples: nenhum indicador de população do INE tem uma banda etária «menos de 1 ano», por isso «óbitos infantis por população com menos de 1 ano» não é calculável de todo. Os nados-vivos são a convenção internacional, e correspondem melhor ao grupo em risco: quem pode morrer no primeiro ano de vida é quem nasceu.
+
+Também por isso a escala é por 1.000 e não por 100.000 como as restantes taxas.
+
+Cobertura: 1995-2025. Em 2025 o INE publica os óbitos com menos de 1 ano apenas no total, sem separar por causa nem por sexo, e a aplicação recusa pedidos mais detalhados nesse ano em vez de responder zero.
+
+Vantagens:
+
+- é o indicador clássico de saúde materno-infantil, comparável internacionalmente;
+- reconcilia com a série publicada pelo INE em todos os anos.
+
+Limitações:
+
+- **à escala municipal é extremamente esparso.** Barrancos teve 9 nados-vivos em 2024. Sem óbitos infantis, a taxa é 0,0 — mas o limite superior do intervalo é 409,9 por 1.000. Um único óbito teria dado mais de 100;
+- por isso os valores calculados sobre menos de 1.000 nados-vivos são assinalados com `*` (ver a secção seguinte);
+- agregar vários anos ajuda, mas não cria acontecimentos que não houve.
+
+### Que Métrica Escolher
+
+A aplicação tem nove métricas, e a escolha certa depende mais da pergunta e do tamanho do local do que de preferência pessoal.
+
+| A sua pergunta | Métrica |
+|---|---|
+| Quantas pessoas morreram? | `Óbitos` |
+| Qual é o risco observado nesta população? | `Mortalidade Bruta` |
+| Como se compara este local com outro, sendo as idades diferentes? | `Mortalidade Padronizada (directa)` |
+| E se o local for pequeno, com poucos óbitos? | `SMR` |
+| Que peso tem esta causa no total de mortes? | `Mortalidade Proporcional` |
+| Que causas matam mais cedo? | `AVPP` |
+| Como está a saúde materno-infantil? | `Mortalidade Infantil` (país, região) ou `Óbitos infantis` (concelho) |
+
+Regras práticas:
+
+- **Nunca compare territórios com mortalidade bruta** se as estruturas etárias diferirem, e em Portugal diferem quase sempre. Um concelho do interior tem taxa bruta alta sobretudo porque é envelhecido.
+- **Padronizada directa para regiões, SMR para concelhos.** A fronteira não é rígida, mas se o intervalo de confiança da padronizada directa for muito largo, ou se o valor não for calculável, mudou de regime e deve usar o SMR.
+- **Compare cada SMR com 100, não com outro SMR.**
+- **Mortalidade proporcional não é risco.** Uma causa pode subir de peso apenas porque outras desceram.
+- **Se a série tiver muito ruído, agregue 3 ou 5 anos** antes de mudar de métrica. Muitas vezes é o tamanho do denominador, não a métrica, que está a causar o problema.
+
 ## 5. Incerteza e Intervalos de Confiança
 
 Quando possível, a aplicação apresenta intervalos de confiança a 95%.
 
-Para mortalidade bruta, usa intervalos baseados em contagens de óbitos. Para mortalidade proporcional, usa uma aproximação binomial. Para AVPP, usa uma aproximação baseada na variação esperada das contagens por idade. Para mortalidade padronizada, usa a rotina de padronização directa disponível no pacote utilizado.
+Para mortalidade bruta, usa intervalos baseados em contagens de óbitos. Para mortalidade proporcional, usa uma aproximação binomial. Para AVPP, usa uma aproximação baseada na variação esperada das contagens por idade. Para mortalidade padronizada, usa a rotina de padronização directa disponível no pacote utilizado. Para `SMR` e taxa padronizada indirecta, usa o método de Byar. Para mortalidade infantil, um intervalo de Poisson exacto sobre a contagem de óbitos, escalado pelos nados-vivos.
 
 Como interpretar:
 
@@ -210,6 +365,26 @@ Como interpretar:
 - intervalos que não se sobrepõem também não substituem uma análise estatística formal.
 
 Os intervalos ajudam a lembrar que uma taxa observada é uma estimativa, não uma verdade fixa.
+
+### Um intervalo largo não é um defeito
+
+É a leitura errada mais frequente. Quando um concelho pequeno apresenta um intervalo enorme, a aplicação não está a falhar: está a dizer com honestidade que, com aquele número de acontecimentos, não é possível saber mais. Barrancos, 2024, mortalidade infantil: `0 (0; 409,88)`. O zero é real — não houve óbitos infantis. O 409,88 também é real — com 9 nados-vivos, um único óbito daria mais de 100 por 1.000.
+
+O que fazer perante um intervalo largo:
+
+- **não conclua que o local é melhor ou pior** do que outro se os intervalos se sobrepõem largamente;
+- **agregue 3 ou 5 anos**, que é o instrumento que a aplicação oferece exactamente para isto;
+- **mude para o SMR** se o problema for a instabilidade da padronização directa;
+- **use a contagem** em vez da taxa quando o denominador é minúsculo;
+- **não elimine o valor** do relatório por ser incerto: apresente-o com o intervalo.
+
+### O asterisco na mortalidade infantil
+
+Um valor de mortalidade infantil marcado com `*` foi calculado sobre **menos de 1.000 nados-vivos no período**. A marca aparece na tabela, no ficheiro CSV exportado e no gráfico, sempre acompanhada de uma nota de rodapé.
+
+O limiar não é um teste de significância, é uma afirmação sobre resolução: abaixo de 1.000 nados-vivos, um único óbito adicional desloca a taxa em mais de uma unidade inteira por 1.000 — mais do que toda a taxa nacional, que ronda 3. Ordenar concelhos por esse valor, ou ler uma variação entre anos, é ler ruído.
+
+A maioria dos concelhos portugueses fica abaixo do limiar, e isso é precisamente o ponto: a marca descreve o caso normal, não um punhado de excepções. **Nada é escondido** — o valor é apresentado, é exacto, e o intervalo já indica a incerteza. O asterisco existe apenas para impedir que alguém, ao percorrer a tabela, trate o número como comparável.
 
 ## 6. Separador Mortalidade Observada
 
@@ -494,9 +669,36 @@ Métricas disponíveis:
 
 - `Óbitos`;
 - `Mortalidade Bruta`;
-- `Mortalidade Padronizada`;
+- `Mortalidade Padronizada (directa, ESP 2013)`;
+- `SMR (padronização indirecta, referência = 100)`;
+- `Taxa Padronizada Indirecta (por 100.000)`;
 - `Mortalidade Proporcional`;
-- `AVPP`.
+- `AVPP`;
+- `Óbitos infantis (< 1 ano)`;
+- `Mortalidade Infantil (por 1.000 nados-vivos)`.
+
+### Agregação Plurianual
+
+O controlo `Agregação plurianual` permite calcular a métrica sobre 1, 3 ou 5 anos centrados no ano escolhido. Serve para estabilizar concelhos pequenos e causas raras, onde um único ano tem demasiado poucos acontecimentos para ser lido.
+
+A agregação soma os óbitos **e** a população dos anos incluídos. O denominador passa a ser em *pessoas-ano*: cinco anos de um concelho com 10.000 habitantes são 50.000 pessoas-ano. Como numerador e denominador crescem juntos, a taxa continua a ser por ano e é directamente comparável com um valor não agregado — não é uma soma, é uma média ponderada.
+
+As contagens comportam-se de outra forma. `Óbitos` e `AVPP` são convertidos em **média anual**, porque somar três anos de óbitos triplicaria o número e leria como uma triplicação da mortalidade. `Óbitos infantis` é a excepção deliberada e fica como total do período, pela razão explicada na secção dessa métrica.
+
+Se a janela ultrapassar os anos disponíveis, é truncada, e o período efectivamente usado aparece indicado nos resultados. Uma janela de 5 anos centrada em 2024 usa 2022-2024.
+
+O que ganha e o que perde:
+
+- **ganha** intervalos mais estreitos e séries legíveis em locais pequenos;
+- **perde** a capacidade de ver variações anuais reais, que ficam suavizadas.
+
+A agregação aplica-se apenas a este separador. As previsões usam sempre séries anuais não agregadas, porque uma média móvel introduz autocorrelação que invalidaria os intervalos de previsão.
+
+### Referência da Padronização Indirecta
+
+Aparece quando escolhe `SMR` ou `Taxa Padronizada Indirecta`. Define contra quem a comparação é feita: as taxas por idade desta referência são aplicadas à estrutura etária de cada local para calcular os óbitos esperados.
+
+`Portugal` é a predefinição, e faz com que 100 signifique «igual à média nacional».
 
 Quando usar:
 
@@ -508,8 +710,10 @@ Quando usar:
 Cuidados:
 
 - para `Mortalidade Proporcional`, lembre-se de que o denominador é `Todas as causas de morte`;
-- causas raras podem surgir com taxas instáveis;
-- ordenação por valor local não significa importância causal ou evitabilidade.
+- causas raras podem surgir com taxas instáveis — considere agregar 3 ou 5 anos, ou mudar para `SMR`;
+- ordenação por valor local não significa importância causal ou evitabilidade;
+- a definição NUTS activa, no topo da página, muda o que `Centro` ou `Alentejo` significam;
+- as taxas exigem denominador: os anos sem população publicada são recusados com uma explicação, e as contagens, a mortalidade proporcional e os AVPP continuam disponíveis.
 
 ## 11. Separador Disponibilidade de Dados
 
@@ -520,6 +724,8 @@ Estados possíveis:
 - `Disponível`: todos os anos, causas e áreas pedidas estão presentes;
 - `Parcial`: há dados para parte da selecção, mas não para tudo;
 - `Indisponível`: não há dados suficientes nos RDS para essa selecção.
+
+O quadro-resumo indica também a cobertura dos quatro conjuntos de dados: população, óbitos por causa, nados-vivos e óbitos com menos de 1 ano. A consulta detalhada, por ano, área e causa, aplica-se aos dois primeiros; os dois conjuntos usados pela mortalidade infantil estão descritos apenas pelo intervalo de anos que cobrem.
 
 Quando usar:
 
@@ -610,6 +816,39 @@ As taxas padronizadas ajudam a comparar estruturas etárias diferentes, mas não
 
 As previsões assumem que padrões históricos carregam informação sobre o futuro. Essa suposição pode falhar quando há alterações epidemiológicas, tecnológicas, sociais, ambientais ou de codificação.
 
+### Cobertura dos Dados
+
+Os dois lados de uma taxa não terminam no mesmo ano, e é a população que vai à frente:
+
+| Conjunto | Anos | Nota |
+|---|---|---|
+| População | 1991-2025 | |
+| Óbitos por causa | 1991-2024 | limite de tudo excepto a mortalidade infantil |
+| Nados-vivos | 1995-2025 | |
+| Óbitos com menos de 1 ano | 1980-2025 | 2025 sem detalhe por causa nem por sexo |
+
+Em consequência, **2025 só está disponível para a mortalidade infantil** e é recusado nas restantes métricas com uma mensagem que explica porquê. Existem óbitos de 2025 publicados pelo INE, mas sem a dimensão «causa de morte», por isso não servem esta aplicação.
+
+Todas as métricas funcionam em 2024, incluindo as taxas.
+
+### A Revisão da População de 2021
+
+O INE publica duas estimativas de população que se sobrepõem e **não coincidem**. A série mais recente, em NUTS 2024, revê os valores em alta de forma crescente:
+
+| Portugal | série revista | série anterior | |
+|---|---:|---:|---:|
+| 2021 | 10.599.117 | 10.421.117 | +1,71% |
+| 2022 | 10.929.704 | 10.516.621 | +3,93% |
+| 2023 | 11.204.347 | 10.639.726 | +5,31% |
+
+A aplicação usa a série revista em toda a sua extensão, a partir de 2021. A alternativa — usá-la apenas nos anos que faltavam — colocaria um degrau de 5,3% entre 2023 e 2024, que se leria como uma queda real da mortalidade.
+
+Três consequências práticas:
+
+- **todas as taxas a partir de 2021 mudaram.** A mortalidade bruta de Portugal em 2023 é 1.056 por 100.000, e não 1.112 como na base anterior. Se tem números anteriores em circulação, não vão coincidir;
+- **existe um degrau em 2020/2021**, de cerca de 1,7%. Uma série de taxas que atravesse esses anos desce ligeiramente por mudança de denominador, não por mudança de mortalidade. A aplicação avisa quando isso acontece;
+- **nada antes de 2021 foi revisto.** Verificado contra a série longa nacional do INE, que vai de 1970 a 2025: os valores coincidem ao indivíduo em 1995, 2000, 2005, 2010, 2014, 2016, 2018, 2019 e 2020.
+
 Use a aplicação como apoio à análise, não como resposta final.
 
 ## 16. Glossário
@@ -625,7 +864,17 @@ Explicações simples dos termos usados na aplicação. O separador `Glossário`
 - **Mortalidade proporcional:** percentagem das mortes de uma causa face ao total de mortes, no mesmo ano, sexo e local.
 - **AVPP (anos de vida potencialmente perdidos):** medida do impacto da morte prematura; soma os anos que faltavam até aos 70 em cada morte antes dessa idade e dá mais peso às mortes em idades jovens.
 - **Mortalidade prematura:** mortes antes de uma certa idade (aqui, antes dos 75 anos), muitas vezes consideradas potencialmente evitáveis.
-- **Intervalo de confiança:** margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos.
+- **Padronização directa:** aplica as taxas por idade *do local* a uma população padrão externa. Dá a `Taxa padronizada`. Precisa de uma taxa estimável em cada idade, por isso é instável em locais pequenos.
+- **Padronização indirecta:** aplica as taxas por idade *da referência* à estrutura etária do local, para calcular quantos óbitos seriam de esperar. Dá o `SMR`. É estável em locais pequenos porque só precisa do total de óbitos observados.
+- **SMR:** óbitos observados a dividir pelos esperados, vezes 100. A referência vale 100; 120 são 20% mais óbitos do que o esperado. Compare cada SMR com 100, nunca com outro SMR.
+- **Óbitos esperados:** os óbitos que o local teria tido com as taxas por idade da referência e a sua própria estrutura etária.
+- **Referência (padronização indirecta):** o território cujas taxas por idade servem de termo de comparação; normalmente `Portugal`.
+- **Agregação plurianual:** calcular a métrica sobre 3 ou 5 anos em vez de 1, para estabilizar locais pequenos e causas raras.
+- **Pessoas-ano:** o denominador de uma taxa agregada. Cinco anos de um concelho com 10.000 habitantes são 50.000 pessoas-ano, o que mantém a taxa por ano e comparável com um ano isolado.
+- **Mortalidade infantil:** óbitos antes do primeiro ano de vida por 1.000 nados-vivos.
+- **Nados-vivos:** nascimentos com vida. São o denominador da mortalidade infantil, em vez da população, porque nenhum indicador de população tem uma banda «menos de 1 ano» e porque correspondem melhor ao grupo em risco.
+- **Asterisco (`*`):** marca uma taxa de mortalidade infantil calculada sobre menos de 1.000 nados-vivos, em que um único óbito desloca o valor em mais de uma unidade por 1.000. O valor é exacto; a marca avisa que não é comparável.
+- **Intervalo de confiança:** margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos. Um intervalo largo não é um defeito: é o que há a dizer quando os acontecimentos são poucos.
 
 ### Conceitos de previsão
 
@@ -649,3 +898,12 @@ Explicações simples dos termos usados na aplicação. O separador `Glossário`
 - **Indicador:** conjunto de dados específico do INE (por exemplo, óbitos por causa), identificado por um código.
 - **Ficheiros RDS:** dados já preparados e guardados no repositório, que a aplicação lê rapidamente sem consultar o INE em directo.
 - **Fonte de dados:** a escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos).
+
+### Geografia
+
+- **NUTS:** a nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (`Continente`, Açores, Madeira) e NUTS II (as regiões).
+- **Definição das regiões (NUTS 2013 / NUTS 2024):** as duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes.
+- **Área Metropolitana de Lisboa:** a região de Lisboa em NUTS 2013. Em NUTS 2024 está dividida em `Grande Lisboa` e `Península de Setúbal`.
+- **Oeste e Vale do Tejo:** região criada em NUTS 2024 com o Oeste, o Médio Tejo e a Lezíria do Tejo. Apesar do nome, não inclui Lisboa.
+- **Agregação por municípios:** as regiões são sempre somadas a partir dos seus municípios, com a mesma lista aplicada a todos os anos. Mantém a série contínua, mas os totais não coincidem exactamente com os publicados pelo INE.
+- **Revisão da população (2021):** o INE publica duas estimativas que não coincidem; a aplicação usa a revista a partir de 2021. Todas as taxas desde esse ano mudaram, e há um degrau de cerca de 1,7% em 2020/2021.
