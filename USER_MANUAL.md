@@ -831,6 +831,42 @@ Em consequência, **2025 só está disponível para a mortalidade infantil** e �
 
 Todas as métricas funcionam em 2024, incluindo as taxas.
 
+### As Mudanças de Base da População
+
+A população do arquivo vem de três indicadores do INE, encadeados. Onde um
+termina e o outro começa há uma **mudança de base**, e os dois não coincidem
+exactamente nos anos que ambos publicam. Há duas, em 2013/2014 e em 2020/2021.
+
+**2013/2014.** Nos anos que ambos publicam, os totais de população coincidem a
+menos de 0,2%. Mas as **taxas padronizadas** diferem cerca de 3%, porque os dois
+indicadores distribuem a população pelas idades de forma diferente e a
+padronização é sensível a isso. O efeito é visível:
+
+| Portugal, taxa padronizada | |
+|---|---:|
+| 2012 → 2013, com um indicador consistente | −3,00% |
+| **2013 → 2014, como o arquivo a mostra** | **−6,70%** |
+| 2013 → 2014, com o mesmo indicador dos dois lados | −3,86% |
+
+Cerca de metade da descida aparente vem da mudança de fonte. Numa base
+consistente, 2014 continua a tendência anterior e não há nada de especial.
+
+A análise de quebras estruturais assinala este ponto como quebra na série
+padronizada de Portugal. **Não é um acontecimento epidemiológico.** Quando uma
+quebra detectada coincide com uma mudança de base, a aplicação passou a dizê-lo
+no texto da análise.
+
+Ao nível municipal o efeito é maior: 126 dos 305 municípios movem-se mais de 2%
+nessa passagem, contra 9 a 19 nos anos vizinhos. Corvo −13,8%, Faro +7,2%,
+Lisboa +6,3%.
+
+A mudança de base **não é removível**: o indicador mais recente só começa em
+2011, e não existe série municipal anterior na base nova. Pode ser deslocada,
+não eliminada.
+
+Nas taxas brutas o efeito é desprezável (0,2%). Se a sua análise atravessa
+2013/2014 e precisa de uma taxa comparável, a taxa bruta é a opção segura.
+
 ### A Revisão da População de 2021
 
 O INE publica duas estimativas de população que se sobrepõem e **não coincidem**. A série mais recente, em NUTS 2024, revê os valores em alta de forma crescente:

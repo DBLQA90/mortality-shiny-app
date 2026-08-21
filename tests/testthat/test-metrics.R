@@ -177,23 +177,44 @@ test_that("count and proportion intervals match the exact reference tests", {
   expect_true(all(is.na(compute_proportion_interval(5, 0))))
 })
 
-test_that("the population revision seam is announced when a window crosses it", {
-  # Crossing 2020/2021 changes the denominator basis by about 1.7%.
-  msg <- population_revision_warning(2019:2022, "crude")
-  expect_match(msg, "2021")
-  expect_match(msg, "denominador")
+test_that("population seams are announced when a window crosses them", {
+  # Two handovers between population indicators: 0003182 -> 0008273 at 2014,
+  # and 0008273 -> the revised 0012918 at 2021.
+  expect_setequal(vapply(POPULATION_SEAMS, function(s) s$year, integer(1)), c(2014L, 2021L))
 
-  # Wholly on one side of the seam, nothing to say.
+  msg <- population_revision_warning(2019:2022, "crude")
+  expect_match(msg, "2020/2021")
+  expect_match(msg, "denominador")
+  expect_false(grepl("2013/2014", msg))
+
+  # The 2013/2014 seam: measured at 3% on standardised rates, and the reason a
+  # breakpoint lands there in Portugal's series.
+  seam14 <- population_revision_warning(2010:2018, "dsr")
+  expect_match(seam14, "2013/2014")
+  expect_false(grepl("2020/2021", seam14))
+
+  # A long series crosses both and both are named.
+  both <- population_revision_warning(1991:2024, "dsr")
+  expect_match(both, "2013/2014")
+  expect_match(both, "2020/2021")
+  expect_match(both, "2 mudanças")
+
+  # Wholly on one side of a seam, nothing to say.
   expect_null(population_revision_warning(2015:2019, "crude"))
   expect_null(population_revision_warning(2021:2024, "crude"))
+  expect_null(population_revision_warning(2005:2013, "dsr"))
 
-  # Counts do not divide by population, so the seam does not reach them.
-  expect_null(population_revision_warning(2019:2022, "deaths"))
-  expect_null(population_revision_warning(2019:2022, "ypll"))
-  expect_null(population_revision_warning(2019:2022, "infant"))
+  # Counts do not divide by population, so no seam reaches them.
+  for (metric in c("deaths", "ypll", "infant", "infant_deaths", "proportional")) {
+    expect_null(population_revision_warning(1991:2024, metric))
+  }
 
   # Unspecified metric errs toward warning.
-  expect_match(population_revision_warning(2019:2022), "2021")
+  expect_match(population_revision_warning(2019:2022), "2020/2021")
+
+  # An empty or non-finite selection is not an error.
+  expect_null(population_revision_warning(integer(0), "dsr"))
+  expect_null(population_revision_warning(NA_integer_, "dsr"))
 })
 
 test_that("the revised population series outranks the older ones", {

@@ -47,8 +47,10 @@ roughly six-fold for 1991-2013, and produces a spurious six-fold jump at the
 2015). Any trend or forecast covering those years is affected.
 
 A scan of all 308 areas across the 2013/2014 seam found exactly these
-discontinuities, with a median population ratio of 1.0139 elsewhere, so the
-rest of the archive is unaffected.
+discontinuities, with a median population ratio of 1.0139 elsewhere. That scan
+used a 20% threshold, chosen to catch this six-fold error, and it did. It is too
+coarse to see the systematic 3-7% step the same seam also carries for other
+reasons - see *The 2013/2014 source seam* below.
 
 `0008273` and `0013166` name the Lisbon region `Área Metropolitana de Lisboa`,
 so `Lisboa` is unambiguous there and population from 2014 onward is correct.
@@ -258,6 +260,67 @@ ambiguous island labels are all in that group, so no name is ever matched
 against two candidates. Anything resolving by neither route is an error rather
 than a guess.
 
+### The 2013/2014 Source Seam
+
+The population archive splices three indicators, and consecutive ones disagree
+about the years they both publish. `0003182` (NUTS-2002, frozen in 2014) serves
+1991-2013 and `0008273` (NUTS-2013) serves 2014-2020, so there is a handover
+between 2013 and 2014.
+
+Measured on the years both publish, for Portugal:
+
+| | 2011 | 2012 | 2013 |
+|---|---:|---:|---:|
+| crude rate, `0008273` against `0003182` | −0.16% | −0.16% | −0.16% |
+| **standardised rate** | **−2.49%** | **−2.74%** | **−2.95%** |
+
+The totals agree to a sixth of a per cent. The *standardised* rates differ by
+about 3%, because the two indicators distribute the population across age bands
+differently and direct standardisation is sensitive to exactly that. The 65+
+share barely moves (19.85% against 19.99% in 2013), so it is redistribution
+within the bands, not a gross ageing shift.
+
+The consequence is a break that reads as real:
+
+| Portugal, standardised rate | |
+|---|---:|
+| 2012 → 2013, one consistent indicator | −3.00% |
+| **2013 → 2014, as the archive shows it** | **−6.70%** |
+| 2013 → 2014, `0008273` on both sides | −3.86% |
+
+Roughly half the apparent fall is the handover. `strucchange` places a
+breakpoint at `2013|2014` in Portugal's standardised series in every fit window
+from 1991 through 2002. On a consistent basis the transition is ordinary.
+
+At municipality level it is larger. Year-over-year population change across the
+305 municipalities present in both indicators:
+
+| Transition | IQR | moving more than 2% |
+|---|---:|---:|
+| 2012-13 | 1.09 | 19 |
+| **2013-14** | **2.19** | **126** |
+| 2014-15 | 0.94 | 9 |
+
+Corvo −13.8%, Tabuaço −9.3%, Aguiar da Beira +8.4%, Faro +7.2%, Lisboa +6.3%,
+Porto +5.1%, against ±1-3% either side.
+
+This was missed by the earlier check of the same seam, which reported that no
+area moved more than 20%. That is true, and the threshold was chosen to catch
+the six-fold `Lisboa` conflation, which it did. It cannot see a systematic 3-7%
+step.
+
+**The seam is not removable.** `0008273` starts in 2011, so the handover can sit
+at 2010/2011, 2011/2012, 2012/2013 or 2013/2014, and the discrepancy is of the
+same character wherever it is placed - moving it to 2010/2011 would reduce the
+step from about 2.95% to about 2.49%. There is no municipal population series
+covering 1991-2010 on the newer basis. The archive therefore keeps `0003182` for
+1991-2013, which is also the range the `Lisboa` repair was applied to, and warns
+about the seam instead.
+
+Note that for 2011-2013 this means using a superseded estimate: INE's current
+national long series agrees with `0008273` for those three years, not with
+`0003182`. The difference is 0.16% on the total.
+
 ### The 2021 Population Revision
 
 INE publishes two overlapping population estimates, and they do not agree.
@@ -283,10 +346,20 @@ the old one would put a 5.3% step at the seam: mortality rates would fall about
 forecast fitted across it would inherit the step. Using the revised series from
 2021 moves the single seam to 2020/2021, where the two differ by 1.7%.
 
-That seam is still there, and the app says so: a rate series or a pooled window
-crossing 2020/2021 raises a warning naming the year and the direction of the
-effect. `population_revision_warning()` is skipped for counts, AVPP and infant
+### Warning About Both Seams
+
+Both handovers are declared in `POPULATION_SEAMS` in `R/config.R` and warned
+about the same way. A rate series or a pooled window that crosses one raises a
+warning naming the year and the size and direction of the effect;
+`population_revision_warning()` is skipped for counts, AVPP and infant
 mortality, none of which divide by this denominator.
+
+The structural-break analysis carries a second, sharper warning. When a detected
+breakpoint falls on a seam - at `year - 1` or `year`, since a breakpoint is the
+last year of a segment - the narrative says so explicitly, because the breaks
+tab is where a reader meets the year and would otherwise have no way to
+distinguish an artefact from an event. The same note is appended to the
+reliability warning shown with a guided forecast.
 
 The practical consequence is that **every rate from 2021 onward changed** when
 this was adopted. Portugal's crude mortality for 2023 reads 1,056 per 100,000

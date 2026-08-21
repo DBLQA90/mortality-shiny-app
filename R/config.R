@@ -29,10 +29,39 @@ population_indicators <- c(
 )
 death_indicators <- c(death_indicator_legacy, death_indicator_current)
 
-# The year the population series changes basis, and the size of the step. Used
-# to warn when a selection spans it rather than leaving the reader to discover
-# a 1.7% discontinuity by eye.
-POPULATION_REVISION_YEAR <- 2021L
+# Where the population series changes basis.
+#
+# The archive splices three indicators, and consecutive ones disagree about the
+# years they both publish. Every such handover puts a step into any rate that
+# crosses it, so each is declared here and warned about rather than left for the
+# reader to discover as an unexplained break.
+#
+# `year` is the first year served by the new source; the step falls between
+# `year - 1` and `year`.
+POPULATION_SEAMS <- list(
+  list(
+    year = 2014L,
+    # 0003182 (NUTS-2002, frozen 2014) hands over to 0008273 (NUTS-2013).
+    # Measured on the years both publish, Portugal: the totals agree to 0.16%,
+    # but the standardised rates differ by 2.49% (2011), 2.74% (2012) and 2.95%
+    # (2013), because the two distribute the population across age bands
+    # differently and standardisation is sensitive to exactly that.
+    #
+    # The consequence is a break the eye reads as real. Portugal's standardised
+    # rate falls 6.70% from 2013 to 2014 as the archive shows it, against 3.86%
+    # with one indicator on both sides - which is in line with the 3.00% of the
+    # year before. strucchange puts a breakpoint at 2013|2014 in every fit
+    # window from 1991 to 2002, and roughly half of it is this handover.
+    effect = "sobretudo nas taxas padronizadas, cerca de 3%; as taxas brutas quase não mudam (0,2%)"
+  ),
+  list(
+    year = 2021L,
+    # 0008273 (NUTS-2013) hands over to 0012918 (NUTS-2024), which is a revised
+    # estimate rather than a continuation: +1.71% for 2021, +3.93% for 2022,
+    # +5.31% for 2023 on the national total.
+    effect = "as taxas descem cerca de 1,7%, e a divergência cresce nos anos seguintes"
+  )
+)
 
 # Which indicator serves a year the sources disagree about.
 #
@@ -53,39 +82,53 @@ names(population_source_priorities) <- c(
   population_indicator_current
 )
 
-# The population series changes basis in 2021, and the step is large enough to
-# read as a real change in mortality if it goes unmentioned.
-#
-# INE publishes two overlapping estimates: 0008273 on NUTS-2013 (to 2023) and
-# 0012918 on NUTS-2024 (2021-2025), the latter revised progressively upward -
-# +1.71% for 2021, +3.93% for 2022, +5.31% for 2023 nationally. The archive uses
-# the revised series wherever it reaches, which puts the one seam at 2020/2021
-# rather than a much larger one at 2023/2024. A rate series crossing it gains
-# roughly 1.7% of denominator, so mortality dips by about that much for reasons
-# that have nothing to do with mortality.
-population_revision_warning <- function(years, metric_id = NULL) {
+# Seams the selected years cross. Only rates are affected: a count does not
+# divide by this denominator.
+population_seams_crossed <- function(years, metric_id = NULL) {
   if (!is.null(metric_id) && !(metric_id %in% metrics_requiring_population)) {
-    return(NULL)
+    return(list())
   }
 
   years <- as.integer(years)
   years <- years[is.finite(years)]
 
-  spans_break <- length(years) > 0 &&
-    any(years < POPULATION_REVISION_YEAR) &&
-    any(years >= POPULATION_REVISION_YEAR)
+  if (length(years) == 0) {
+    return(list())
+  }
 
-  if (!spans_break) {
+  Filter(
+    function(seam) any(years < seam$year) && any(years >= seam$year),
+    POPULATION_SEAMS
+  )
+}
+
+# Warning for a rate series that crosses one or more population seams.
+#
+# The point is not that the data is wrong but that part of the movement at the
+# seam is not mortality. A break detected there - by the structural-break
+# analysis or by eye - is at least partly the denominator changing basis.
+population_revision_warning <- function(years, metric_id = NULL) {
+  seams <- population_seams_crossed(years, metric_id)
+
+  if (length(seams) == 0) {
     return(NULL)
   }
 
+  described <- vapply(
+    seams,
+    function(seam) {
+      as.character(glue::glue("{seam$year - 1}/{seam$year} ({seam$effect})"))
+    },
+    character(1)
+  )
+
   as.character(glue::glue(
-    "Atenção: a partir de {POPULATION_REVISION_YEAR} a população vem da série ",
-    "revista do INE (NUTS-2024), cerca de 1,7% acima da anterior em ",
-    "{POPULATION_REVISION_YEAR} e a divergir nos anos seguintes. As taxas ",
-    "descem ligeiramente ao atravessar {POPULATION_REVISION_YEAR - 1}/",
-    "{POPULATION_REVISION_YEAR} por mudança de denominador, não por mudança de ",
-    "mortalidade."
+    "Atenção: a série atravessa {length(seams)} ",
+    "{if (length(seams) == 1) 'mudança' else 'mudanças'} de base da população ",
+    "do INE, em {paste(described, collapse = ' e em ')}. Nesses pontos a taxa ",
+    "muda em parte por mudança de denominador e não de mortalidade, pelo que ",
+    "uma quebra detectada aí não deve ser lida como um acontecimento ",
+    "epidemiológico."
   ))
 }
 

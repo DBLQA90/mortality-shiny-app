@@ -1196,9 +1196,49 @@ server <- function(input, output, session) {
     p
   }
 
+  # A detected break that sits on a population seam is at least partly the
+  # denominator changing basis. Naming it here is the whole point of the
+  # exercise: the breaks tab is where the reader meets the year, and without
+  # this they have no way to tell an artefact from an event.
+  #
+  # A breakpoint is the last year of a segment, so a seam at `year` shows up as
+  # a break reported at `year - 1` or, when the fit places it one step later, at
+  # `year` itself.
+  describe_breaks_on_population_seams <- function(break_years) {
+    if (length(break_years) == 0) {
+      return(NULL)
+    }
+
+    hits <- Filter(
+      function(seam) any(as.integer(break_years) %in% c(seam$year - 1L, seam$year)),
+      POPULATION_SEAMS
+    )
+
+    if (length(hits) == 0) {
+      return(NULL)
+    }
+
+    described <- vapply(
+      hits,
+      function(seam) as.character(glue::glue("{seam$year - 1}/{seam$year}")),
+      character(1)
+    )
+
+    as.character(glue::glue(
+      "Atenção: {if (length(hits) == 1) 'uma das quebras coincide' else 'algumas das quebras coincidem'} ",
+      "com {if (length(hits) == 1) 'uma mudança' else 'mudanças'} de base da população do INE, em ",
+      "{paste(described, collapse = ' e em ')}. Nesse ponto a fonte da população muda de indicador, ",
+      "o que desloca as taxas mesmo sem qualquer alteração da mortalidade — na taxa padronizada de ",
+      "Portugal, cerca de metade da descida de 2013 para 2014 vem daí. Uma quebra detectada aqui não ",
+      "deve ser lida como um acontecimento epidemiológico sem confirmação por outra via."
+    ))
+  }
+
   build_break_interpretation_text <- function(break_info) {
     break_n <- length(break_info$break_years)
     segment_n <- nrow(break_info$segments)
+    seam_note <- describe_breaks_on_population_seams(break_info$break_years)
+    seam_note <- if (is.null(seam_note)) "" else paste0(" ", seam_note)
 
     # The wording has to match the model that was actually fitted: a break in a
     # segmented trend means the level or the slope changed, whereas a break in
@@ -1219,12 +1259,12 @@ server <- function(input, output, session) {
 
     if (break_n == 1) {
       return(glue::glue(
-        "Foi detectada uma potencial mudança estrutural em torno de {break_info$break_years[[1]]}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá ter mudado nessa altura. {model_note}"
+        "Foi detectada uma potencial mudança estrutural em torno de {break_info$break_years[[1]]}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá ter mudado nessa altura. {model_note}{seam_note}"
       ))
     }
 
     glue::glue(
-      "Foram detectadas {break_n} potenciais mudanças estruturais em torno de {paste(break_info$break_years, collapse = ', ')}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá não ser estável ao longo do período observado. {model_note}"
+      "Foram detectadas {break_n} potenciais mudanças estruturais em torno de {paste(break_info$break_years, collapse = ', ')}, dividindo o histórico seleccionado em {segment_n} segmentos. Isto sugere que {what_changed} poderá não ser estável ao longo do período observado. {model_note}{seam_note}"
     )
   }
 
@@ -1235,13 +1275,16 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
+    seam_note <- describe_breaks_on_population_seams(break_info$break_years)
+    seam_note <- if (is.null(seam_note)) "" else paste0(" ", seam_note)
+
     if (length(break_info$break_years) == 1) {
       return(glue::glue(
-        "Foi detectada uma possível mudança estrutural em torno de {break_info$break_years[[1]]}; as previsões baseadas em todo o histórico devem ser lidas com cautela acrescida."
+        "Foi detectada uma possível mudança estrutural em torno de {break_info$break_years[[1]]}; as previsões baseadas em todo o histórico devem ser lidas com cautela acrescida.{seam_note}"
       ))
     }
 
-    "Foi detectada uma possível mudança estrutural na série histórica; as previsões baseadas em todo o histórico devem ser lidas com cautela acrescida."
+    glue::glue("Foi detectada uma possível mudança estrutural na série histórica; as previsões baseadas em todo o histórico devem ser lidas com cautela acrescida.{seam_note}")
   }
 
   value_or_default <- function(x, default) {
