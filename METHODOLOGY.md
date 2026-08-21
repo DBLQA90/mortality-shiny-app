@@ -544,9 +544,36 @@ unusually bad year rather than the local level. Genuine year-to-year signal is
 smoothed away in the same operation, so pooled and annual values answer
 different questions.
 
-Pooling applies to the annual comparison tab. Forecasting always uses unpooled
-annual series, because a moving-average filter induces autocorrelation that
-would invalidate the forecast intervals.
+Pooling applies to the annual comparison tab and to avoidable mortality.
+Forecasting always uses unpooled annual series, because a moving-average filter
+induces autocorrelation that would invalidate the forecast intervals.
+
+### The Pooled Denominator
+
+A pooled rate divides by person-years, not by one year's population. Verified
+against the archive by hand for Lisboa 2020-2022: 22,189 deaths over 1,792,724
+person-years, which is 2.961 times the 2021 population, giving a crude rate of
+1237.73 per 100,000 - exactly what the app reports, and deliberately not the
+simple mean of the three annual rates (1243.07).
+
+How the population is accumulated depends on the shape of the frame, and
+getting it wrong produces a plausible number rather than an error:
+
+- The annual tab loads **one cause at a time**, so each (year, area, band)
+  appears once and the population is simply summed.
+  `collapse_annual_cause_data()` now refuses a frame holding more than one
+  cause, because summing there would count the same population once per cause.
+- The avoidable tab loads **forty causes at once**, so the population repeats
+  once per cause and must be deduplicated - taken once per (year, area, band)
+  and then summed. Taking it once per band alone was wrong for every pooled
+  window, and made a five-year selection for Beja read 2,173.7 against a true
+  417.9.
+
+Every pooled metric was audited against its unpooled value across several
+geographies. The ratio of a pooled rate to a single-year rate sits near 1 in
+every case; a denominator error of this class would show up as a ratio near the
+window length. `Óbitos infantis` is the one deliberate exception, being a window
+total rather than an annual average.
 
 ### Infant Mortality
 

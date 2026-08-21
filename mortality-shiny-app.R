@@ -2851,7 +2851,25 @@ server <- function(input, output, session) {
   # is the shape every metric below consumes. Deaths and population are summed,
   # so a pooled denominator is person-years and a multi-area selection is one
   # combined geography - the same convention the app already uses for areas.
+  #
+  # Summing population is correct only because the frame holds exactly one
+  # cause: each (year, area, band) then appears once. With two causes loaded the
+  # same population would be counted twice and every rate would be halved -
+  # which is precisely the mistake the avoidable-mortality tab made in the other
+  # direction, where population repeated once per cause and had to be
+  # deduplicated. Fail loudly here rather than return a plausible wrong number.
   collapse_annual_cause_data <- function(cause_data) {
+    if ("cause" %in% names(cause_data)) {
+      loaded_causes <- unique(as.character(cause_data$cause))
+      if (length(loaded_causes) > 1) {
+        stop(
+          "collapse_annual_cause_data() recebeu ", length(loaded_causes),
+          " causas; a população seria contada uma vez por causa. Carregue uma causa de cada vez.",
+          call. = FALSE
+        )
+      }
+    }
+
     cause_data %>%
       dplyr::group_by(age_band) %>%
       dplyr::summarise(
