@@ -109,7 +109,29 @@ REGIONAL_ROW_TERRITORIES <- tibble::tribble(
   "Oeste e Vale do Tejo",         "2024",   "0013166",  "1D",                           "",           "",           2022L, 2024L,
   # No NUTS-2013 split of the Lisbon metropolitan area exists before 2022.
   "Grande Lisboa",                "2024",   "0013166",  "1A",                           "",           "",           2022L, 2024L,
-  "Península de Setúbal",         "2024",   "0013166",  "1B",                           "",           "",           2022L, 2024L
+  "Península de Setúbal",         "2024",   "0013166",  "1B",                           "",           "",           2022L, 2024L,
+  # Health units that coincide exactly with an INE regional unit, checked
+  # against both municipality lookups. The other ULS are finer than any NUTS III
+  # subregion and keep the municipal sum - mostly urban ULS of two or three
+  # large municipalities, where the age-detail loss is small.
+  "ARS Algarve",                  NA,       "0008206",  "15",                           "",           "",           1991L, 2021L,
+  "ARS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, 2024L,
+  "ULS Algarve",                  NA,       "0008206",  "15",                           "",           "",           1991L, 2021L,
+  "ULS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, 2024L,
+  "ARS Alentejo",                 NA,       "0008206",  "181,184,186,187",              "",           "",           1991L, 2021L,
+  "ARS Alentejo",                 NA,       "0013166",  "1C",                           "",           "",           2022L, 2024L,
+  "ULS Alto Minho",               NA,       "0008206",  "111",                          "",           "",           1991L, 2021L,
+  "ULS Alto Minho",               NA,       "0013166",  "111",                          "",           "",           2022L, 2024L,
+  "ULS Viseu Dão-Lafões",         NA,       "0008206",  "16G",                          "",           "",           1991L, 2021L,
+  "ULS Viseu Dão-Lafões",         NA,       "0013166",  "194",                          "",           "",           2022L, 2024L,
+  "ULS Litoral Alentejano",       NA,       "0008206",  "181",                          "",           "",           1991L, 2021L,
+  "ULS Litoral Alentejano",       NA,       "0013166",  "1C1",                          "",           "",           2022L, 2024L,
+  "ULS Baixo Alentejo",           NA,       "0008206",  "184",                          "",           "",           1991L, 2021L,
+  "ULS Baixo Alentejo",           NA,       "0013166",  "1C2",                          "",           "",           2022L, 2024L,
+  "ULS Alto Alentejo",            NA,       "0008206",  "186",                          "",           "",           1991L, 2021L,
+  "ULS Alto Alentejo",            NA,       "0013166",  "1C3",                          "",           "",           2022L, 2024L,
+  "ULS Alentejo Central",         NA,       "0008206",  "187",                          "",           "",           1991L, 2021L,
+  "ULS Alentejo Central",         NA,       "0013166",  "1C4",                          "",           "",           2022L, 2024L
 )
 
 split_list <- function(x) {
@@ -342,11 +364,29 @@ region_source_seam_warning <- function(expanded_regions, vintage, years, source 
   ))
 }
 
-# A municipality on its own has no finer row to fall back on. Its cause-specific
-# age bands can be incomplete in any year, and in 2014 they are badly so.
-municipal_age_detail_warning <- function(areas, lookup, causes, years) {
+# Any selection whose deaths come from summed municipalities - a municipality on
+# its own, or a region or ULS without an INE row for every selected year - can
+# carry incomplete cause-specific age bands, and in 2014 badly so.
+municipal_age_detail_warning <- function(areas,
+                                         lookup,
+                                         causes,
+                                         years,
+                                         vintage = default_nuts_vintage(),
+                                         source = "ine_rows") {
   areas <- unique(as.character(areas))
-  municipalities <- areas[!areas %in% c("Portugal", get_known_regions(lookup))]
+  years <- sort(unique(as.integer(years)))
+  known <- get_known_regions(lookup)
+
+  fully_on_rows <- function(area) {
+    identical(normalize_region_source(source), "ine_rows") &&
+      nrow(regional_row_plan(area, vintage, years)) == length(years)
+  }
+
+  municipalities <- areas[vapply(areas, function(area) {
+    if (identical(area, "Portugal")) return(FALSE)
+    if (!area %in% known) return(TRUE)
+    !fully_on_rows(area)
+  }, logical(1))]
   if (length(municipalities) == 0) return(NULL)
 
   cause_specific <- any(as.character(causes) != "Todas as causas de morte")
@@ -356,9 +396,9 @@ municipal_age_detail_warning <- function(areas, lookup, causes, years) {
   parts <- character(0)
   if (cause_specific) {
     parts <- c(parts, paste0(
-      "o INE publica os óbitos por causa de cada município com a repartição por ",
-      "idade incompleta, sobretudo onde os números são pequenos, pelo que os ",
-      "valores municipais podem estar subestimados"
+      "estes valores somam municípios, e o INE publica os óbitos por causa de ",
+      "cada município com a repartição por idade incompleta, sobretudo onde os ",
+      "números são pequenos, pelo que podem estar subestimados"
     ))
   }
   if (includes_2014) {
@@ -368,9 +408,15 @@ municipal_age_detail_warning <- function(areas, lookup, causes, years) {
     ))
   }
 
+  shown <- if (length(municipalities) > 4) {
+    paste0(paste(utils::head(municipalities, 4), collapse = ", "), " e outros")
+  } else {
+    paste(municipalities, collapse = ", ")
+  }
+
   as.character(glue::glue(
-    "Atenção: {paste(parts, collapse = '; e ')}. As regiões não têm este problema ",
-    "quando usam as linhas regionais do INE; um município isolado não pode ser ",
-    "corrigido desta forma."
+    "Atenção ({shown}): {paste(parts, collapse = '; e ')}. As regiões com linha ",
+    "regional do INE não têm este problema; municípios isolados e ULS mais finas ",
+    "do que uma sub-região NUTS III não podem ser corrigidos desta forma."
   ))
 }

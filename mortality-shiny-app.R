@@ -126,7 +126,10 @@ server <- function(input, output, session) {
     seam <- region_source_seam_warning(expanded_regions, active_nuts_vintage(), years, active_region_source())
     if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20)
 
-    municipal <- municipal_age_detail_warning(selected_areas, active_nuts_lookup(), causes, years)
+    municipal <- municipal_age_detail_warning(
+      selected_areas, active_nuts_lookup(), causes, years,
+      vintage = active_nuts_vintage(), source = active_region_source()
+    )
     if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20)
   }
 

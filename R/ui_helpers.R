@@ -507,6 +507,8 @@ glossary_tab_ui <- function() {
   )
 
   geography_terms <- list(
+    list("ULS (Unidade Local de Saúde)", "A unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios. Cinco ULS partilham municípios ao nível da freguesia e aparecem em dois agrupamentos exactos."),
+    list("ARS", "As cinco regiões de saúde (Norte, Centro, Lisboa e Vale do Tejo, Alentejo, Algarve) que agrupam as ULS. Não coincidem com as regiões NUTS com o mesmo nome."),
     list("NUTS", "A nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (Continente, Açores, Madeira) e NUTS II (as regiões)."),
     list("Definição das regiões (NUTS 2013 / NUTS 2024)", "As duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes: seis nomes existem nas duas e significam coisas diferentes em cada uma."),
     list("Área Metropolitana de Lisboa", "A região de Lisboa em NUTS 2013. Em NUTS 2024 está dividida em Grande Lisboa e Península de Setúbal."),

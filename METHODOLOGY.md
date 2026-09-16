@@ -231,6 +231,57 @@ NUTS-2024 Alentejo:
 | sum of municipalities | 44 | 39 | **16** | 40 | 45 |
 | INE rows | 48 | 44 | **48** | 46 | 47 |
 
+### Health-System Geography: ULS And ARS
+
+Health planning in Portugal is organised by **Unidade Local de Saúde** (ULS),
+grouped into the five former ARS regions. These do not nest inside NUTS: five
+ULS straddle a NUTS II boundary (Entre Douro e Vouga, Guarda, Estuário do Tejo,
+Médio Tejo, Região de Leiria), and ARS Norte and NUTS Norte are different sets of
+municipalities. So ULS and ARS are a second, independent geography, built the
+same way as NUTS regions - as unions of whole municipalities - and offered in
+every area selector.
+
+Membership comes from the `Var` sheet of the PNS2030 workbook *Indicadores de
+Apoio ao Planeamento Local em Saúde*, keyed by INE's 2024 municipality codes, via
+`tools/build_uls_lookup.R` into `data/uls_lookup.rds`. The workbook itself is not
+committed. ARS follow from the first digit of the ULS code. A ULS has no NUTS
+vintage: the same municipalities apply under either definition.
+
+**Five ULS cannot be built individually.** Lisboa, Loures and Porto are each
+divided between two ULS at parish level, and nothing below municipality exists in
+the app's data. They are offered as the two smallest unions that contain only
+whole municipalities, which are exact:
+
+| Offered as | Municipalities |
+|---|---|
+| ULS Santo António + São João | Gondomar, Maia, Porto, Valongo |
+| ULS Loures/Odivelas + Santa Maria + São José | Lisboa, Loures, Mafra, Odivelas |
+
+The workbook handles these differently, and wrongly for counts: it assigns the
+*whole* shared municipality to each ULS that touches it. ULS Santo António is
+Gondomar plus all of Porto; ULS São João is Maia, Valongo and all of Porto. Porto's
+3,000 deaths in 2019 are counted twice, so the workbook's 14 Norte ULS sum to 38,271
+against its own ARS Norte total of 35,278. Rates for those five ULS mix in the whole
+of the shared municipality in the same way.
+
+The result is: **34 individual ULS, 2 groups and 5 ARS**, covering the 278 mainland
+municipalities with each municipality counted once at the ULS level and once at the
+ARS level (unit-tested). Checked against the workbook's own death counts (I37),
+which the population revision does not affect: in 2023, 34 of 39 ULS and ARS match
+exactly and the rest differ by one death. The five ARS sum to Continente exactly.
+
+**Regional deaths for ULS.** Most ULS are finer than any NUTS III subregion - they
+are frequently two or three municipalities - so INE publishes no row for them.
+Seven coincide exactly with a subregion in both vintages (Alto Minho, Viseu
+Dão-Lafões, Alentejo Litoral, Baixo Alentejo, Alto Alentejo, Alentejo Central,
+Algarve), and ARS Alentejo and ARS Algarve with a NUTS II region; those take INE's
+complete rows like any region. The rest use the municipal sum, with the
+cause-specific warning. The split falls fortunately: the uncovered ULS are mostly
+urban, whose large municipalities keep their age detail, while the rural ULS where
+the loss is worst are largely the covered ones. Not all - **ULS Guarda, with 13
+small municipalities and no INE row, shows zero lung-cancer deaths in 2014**, and
+figures like that are why the warning names the areas it applies to.
+
 ### NUTS I: Continente, Açores And Madeira
 
 INE's geography has a NUTS I level above the regions: `Continente` and the two

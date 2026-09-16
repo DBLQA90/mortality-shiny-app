@@ -145,6 +145,37 @@ Na tabela de fontes, os óbitos que vieram de uma linha regional aparecem
 identificados como `(linha regional)`, ou `(linhas regionais compostas)` quando a
 região foi construída a partir de sub-regiões.
 
+### ULS e ARS
+
+Além das regiões NUTS, a lista de locais inclui a geografia do sistema de saúde:
+as cinco **ARS** (Norte, Centro, Lisboa e Vale do Tejo, Alentejo, Algarve) e as
+**ULS**. Tal como as regiões NUTS, são somadas a partir dos seus municípios e estão
+disponíveis em todos os separadores — SMR, mortalidade evitável, mortalidade
+infantil, previsões.
+
+As ULS e as regiões NUTS **não coincidem**: cinco ULS atravessam uma fronteira NUTS
+II, e a ARS Norte não é o mesmo território que a região NUTS Norte. Por isso aparecem
+como entradas próprias, com o prefixo `ULS` ou `ARS`. A lista de municípios de cada
+ULS é a mesma nas duas definições NUTS.
+
+**Cinco ULS aparecem agrupadas.** Lisboa, Loures e Porto estão divididos entre duas
+ULS ao nível da freguesia, e a aplicação não tem dados abaixo do município. Em vez de
+as mostrar individualmente com valores errados, aparecem os agrupamentos exactos:
+
+- `ULS Santo António + São João` — Gondomar, Maia, Porto, Valongo;
+- `ULS Loures/Odivelas + Santa Maria + São José` — Lisboa, Loures, Mafra, Odivelas.
+
+Estes valores não são comparáveis com os que o ficheiro de indicadores PNS2030
+apresenta para cada uma destas ULS: esse ficheiro atribui o município partilhado
+inteiro a cada ULS, e por isso conta Porto, Lisboa e Loures duas vezes.
+
+**Óbitos por causa nas ULS.** Sete ULS coincidem exactamente com uma sub-região NUTS
+III (Alto Minho, Viseu Dão-Lafões, Alentejo Litoral, Baixo Alentejo, Alto Alentejo,
+Alentejo Central e Algarve) e usam as linhas regionais do INE. As restantes são
+somas de municípios e têm o mesmo cuidado dos municípios isolados — a aplicação
+avisa. Em 2014 esse cuidado é sério: a ULS Guarda, por exemplo, aparece com zero
+óbitos por cancro do pulmão nesse ano.
+
 ### Continente, Açores e Madeira
 
 `Continente`, `Região Autónoma dos Açores` e `Região Autónoma da Madeira` são o nível NUTS I, acima das regiões. Estão disponíveis nas duas definições e comportam-se como qualquer outra região: são somados a partir dos seus municípios — 278 no Continente, 19 nos Açores, 11 na Madeira.
@@ -1057,6 +1088,8 @@ Explicações simples dos termos usados na aplicação. O separador `Glossário`
 
 ### Geografia
 
+- **ULS (Unidade Local de Saúde):** a unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios.
+- **ARS:** as cinco regiões de saúde (Norte, Centro, Lisboa e Vale do Tejo, Alentejo, Algarve) que agrupam as ULS. Não coincidem com as regiões NUTS com o mesmo nome.
 - **NUTS:** a nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (`Continente`, Açores, Madeira) e NUTS II (as regiões).
 - **Definição das regiões (NUTS 2013 / NUTS 2024):** as duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes.
 - **Área Metropolitana de Lisboa:** a região de Lisboa em NUTS 2013. Em NUTS 2024 está dividida em `Grande Lisboa` e `Península de Setúbal`.

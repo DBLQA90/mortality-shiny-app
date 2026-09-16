@@ -70,7 +70,9 @@ sources <- list(
       # Centro subregions
       "16B", "16D", "16E", "16F", "16G", "16H", "16I", "16J",
       # Alentejo subregions
-      "181", "184", "185", "186", "187"
+      "181", "184", "185", "186", "187",
+      # Alto Minho, which is also ULS Alto Minho
+      "111"
     )
   ),
   "0013166" = list(
@@ -78,7 +80,10 @@ sources <- list(
     codes = c(
       "1", "11", "19", "1A", "1B", "1C", "1D", "15", "20", "30",
       # Oeste e Vale do Tejo subregions
-      "1D1", "1D2", "1D3"
+      "1D1", "1D2", "1D3",
+      # Subregions that coincide exactly with a ULS: Alto Minho, Viseu Dão
+      # Lafões, and the four Alentejo subregions.
+      "111", "194", "1C1", "1C2", "1C3", "1C4"
     )
   )
 )

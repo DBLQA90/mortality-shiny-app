@@ -186,7 +186,7 @@ test_that("region and area choices follow the vintage", {
 
   areas_new <- area_choices_for("2024", new)
   expect_equal(areas_new[[1]], "Portugal")
-  expect_equal(length(areas_new), 1 + 10 + 308)
+  expect_equal(length(areas_new), 1 + 10 + length(health_unit_choices()) + 308)
   expect_true(all(new$municipality %in% areas_new))
 
   # A region dropped by the reform is still a known name somewhere, so a
@@ -384,4 +384,80 @@ test_that("municipality membership is stable across the whole series", {
   # Rebuilding a region from one fixed municipality list is only valid because
   # the municipalities themselves never change across the archive.
   expect_true(all(stats::na.omit(counts) == nrow(lookup)))
+})
+
+
+test_that("the ULS lookup partitions the mainland exactly", {
+  skip_if_not(file.exists("../../data/uls_lookup.rds"), "ULS lookup not built")
+  health <- readRDS("../../data/uls_lookup.rds")
+  nuts <- readRDS("../../data/nuts_lookup_2024.rds")
+  mainland <- sort(nuts$municipality[nuts$nuts1 == "Continente"])
+
+  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS"]), 34)
+  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS (grupo)"]), 2)
+  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ARS"]), 5)
+
+  # The 34 ULS and 2 groups cover every mainland municipality exactly once, and
+  # so do the five ARS. A municipality counted twice would double its deaths in
+  # any ARS or ULS total.
+  uls_level <- health[health$kind != "ARS", ]
+  expect_equal(sort(uls_level$municipality), mainland)
+  expect_equal(sort(health$municipality[health$kind == "ARS"]), mainland)
+
+  # The split municipalities appear only inside a group.
+  split <- attr(health, "split_municipalities")
+  expect_setequal(split, c("Lisboa", "Loures", "Porto"))
+  expect_true(all(health$kind[health$municipality %in% split & health$kind != "ARS"] == "ULS (grupo)"))
+
+  # Every ULS sits inside one ARS.
+  per_unit <- uls_level %>% dplyr::group_by(unit) %>% dplyr::summarise(n = dplyr::n_distinct(ars), .groups = "drop")
+  expect_true(all(per_unit$n == 1))
+})
+
+test_that("ULS and ARS are selectable and resolve to their municipalities", {
+  skip_if_not(file.exists("../../data/uls_lookup.rds"), "ULS lookup not built")
+  nuts <- readRDS("../../data/nuts_lookup_2024.rds")
+
+  choices <- area_choices_for("2024", nuts)
+  expect_true(all(c("ARS Norte", "ULS Matosinhos", "ULS Santo António + São João") %in% choices))
+  # The five split ULS are not offered on their own.
+  expect_false(any(c("ULS Santo António", "ULS São José", "ULS Santa Maria") %in% choices))
+
+  expect_equal(region_municipalities("ULS Matosinhos", nuts), "Matosinhos")
+  expect_setequal(region_municipalities("ULS Santo António + São João", nuts), c("Gondomar", "Maia", "Porto", "Valongo"))
+  expect_true(is_region_label("ARS Lisboa e Vale do Tejo", nuts))
+
+  # The same list under either vintage: a ULS has no NUTS definition.
+  expect_equal(
+    region_municipalities("ULS Guarda", readRDS("../../data/nuts_lookup_2013.rds")),
+    region_municipalities("ULS Guarda", nuts)
+  )
+
+  # Overlap detection works across the two geographies.
+  expect_match(overlapping_selection_warning(c("ARS Norte", "ULS Braga"), nuts), "ARS Norte já inclui ULS Braga")
+})
+
+test_that("health units on INE rows match their subregion exactly", {
+  skip_if_not(file.exists("../../data/uls_lookup.rds"), "ULS lookup not built")
+  old <- readRDS("../../data/nuts_lookup_2013.rds")
+  new <- readRDS("../../data/nuts_lookup_2024.rds")
+  members <- function(lk, level, units) sort(unique(lk$municipality[lk[[level]] %in% units]))
+
+  pairs <- list(
+    "ULS Alto Minho" = "Alto Minho", "ULS Viseu Dão-Lafões" = "Viseu Dão Lafões",
+    "ULS Litoral Alentejano" = "Alentejo Litoral", "ULS Baixo Alentejo" = "Baixo Alentejo",
+    "ULS Alto Alentejo" = "Alto Alentejo", "ULS Alentejo Central" = "Alentejo Central"
+  )
+  for (unit in names(pairs)) {
+    expect_equal(sort(region_municipalities(unit, new)), members(new, "nuts3", pairs[[unit]]), info = unit)
+    expect_equal(sort(region_municipalities(unit, new)), members(old, "nuts3", pairs[[unit]]), info = unit)
+    expect_equal(regional_row_plan(unit, "2024", 1991:2024)$year, 1991:2024, info = unit)
+  }
+  expect_equal(sort(region_municipalities("ULS Algarve", new)), members(new, "nuts2", "Algarve"))
+  expect_equal(sort(region_municipalities("ARS Alentejo", new)), members(new, "nuts2", "Alentejo"))
+
+  # A ULS finer than any subregion keeps the municipal sum, and says so.
+  expect_equal(nrow(regional_row_plan("ULS Guarda", "2024", 2014)), 0)
+  expect_match(municipal_age_detail_warning("ULS Guarda", new, "C1", 2019, "2024"), "ULS Guarda")
+  expect_null(municipal_age_detail_warning("ULS Algarve", new, "C1", 2014, "2024"))
 })

@@ -126,9 +126,68 @@ nuts_level_values <- function(lookup, columns = NUTS_LEVEL_COLUMNS) {
   as.character(unlist(lookup[columns], use.names = FALSE))
 }
 
-# Region labels the lookup can rebuild from municipalities.
+# ---------------------------------------------------------------------------
+# Health-system geography: ULS and ARS
+# ---------------------------------------------------------------------------
+# Health planning in Portugal happens by Unidade Local de Saúde, not by NUTS
+# region, and the two do not nest: five ULS straddle a NUTS II boundary. So ULS
+# and the ARS regions that group them are a second, independent geography,
+# built the same way as NUTS regions - as unions of whole municipalities - and
+# offered alongside them in every area selector.
+#
+# The membership comes from the PNS2030 planning workbook (see
+# tools/build_uls_lookup.R). Unlike NUTS it has no vintage: the same list applies
+# under either NUTS definition, because a ULS is defined by its municipalities.
+#
+# Five ULS share a municipality at parish level - Lisboa, Loures and Porto are
+# each split - and cannot be built individually without parish data. They are
+# offered as the two smallest exact groups instead; the individual five are not
+# selectable.
+
+health_lookup_path <- function() {
+  file.path(app_dir_or_wd(), "data", "uls_lookup.rds")
+}
+
+.health_lookup_cache <- new.env(parent = emptyenv())
+
+get_health_lookup <- function() {
+  path <- health_lookup_path()
+  key <- normalizePath(path, mustWork = FALSE)
+  if (!is.null(.health_lookup_cache[[key]])) {
+    return(.health_lookup_cache[[key]])
+  }
+
+  lookup <- if (file.exists(path)) {
+    readRDS(path)
+  } else {
+    tibble::tibble(unit = character(0), kind = character(0), municipality = character(0), ars = character(0))
+  }
+  .health_lookup_cache[[key]] <- lookup
+  lookup
+}
+
+# ARS first, in their conventional north-to-south order, then ULS
+# alphabetically with the two groups where their names sort.
+health_unit_choices <- function(health = get_health_lookup()) {
+  if (nrow(health) == 0) return(character(0))
+
+  ars_order <- c("ARS Norte", "ARS Centro", "ARS Lisboa e Vale do Tejo", "ARS Alentejo", "ARS Algarve")
+  ars <- intersect(ars_order, unique(health$unit[health$kind == "ARS"]))
+  uls <- sort(unique(health$unit[health$kind != "ARS"]))
+  c(ars, uls)
+}
+
+health_unit_members <- function(unit, health = get_health_lookup()) {
+  unique(as.character(health$municipality[health$unit %in% as.character(unit)]))
+}
+
+# Region labels the lookup can rebuild from municipalities: every NUTS level,
+# plus the ULS and ARS units.
 get_known_regions <- function(lookup = get_nuts_lookup()) {
-  sort(unique(stats::na.omit(nuts_level_values(lookup))))
+  sort(unique(c(
+    stats::na.omit(nuts_level_values(lookup)),
+    health_unit_choices()
+  )))
 }
 
 # The regions of a vintage offered in the selectors: NUTS I first, then NUTS II,
@@ -250,6 +309,7 @@ area_choices_for <- function(vintage = default_nuts_vintage(),
   c(
     "Portugal",
     region_choices_for(vintage, lookup),
+    health_unit_choices(),
     sort(unique(as.character(lookup$municipality)))
   )
 }
@@ -266,15 +326,19 @@ is_region_label <- function(area, lookup = get_nuts_lookup()) {
 # the level columns generically so adding NUTS I needed no new special case.
 region_members <- function(region, lookup = get_nuts_lookup()) {
   columns <- intersect(NUTS_LEVEL_COLUMNS, names(lookup))
-  if (length(columns) == 0 || nrow(lookup) == 0) {
-    return(character(0))
+
+  nuts <- if (length(columns) == 0 || nrow(lookup) == 0) {
+    character(0)
+  } else {
+    hit <- Reduce(`|`, lapply(columns, function(column) {
+      as.character(lookup[[column]]) %in% as.character(region)
+    }))
+    unique(as.character(lookup$municipality[!is.na(hit) & hit]))
   }
 
-  hit <- Reduce(`|`, lapply(columns, function(column) {
-    as.character(lookup[[column]]) %in% as.character(region)
-  }))
-
-  unique(as.character(lookup$municipality[!is.na(hit) & hit]))
+  # A label is either a NUTS unit or a health unit, never both: every health
+  # label carries an "ULS " or "ARS " prefix.
+  if (length(nuts) > 0) nuts else health_unit_members(region)
 }
 
 region_municipalities <- function(region, lookup = get_nuts_lookup(), available_areas = NULL) {
