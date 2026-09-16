@@ -82,16 +82,16 @@ pooling_help <- function() {
     "intervalos, mas suaviza variações anuais reais."
   )
 }
-# Regions are always summed from their municipalities; what the user does choose
-# is which NUTS vintage groups them. The note states what the numbers are and
-# points at the selector, which sits in the header and is visible from here.
+# What a regional figure is made of: the vintage groups the municipalities, the
+# region source decides whether deaths come from INE's regional rows or from the
+# municipal sum. Both are chosen in the header; this note says what they mean.
 region_aggregation_note <- function() {
   helpText(
-    "As regiões são calculadas somando os seus municípios, com a mesma ",
-    "definição aplicada a todos os anos. Isto mantém a série contínua apesar ",
-    "da revisão NUTS de 2024, mas os totais regionais não coincidem ",
-    "exactamente com os publicados pelo INE. A definição em uso (NUTS 2013 ou ",
-    "2024) escolhe-se no topo da página."
+    "As regiões seguem a definição escolhida no topo da página (NUTS 2013 ou ",
+    "2024), aplicada a todos os anos. Os óbitos de cada região vêm, por ",
+    "predefinição, das linhas regionais do INE sempre que existem, porque a ",
+    "soma dos municípios perde parte da repartição por idade dos óbitos por ",
+    "causa. A população é sempre a soma dos municípios."
   )
 }
 
@@ -125,6 +125,23 @@ nuts_vintage_control <- function() {
     tags$span(
       style = "font-size:0.85em; opacity:0.75;",
       "Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
+    ),
+    # How a region's deaths are built. Sits beside the vintage because both
+    # change what a regional figure means, and both apply to every tab.
+    tags$label(
+      "Óbitos das regiões:",
+      `for` = "region_source",
+      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
+    ),
+    tags$div(
+      style = "min-width:17rem;",
+      selectInput(
+        "region_source",
+        label = NULL,
+        choices = region_source_choices,
+        selected = default_region_source(),
+        width = "100%"
+      )
     )
   )
 }

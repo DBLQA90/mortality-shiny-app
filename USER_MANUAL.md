@@ -63,7 +63,7 @@ Pode seleccionar uma única localização ou várias. Quando selecciona mais do 
 
 O campo `Nome da Selecção (opcional)` permite dar um nome a essa agregação. Se for deixado em branco, a aplicação usa uma designação automática.
 
-**As regiões são sempre somadas a partir dos seus municípios.** Quando escolhe `Alentejo`, a aplicação não lê a linha «Alentejo» publicada pelo INE: soma os municípios que hoje pertencem ao Alentejo, e aplica essa mesma lista a todos os anos da série. Isto tem uma razão e uma consequência.
+**A lista de municípios de cada região é sempre a mesma em todos os anos.** Quando escolhe `Alentejo`, a aplicação usa os municípios que pertencem ao Alentejo na definição escolhida, e aplica essa mesma lista a todos os anos da série — é isso que a população usa sempre. Os óbitos vêm, por predefinição, das linhas regionais do INE quando existem (ver *Óbitos das Regiões*, abaixo). Isto tem uma razão e uma consequência.
 
 A razão é que o INE mudou as fronteiras das regiões em 2024, e a Lezíria do Tejo passou do Alentejo para a nova região Oeste e Vale do Tejo. Ler as linhas regionais do INE ao longo da série significaria comparar dois Alentejos diferentes: os óbitos de 2022 seriam 11.327 numa definição e 7.898 na outra. Somando sempre os mesmos municípios, a série mantém-se contínua e comparável.
 
@@ -99,6 +99,51 @@ Quando usar NUTS 2024 (predefinição):
 
 - para trabalho corrente e para qualquer coisa que vá ser comparada com publicações recentes;
 - quando quer distinguir a Grande Lisboa da Península de Setúbal.
+
+### Óbitos das Regiões: Linhas do INE ou Soma dos Municípios
+
+Ao lado da definição NUTS, no topo da página, há um segundo controlo:
+`Óbitos das regiões`. Escolhe de onde vêm os óbitos de uma região.
+
+**Porque existe.** O INE publica os óbitos por causa de cada município com os
+totais completos, mas com a repartição por idade incompleta — sobretudo onde os
+números são pequenos. Como todas as taxas da aplicação são calculadas por idade,
+somar os municípios de uma região perde óbitos. No cancro do pulmão, em 2013, a
+soma dos municípios fica 18% abaixo nos Açores, 12% na Madeira e 9% no Alentejo.
+Em **2014** a perda chega a 30–84% em todas as regiões.
+
+As linhas regionais publicadas pelo próprio INE não têm este problema.
+
+| Opção | De onde vêm os óbitos | Quando usar |
+|---|---|---|
+| **Linhas regionais do INE** (predefinição) | a linha do INE para a região, sempre que existe; a soma dos municípios nos restantes anos | quase sempre |
+| **Soma dos municípios** | sempre a soma dos municípios | para comparar com resultados antigos da aplicação, ou quando precisa de uma única fonte sem saltos |
+
+A população é sempre a soma dos municípios, nas duas opções.
+
+**Todas as regiões usam linhas do INE em todos os anos**, com uma excepção.
+`Continente`, `Norte`, `Algarve`, `Açores` e `Madeira` são o mesmo território nas
+duas definições e usam a sua própria linha. As regiões redesenhadas em 2024 —
+`Centro`, `Alentejo`, `Oeste e Vale do Tejo` e a Área Metropolitana de Lisboa —
+são **compostas a partir das sub-regiões (NUTS III)** nos anos em que a sua linha
+não existe: por exemplo, o Alentejo de 2024 antes de 2022 é a soma das suas quatro
+sub-regiões da definição de 2013. Cada composição foi verificada contra 2022, o
+único ano publicado nas duas definições, e coincide exactamente.
+
+A excepção são a `Grande Lisboa` e a `Península de Setúbal` antes de 2022: na
+definição de 2013 a Área Metropolitana de Lisboa era uma única sub-região e não
+pode ser dividida, por isso esses anos usam a soma dos municípios. Na prática a
+diferença é mínima, porque os municípios de Lisboa são grandes, mas a aplicação
+avisa.
+
+**O que não fica corrigido.** Um município seleccionado sozinho não tem linha
+mais fina onde ir buscar a idade. Quando escolhe municípios e uma causa
+específica, a aplicação avisa que os valores podem estar subestimados, e que 2014
+não é fiável ao nível municipal.
+
+Na tabela de fontes, os óbitos que vieram de uma linha regional aparecem
+identificados como `(linha regional)`, ou `(linhas regionais compostas)` quando a
+região foi construída a partir de sub-regiões.
 
 ### Continente, Açores e Madeira
 

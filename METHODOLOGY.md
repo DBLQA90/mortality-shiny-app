@@ -92,9 +92,11 @@ prefers the newer indicator while population remains NUTS-2013, the regional
 rate is understated by roughly 30%. `Portugal` and `Norte` are unaffected -
 they are identical under both vintages.
 
-**The app therefore always builds a region by summing its municipalities**,
-using one fixed membership list for every year. That much is not a user-facing
-option. *Which* membership list is - see *Choosing the NUTS vintage* below.
+**The app therefore always defines a region by its municipalities**, using one
+fixed membership list for every year - the population is always their sum. *Which*
+membership list is a user choice (see *Choosing the NUTS vintage*), and so is
+where the deaths come from (see *Regional deaths: INE's rows or the municipal
+sum*).
 
 Three facts make it sound:
 
@@ -104,14 +106,14 @@ Three facts make it sound:
 - Regions whose definition never changed are unaffected. Only regions INE
   redrew differ, and there the aggregate is the point.
 
-The alternative - reading INE's own regional rows - is not merely less tidy, it
-is wrong across the 2022 seam. For Alentejo in 2022, against Portugal, INE's
-rows give an SMR of 77.7, implying below-average mortality in the country's
-oldest region; the municipal aggregate gives 113.3. As a series, the
-standardised rate reads 1072 (2021), 722 (2022), 676 (2023) from INE's rows
-against 1093, 1060, 997 when aggregated. Presenting that as a toggle asked
-users to arbitrate a question about NUTS vintages they have no way to judge,
-and let the wrong answer through.
+Reading INE's regional rows *without regard to vintage* is wrong across the 2022
+seam. For Alentejo in 2022, against Portugal, NUTS-2024 rows divided by NUTS-2013
+population give an SMR of 77.7, implying below-average mortality in the country's
+oldest region; the municipal aggregate gives 113.3. As a series, the standardised
+rate reads 1072 (2021), 722 (2022), 676 (2023) from those rows against 1093, 1060,
+997 when aggregated. The fix is not to avoid INE's rows but to use each only for
+the territory it describes - which is what the regional-rows source does, taking a
+row only where its vintage matches the selected definition.
 
 What this costs:
 
@@ -131,6 +133,103 @@ What this costs:
 Setting `MORTALITY_REGION_MODE=original` restores INE's own rows for anyone who
 needs to reproduce a published regional figure. Note that those rows are not
 trustworthy for five regions: see *A defect in INE's own regional rows* below.
+
+### Regional Deaths: INE's Rows Or The Municipal Sum
+
+**Summing municipalities under-counts cause-specific deaths, in every year.**
+INE publishes complete municipal totals but incomplete municipal age breakdowns,
+and the missing detail is concentrated where counts are small. Because every
+rate in the app is built from age bands, a region rebuilt from its
+municipalities' age bands comes out short. Lung cancer, share of each region's
+age-banded deaths lost by summing its municipalities, against INE's own row:
+
+| Year | Norte | Centro | Alentejo | Açores | Madeira |
+|---|---:|---:|---:|---:|---:|
+| 2002 | −1.4% | −2.3% | −5.5% | −10.1% | −2.3% |
+| 2010 | −1.4% | −1.8% | −8.9% | −14.8% | −11.0% |
+| 2013 | −1.2% | −2.1% | −8.9% | −18.4% | −11.8% |
+| **2014** | **−30.7%** | **−50.7%** | **−64.6%** | **−71.4%** | **−83.5%** |
+| 2018 | −0.5% | −1.3% | −7.6% | −18.1% | −4.0% |
+| 2021 | 0.0% | −0.2% | −3.4% | −11.6% | −6.0% |
+
+2014 is the extreme of a persistent bias, not an isolated defect. All-cause
+deaths are barely affected - the cells are large - which is why every all-cause
+reconciliation in this document closes exactly. The municipal *totals* are
+complete; it is the breakdown by age that is not.
+
+INE's regional rows do not have the problem: their age bands sum to their
+totals exactly, in every year fetched, 2014 included. So the app offers two ways
+to build a region's deaths, chosen once in the page header:
+
+| | Deaths come from | Trade-off |
+|---|---|---|
+| **Linhas regionais do INE** (default) | INE's row for the territory wherever one exists; the municipal sum otherwise | Accurate; redrawn regions step where the source switches |
+| **Soma dos municípios** | Always the municipal sum | One consistent source and no seams; cause-specific figures biased low |
+
+Population is the sum of municipalities under both. It is complete; the defect is
+only in the age breakdown of deaths.
+
+**Every region is built from INE rows in every year** except the two Lisbon
+regions before 2022:
+
+- **Continente, Norte, Algarve, Açores, Madeira** are the same territory under
+  both vintages, so their own rows serve every year - `0008206` to 2021 and
+  `0013166` from 2022, the death archive's own precedence.
+- **The redrawn regions are composed from subregion (NUTS III) rows** in the
+  years their own row does not exist. Oeste, Médio Tejo and Lezíria do Tejo were
+  subregions under both definitions, which is what makes this possible:
+
+| Vintage | Years | Region | Built from |
+|---|---|---|---|
+| NUTS 2013 | 2023-2024 | Centro | NUTS-2024 Centro + Oeste + Médio Tejo |
+| NUTS 2013 | 2023-2024 | Alentejo | NUTS-2024 Alentejo + Lezíria do Tejo |
+| NUTS 2013 | 2023-2024 | Área Metropolitana de Lisboa | Grande Lisboa + Península de Setúbal |
+| NUTS 2024 | 1991-2021 | Alentejo | its four NUTS-2013 subregions |
+| NUTS 2024 | 1991-2021 | Centro | six NUTS-2013 subregions **+ Sertã + Vila de Rei** |
+| NUTS 2024 | 1991-2021 | Oeste e Vale do Tejo | NUTS-2013 Oeste + Médio Tejo + Lezíria **− Sertã − Vila de Rei** |
+
+Sertã and Vila de Rei moved from Médio Tejo to Beira Baixa in 2024, which is the
+only reason two compositions are not pure subregion sums; their own municipal rows
+make the correction, about 1% of Centro. Every composition was checked two ways:
+against the municipality lookups, where each reproduces the region's membership
+exactly (a unit test), and against **2022, the one year both indicators publish**,
+where each composed value equals the directly published row to the death -
+all-cause and lung cancer, all six compositions.
+
+- **Grande Lisboa and Península de Setúbal before 2022** cannot be composed:
+  under NUTS 2013 the Lisbon metropolitan area was a single subregion. They fall
+  back to the municipal sum and the app warns about the change of source. In
+  practice the effect is negligible - their municipalities are large enough to
+  keep their age detail - but it is not guaranteed for every cause.
+
+**A municipality selected on its own cannot be repaired this way**: there is no
+finer row to fall back on. The app warns instead - for any cause-specific
+municipal figure, and more strongly when 2014 is included.
+
+The rows are in `data/snapshots/regional_deaths/<indicator>/year_<y>.rds`, fetched
+by `tools/fetch_regional_deaths.R` with one request per year. They are keyed by
+**geography code**, never by label: Algarve, the Lisbon metropolitan area and both
+autonomous regions carry the same name at two or three NUTS levels, and that is
+exactly why the label-keyed regional rows in the municipal archive are
+multi-counted. The fetcher checks that each row's age bands sum to its total, and
+records the count of cells where they do not; it has been zero in every year.
+
+The substitution is `substitute_regional_deaths()`, applied immediately after
+every death load - observed rates, both forecast tabs, annual metrics including
+the SMR reference and the proportional-mortality denominator, and avoidable
+mortality - so all tabs build a region the same way. A nested selection covers
+each municipality once: `Continente` with `Norte` substitutes Continente only. A
+composition is applied only when every one of its subregion rows is present;
+otherwise that year keeps the municipal sum rather than dropping part of the
+territory.
+
+The effect on a series is not subtle. Lung cancer, crude rate per 100,000,
+NUTS-2024 Alentejo:
+
+| | 2012 | 2013 | 2014 | 2015 | 2021 |
+|---|---:|---:|---:|---:|---:|
+| sum of municipalities | 44 | 39 | **16** | 40 | 45 |
+| INE rows | 48 | 44 | **48** | 46 | 47 |
 
 ### NUTS I: Continente, Açores And Madeira
 

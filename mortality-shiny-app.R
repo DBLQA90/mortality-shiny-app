@@ -37,6 +37,7 @@ for (app_file in c(
   # infant before metadata too: the selectable year range includes years only
   # the infant datasets reach, so metadata has to be able to ask them.
   "R/infant.R",
+  "R/regional_rows.R",
   "R/metadata.R",
   "R/metrics.R",
   "R/standardisation.R",
@@ -79,6 +80,10 @@ server <- function(input, output, session) {
   # One app-wide choice of which region definition groups the municipalities.
   # Every region expansion reads the lookup through these, so the whole app
   # switches together and no tab can be left grouping by the other vintage.
+  value_or_default_input <- function(x, default) {
+    if (is.null(x) || length(x) == 0 || !nzchar(x[[1]])) default else x[[1]]
+  }
+
   active_nuts_vintage <- reactive({
     chosen <- input$nuts_vintage
     normalize_nuts_vintage(if (is.null(chosen) || !nzchar(chosen)) default_nuts_vintage() else chosen)
@@ -87,6 +92,43 @@ server <- function(input, output, session) {
   active_nuts_lookup <- reactive({
     get_nuts_lookup(active_nuts_vintage())
   })
+
+  # How a region's deaths are built: INE's regional rows where they exist, or
+  # always the sum of municipalities. App-wide, like the vintage, because it
+  # changes what a regional figure means. See R/regional_rows.R.
+  active_region_source <- reactive({
+    normalize_region_source(value_or_default_input(input$region_source, default_region_source()))
+  })
+
+  # Applied immediately after every death load, so each tab gets the same
+  # substitution without repeating it. Population is untouched.
+  apply_region_source <- function(df, expanded_regions) {
+    substitute_regional_deaths(
+      df = df,
+      expanded_regions = expanded_regions,
+      vintage = active_nuts_vintage(),
+      lookup = active_nuts_lookup(),
+      source = active_region_source(),
+      # Rows for the municipalities a composition subtracts, which are not
+      # members of the region and so are never in the loaded frame. Read from
+      # the snapshot archive, like the regional rows themselves.
+      load_municipal_deaths = function(areas, years, causes) {
+        tryCatch(
+          get_death_data_for(area = areas, cause = causes, years = years, data_source = "snapshot"),
+          error = function(e) NULL
+        )
+      }
+    )
+  }
+
+  # Seam and municipal warnings shared by every tab that loads regional data.
+  notify_region_source_warnings <- function(selected_areas, expanded_regions, causes, years) {
+    seam <- region_source_seam_warning(expanded_regions, active_nuts_vintage(), years, active_region_source())
+    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20)
+
+    municipal <- municipal_age_detail_warning(selected_areas, active_nuts_lookup(), causes, years)
+    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20)
+  }
 
   # Swap the region entries of every area selector when the vintage changes.
   #
@@ -326,6 +368,7 @@ server <- function(input, output, session) {
 
     list(
       area_key = resolved$areas,
+      selected_areas = area_key,
       area_label = selection_label,
       expanded_regions = resolved$expanded,
       cause = cause,
@@ -746,10 +789,19 @@ server <- function(input, output, session) {
     }
     incProgress(0.5)
 
-    df_full <- dat$full %>%
+    notify_region_source_warnings(
+      selected_areas = query_spec$selected_areas,
+      expanded_regions = query_spec$expanded_regions,
+      causes = query_spec$cause,
+      years = years_to_load
+    )
+
+    df_full <- apply_region_source(dat$full, query_spec$expanded_regions) %>%
       dplyr::filter(sex == query_spec$sex)
-    df_trunc <- dat$trunc %>%
-      dplyr::filter(sex == query_spec$sex)
+    # Derived from the substituted frame, so both population scopes use the
+    # same deaths.
+    df_trunc <- df_full %>%
+      dplyr::filter(!age_band %in% exclude_bands)
 
     validate(
       need(nrow(df_full) > 0, "Não existem dados carregados para a selecção actual.")
@@ -2843,7 +2895,7 @@ server <- function(input, output, session) {
       )
     }
 
-    data %>%
+    apply_region_source(data, area_spec$expanded) %>%
       dplyr::filter(sex == .env$sex)
   }
 
@@ -2926,12 +2978,17 @@ server <- function(input, output, session) {
     all_cause_deaths <- NA_real_
     all_cause_source <- NA_character_
     if (identical(metric_id, "proportional")) {
-      all_cause_data <- get_death_data_for(
-        area = area_spec$areas,
-        cause = "Todas as causas de morte",
-        years = years,
-        year_order = "desc",
-        data_source = data_source
+      # Built exactly like the numerator, or the share would divide a regional
+      # row by a municipal sum.
+      all_cause_data <- apply_region_source(
+        get_death_data_for(
+          area = area_spec$areas,
+          cause = "Todas as causas de morte",
+          years = years,
+          year_order = "desc",
+          data_source = data_source
+        ),
+        area_spec$expanded
       ) %>%
         dplyr::filter(sex == .env$sex)
 
@@ -3030,7 +3087,13 @@ server <- function(input, output, session) {
 
           reference_bands <- collapse_annual_cause_data(
             load_annual_cause_data(
-              area_spec = list(label = "referência", areas = reference_resolved$areas),
+              # Carries the expansion so a regional reference is built the same
+              # way as the regional areas compared against it.
+              area_spec = list(
+                label = "referência",
+                areas = reference_resolved$areas,
+                expanded = reference_resolved$expanded
+              ),
               cause = cause,
               sex = sex,
               years = years,
@@ -3697,6 +3760,15 @@ server <- function(input, output, session) {
       showNotification(vintage_warning, type = "warning", duration = 20)
     }
 
+    if (!selected_metric %in% infant_metric_ids) {
+      notify_region_source_warnings(
+        selected_areas = unique(c("Norte", as.character(input$annual_area))),
+        expanded_regions = unique(unlist(lapply(area_specs, `[[`, "expanded"), use.names = FALSE)),
+        causes = selected_causes,
+        years = pooled_years
+      )
+    }
+
     # A pooled window straddling 2020/2021 mixes the two population series.
     revision_warning <- population_revision_warning(pooled_years, selected_metric)
     if (!is.null(revision_warning)) {
@@ -3888,18 +3960,22 @@ server <- function(input, output, session) {
     }
 
     causes <- avoidable_required_causes()
+    notify_region_source_warnings(selected_areas, area_spec$expanded, causes, years)
 
     shiny::withProgress(message = "A carregar mortalidade evitável...", value = 0, {
       loaded <- dplyr::bind_rows(lapply(seq_along(causes), function(i) {
         abort_if_cancelled("avoidable", token)
         incProgress(1 / length(causes))
-        get_data_for(
-          area = area_spec$areas,
-          cause = causes[[i]],
-          years = years,
-          year_order = "desc",
-          data_source = input$avoidable_data_source
-        )$full %>%
+        apply_region_source(
+          get_data_for(
+            area = area_spec$areas,
+            cause = causes[[i]],
+            years = years,
+            year_order = "desc",
+            data_source = input$avoidable_data_source
+          )$full,
+          area_spec$expanded
+        ) %>%
           dplyr::filter(sex == input$avoidable_sex)
       }))
 
