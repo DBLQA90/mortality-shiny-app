@@ -481,3 +481,74 @@ test_that("charts build for rates, counts, rankings, pyramids and causes", {
     expect_equal(summary$`Norte (NUTS II)`[summary$Indicador == "Óbitos [I37]"], "")
   })
 })
+
+test_that("the life table reproduces PHEindicatormethods on its own age structure", {
+  skip_if_not_installed("PHEindicatormethods")
+  ages <- c(0L, 1L, seq(5L, 90L, 5L))
+  population <- c(5000, 21000, rep(26000, 8), rep(30000, 6), 22000, 15000, 9000, 6000)
+  rates <- c(0.003, 0.0002, 0.0001, 0.0001, 0.0003, 0.0005, 0.0006, 0.0008, 0.001, 0.0015,
+             0.0025, 0.004, 0.006, 0.009, 0.014, 0.022, 0.035, 0.06, 0.1, 0.2)
+  deaths <- round(population * rates)
+  phe <- PHEindicatormethods::phe_life_expectancy(
+    tibble::tibble(age = ages, pop = population, deaths = deaths),
+    deaths, pop, age, age_contents = ages, le_age = 0
+  )
+  ours <- abridged_life_expectancy(deaths, population, c(1, 4, rep(5, 17), NA), c(0.1, rep(0.5, 19)))
+  expect_equal(ours$value, phe$value, tolerance = 1e-10)
+  expect_equal(c(ours$lower, ours$upper), c(phe$lowercl, phe$uppercl), tolerance = 1e-10)
+})
+
+test_that("life tables are refused where PHE refuses them", {
+  n <- length(age_levels)
+  widths <- c(rep(5, n - 1), NA)
+  a <- rep(0.5, n)
+  expect_match(abridged_life_expectancy(rep(1, n), rep(200, n), widths, a)$reason, "5.000")
+  expect_match(abridged_life_expectancy(c(0, rep(1, n - 1)), c(0, rep(1000, n - 1)), widths, a)$reason, "nula")
+  expect_true(is.na(abridged_life_expectancy(rep(NA, n), rep(1000, n), widths, a)$value))
+})
+
+test_that("life expectancy for areas pools three years and spreads unrecorded ages", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    rates <- c(0.001, 0.0001, 0.0001, 0.0002, 0.0004, 0.0005, 0.0006, 0.0008, 0.001, 0.0015,
+               0.0025, 0.004, 0.006, 0.01, 0.016, 0.028, 0.05, 0.14)
+    for (year in 2020:2022) {
+      # Ten times the fixture's population, so every area and sex clears the
+      # 5,000 person-year minimum.
+      pop <- readRDS(file.path(root, "population", paste0("year_", year, ".rds")))
+      pop$pop <- pop$pop * 10
+      saveRDS(pop, file.path(root, "population", paste0("year_", year, ".rds")))
+      pop <- pop[pop$area %in% c("Alfa", "Beta", "Portugal"), ]
+      deaths <- pop %>%
+        dplyr::mutate(cause = "Todas as causas de morte", deaths = pop * 2 * rates[match(age_band, age_levels)]) %>%
+        dplyr::select(year, area, sex, cause, age_band, deaths)
+      # Beta publishes no ages at all in 2021: its deaths come only as a total.
+      recorded <- deaths
+      recorded$deaths[recorded$area == "Beta" & recorded$year == 2021] <- 0
+      dir <- file.path(root, "deaths", "0008206", paste0("year_", year))
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      saveRDS(recorded, file.path(dir, "cause_todas_as_causas_de_morte.rds"))
+
+      totals <- deaths %>%
+        dplyr::group_by(year, area, sex, cause) %>%
+        dplyr::summarise(deaths = sum(deaths), .groups = "drop") %>%
+        dplyr::mutate(source_indicator = "0008206")
+      saveRDS(totals, file.path(root, "death_totals", "0008206", paste0("year_", year, ".rds")))
+    }
+    planning_clear_cache()
+
+    expect_equal(life_expectancy_years(), 2022L)
+    table <- planning_indicator_table(c("Alfa", "Beta", "Norte"), 2022L, ids = life_expectancy_ids, lookup = lookup)
+    expect_equal(nrow(table), 9)
+    expect_true(all(is.finite(table$value)))
+    # Same age-specific rates everywhere, so the same life expectancy.
+    hm <- table[table$indicator == "life_expectancy", ]
+    expect_equal(hm$value[hm$area == "Alfa"], hm$value[hm$area == "Norte"], tolerance = 1e-6)
+    # Beta's unrecorded 2021 ages were spread back: its value matches too, and is flagged.
+    expect_equal(hm$value[hm$area == "Beta"], hm$value[hm$area == "Alfa"], tolerance = 1e-6)
+    expect_equal(hm$flag[hm$area == "Beta"], "‡")
+    expect_equal(hm$flag[hm$area == "Alfa"], "")
+    # The smaller area has the wider interval.
+    expect_gt(hm$upper[hm$area == "Beta"] - hm$lower[hm$area == "Beta"], hm$upper[hm$area == "Alfa"] - hm$lower[hm$area == "Alfa"])
+  })
+})

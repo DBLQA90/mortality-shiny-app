@@ -56,6 +56,9 @@ PLANNING_INDICATORS <- tibble::tribble(
   "purchasing_power",    "Contexto social",     "Poder de compra per capita",                              "I28", "Portugal = 100",           1L,      1L, TRUE,
   "waste_per_capita",    "Ambiente",            "Resíduos urbanos recolhidos por habitante",               "I64", "kg/hab.",                  1L,      0L, TRUE,
   "waste_selective_per_capita", "Ambiente",     "Resíduos recolhidos selectivamente por habitante",        "I65", "kg/hab.",                  1L,      0L, TRUE,
+  "life_expectancy",     "Mortalidade",         "Esperança de vida à nascença (triénio)",                  "I10", "anos",                     3L,      1L, TRUE,
+  "life_expectancy_men", "Mortalidade",         "Esperança de vida à nascença, homens (triénio)",          "I10", "anos",                     3L,      1L, TRUE,
+  "life_expectancy_women", "Mortalidade",       "Esperança de vida à nascença, mulheres (triénio)",        "I10", "anos",                     3L,      1L, TRUE,
   "deaths",              "Mortalidade",         "Óbitos",                                                  "I37", "N.º",                      1L,      0L, FALSE,
   "death_rate",          "Mortalidade",         "Taxa bruta de mortalidade",                               "I38", "‰",                        1L,      1L, TRUE,
   "infant_rate",         "Mortalidade",         "Taxa de mortalidade infantil (triénio)",                  "I39", "‰ nados-vivos",            3L,      1L, TRUE,
@@ -168,6 +171,7 @@ planning_dataset_years <- function(dataset) {
 
 # Years each indicator can be computed for, from the files actually present.
 planning_indicator_years <- function(id) {
+  if (id %in% life_expectancy_ids) return(life_expectancy_years())
   needs <- switch(
     id,
     births = "births",
@@ -702,7 +706,7 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   # One year earlier than the widest window: the fertility index needs the
   # previous year's population for its mid-year denominator.
   component_years <- seq.int(min(years) - max_window, max(years))
-  components <- planning_components(areas, component_years, lookup)
+  components <- if (length(setdiff(ids, life_expectancy_ids)) > 0) planning_components(areas, component_years, lookup) else NULL
 
   undercount <- if (any(c("infant_rate") %in% ids)) {
     infant_undercount_years(component_years, municipalities = lookup$municipality)
@@ -710,8 +714,19 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
     integer(0)
   }
 
-  planning_compute_indicators(components, ids, undercount_years = undercount) %>%
-    dplyr::filter(.data$year %in% years) %>%
+  life_ids <- intersect(ids, life_expectancy_ids)
+  other_ids <- setdiff(ids, life_ids)
+  results <- list()
+  if (length(other_ids) > 0) {
+    results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount) %>%
+      dplyr::filter(.data$year %in% years)
+  }
+  if (length(life_ids) > 0) {
+    sexes <- names(life_expectancy_ids)[match(life_ids, life_expectancy_ids)]
+    results$life <- planning_life_expectancy_table(areas, years, sexes = sexes, lookup = lookup) %>%
+      dplyr::select(-dplyr::any_of("reason"))
+  }
+  dplyr::bind_rows(results) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
 }
 

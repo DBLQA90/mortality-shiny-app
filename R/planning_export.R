@@ -26,7 +26,8 @@ PLANNING_SHEET_NAMES <- c(
   pensioners = "I15 Pensionistas", pensioners_rate = "I16 Pensionistas por 1000",
   pension_mean = "I17 Pensão média", purchasing_power = "I28 Poder de compra",
   waste_per_capita = "I64 Resíduos", waste_selective_per_capita = "I65 Resíduos selectivos",
-  deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
+  life_expectancy = "I10 Esperança de vida", life_expectancy_men = "I10 EV homens",
+  life_expectancy_women = "I10 EV mulheres", deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
   neonatal_rate = "I40 Mortalidade neonatal", early_neonatal_rate = "I41 Neonatal precoce",
   postneonatal_rate = "I42 Pós-neonatal"
 )
@@ -89,6 +90,11 @@ write_planning_workbook <- function(path,
     "Marcas (valores a cinzento e itálico)",
     "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.",
     "† triénio com anos (1995-2001) em que os óbitos com menos de 1 ano por município estão incompletos no INE: valor subestimado.",
+    "‡ esperança de vida em que mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.",
+    "",
+    "Esperança de vida à nascença",
+    "Tábua de mortalidade abreviada (Chiang II, grupos quinquenais até 85 e mais anos), por triénio, com o método e a variância de PHEindicatormethods. Omitida para populações até 5.000 e quando o intervalo de confiança excede 20 anos.",
+    "Reproduz os valores do Eurostat para Portugal (2017-2019: 81,9 anos na aplicação; 82,0 no Eurostat em 2019), mas fica cerca de 0,8-0,9 anos acima dos valores publicados pelo INE (Metodologia 2007) para Portugal e NUTS III. A ordenação das regiões coincide com a do INE (correlação 0,97). Compare valores da aplicação entre si, não com os do INE.",
     "",
     "Mudanças de série",
     paste(unique(PLANNING_SERIES_BREAKS$note), collapse = " "),
@@ -106,7 +112,7 @@ write_planning_workbook <- function(path,
   openxlsx::writeData(wb, "Leia-me", data.frame(x = readme), colNames = FALSE)
   openxlsx::addStyle(wb, "Leia-me", title_style, rows = 1, cols = 1)
   openxlsx::addStyle(wb, "Leia-me", openxlsx::createStyle(textDecoration = "bold"),
-                     rows = which(readme %in% c("Como são calculados", "Marcas (valores a cinzento e itálico)", "Mudanças de série", "Folhas")), cols = 1, gridExpand = TRUE)
+                     rows = which(readme %in% c("Como são calculados", "Marcas (valores a cinzento e itálico)", "Mudanças de série", "Folhas", "Esperança de vida à nascença")), cols = 1, gridExpand = TRUE)
   openxlsx::setColWidths(wb, "Leia-me", cols = 1, widths = 140)
 
   # --- Summary (selection) ----------------------------------------------------

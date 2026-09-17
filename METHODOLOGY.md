@@ -888,6 +888,7 @@ location. The engine is `R/planning_indicators.R`.
 | Crude birth rate | I8 | births / population x 1,000 |
 | Deaths | I37 | count, all causes and ages |
 | Crude death rate | I38 | deaths / population x 1,000 |
+| Life expectancy at birth, total and by sex | I10 | abridged life table per triennium (below) |
 | Total fertility rate | I9 | sum over mother's age 15-49 of births / women x 5 |
 | Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
 | Preterm births | I35 | under 37 weeks / births of known duration x 100, three years |
@@ -900,6 +901,41 @@ location. The engine is `R/planning_indicators.R`.
 | Neonatal, early neonatal, post-neonatal | I40-I42 | deaths <28 d, <7 d, 28-364 d / live births x 1,000, three years |
 | Proportional mortality | I45 | deaths per large cause group / all deaths x 100, three years |
 | Population pyramid | I3 | share by five-year band and sex |
+
+### Life expectancy at birth (I10)
+
+`R/life_expectancy.R` builds an abridged period life table per area, sex and
+triennium, with the formulas and variance of
+`PHEindicatormethods::phe_life_expectancy()` (Chiang II; Silcocks' variance for
+the open interval; suppression when person-years are 5,000 or fewer or the 95%
+interval exceeds 20 years). A test reproduces that function exactly on its own
+age structure. Two adaptations to the app's data:
+
+- **First band 0-4.** The death archive has no under-1 band with a matching
+  population, so 0-4 is one interval whose `a` (fraction lived by those dying)
+  combines 0.1 years for infant deaths and 2.5 years for deaths at 1-4, weighted
+  by the complete under-1 counts.
+- **Unrecorded ages.** INE's municipal breakdown of all-cause deaths by age
+  misses some deaths (4,130 in 2014, about 0.5% in 2013, 2015 and 2024). Each
+  municipality's missing deaths, the difference to its complete total, are spread
+  over its ages in proportion to its recorded ones (the national profile if none
+  are recorded). A value is marked `‡` when this exceeds 2% of the triennium's
+  deaths; that happens only at municipal level, chiefly for triennia containing
+  2014.
+
+Deaths are pooled over the three years; person-years are the sum of mid-year
+populations, each the mean of consecutive end-of-year estimates.
+
+**Validation.** For Portugal the tables agree with Eurostat's (`demo_mlexpec`):
+2017-2019 gives 81.9 at birth and 20.7 at 65 (Eurostat 2019: 82.0 and 20.6);
+men 78.8 / 18.6 (79.0 / 18.7); women 84.9 / 22.4 (84.8 / 22.3). INE's published
+tables (Metodologia 2007: `0001724` for Portugal, `0013473` and `0008459` for
+NUTS III) are systematically lower. With INE's pre-revision population restored
+for 2021-2023, the 26 NUTS III of the current edition differ by +0.80 (2020-2022)
+and +0.87 (2021-2023) years, standard deviation 0.3, correlation 0.97, rank
+correlation 0.94-0.95. The offset is not the open interval (a Gompertz extension
+beyond 85 would raise, not lower, the values) nor the population revision; it is
+INE's method. App values are comparable with each other, not with INE's.
 
 ### Socio-economic, birth and neonatal sources
 

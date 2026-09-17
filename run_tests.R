@@ -33,7 +33,7 @@ app_env <- new.env(parent = globalenv())
 # tests exercise that resolution instead of reading the files by hand.
 assign("app_dir", root, envir = app_env)
 
-for (f in c("R/config.R", "R/regions.R", "R/metrics.R", "R/standardisation.R", "R/avoidable.R", "R/infant.R", "R/regional_rows.R", "R/planning_indicators.R", "R/planning_export.R", "R/planning_charts.R", "R/data_versions.R", "R/forecast_helpers.R")) {
+for (f in c("R/config.R", "R/regions.R", "R/metrics.R", "R/standardisation.R", "R/avoidable.R", "R/infant.R", "R/regional_rows.R", "R/planning_indicators.R", "R/life_expectancy.R", "R/planning_export.R", "R/planning_charts.R", "R/data_versions.R", "R/forecast_helpers.R")) {
   sys.source(file.path(root, f), envir = app_env)
 }
 

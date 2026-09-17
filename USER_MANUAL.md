@@ -915,6 +915,7 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Valor médio das pensões | I17 | valor total das pensões sobre o total de pensionistas (€ por ano) |
 | Poder de compra per capita | I28 | Portugal = 100; anos ímpares (estudo bienal) |
 | Resíduos urbanos por habitante | I64, I65 | total e recolha selectiva, kg por habitante |
+| Esperança de vida à nascença, total e por sexo | I10 | tábua de mortalidade abreviada por triénio (ver abaixo) |
 | Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
 | Mortalidade neonatal, neonatal precoce e pós-neonatal | I40-I42 | óbitos com menos de 28 dias, menos de 7 dias e 28-364 dias por 1.000 nados-vivos, no triénio |
 | Mortalidade proporcional por grandes grupos de causas | I45 | óbitos de cada grupo sobre o total, no triénio |
@@ -1013,6 +1014,27 @@ proporções) têm intervalo de confiança de 95%. Os índices de estrutura da
 população não têm: as estimativas de população não são uma amostra de
 acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
 1.000 nados-vivos, como no resto da aplicação.
+
+### Esperança de vida à nascença
+
+Calculada com uma tábua de mortalidade abreviada (método de Chiang), por triénio,
+a partir dos óbitos de todas as causas por grupo quinquenal de idade até «85 e mais
+anos» e da população a meio do ano. É o método usado pelo Eurostat e pela Public
+Health England, e tem intervalo de confiança de 95%. Não é apresentada para áreas
+com 5.000 habitantes-ano ou menos no triénio, nem quando o intervalo excede 20
+anos.
+
+Alguns municípios não têm todos os óbitos repartidos por idade no INE (sobretudo
+em 2014). Esses óbitos são distribuídos pelas idades na proporção dos restantes do
+mesmo município, e o valor é marcado com `‡` quando representam mais de 2% dos
+óbitos do triénio.
+
+**Não compare estes valores com os publicados pelo INE.** Para Portugal a aplicação
+coincide com o Eurostat (2017-2019: 81,9 anos; Eurostat 82,0 em 2019), mas o INE,
+com a sua Metodologia 2007, publica valores cerca de 0,8-0,9 anos mais baixos. A
+diferença é praticamente constante entre regiões: nas 26 NUTS III de 2021-2023 a
+correlação com o INE é 0,97. Os valores da aplicação servem para comparar áreas e
+anos entre si.
 
 ### Porque podem diferir do ficheiro de apoio aos PLS
 

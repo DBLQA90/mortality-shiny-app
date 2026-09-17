@@ -155,6 +155,14 @@ testServer(app, {
     value <- isf$value[isf$area == "Portugal" & isf$year == 2023]
     cat(sprintf("   Portugal 2023 fertility index = %.2f (INE 0001293: 1.32) %s\n", value, if (round(value, 2) == 1.32) "EXACT" else "MISMATCH"))
   }
+  # Life expectancy reproduces Eurostat for Portugal (2019: 82.0); INE's
+  # published tables run about 0.9 years lower by method.
+  session$setInputs(planning_area = "Portugal", planning_indicator = "life_expectancy", planning_years = c(2019, 2019))
+  le <- tryCatch(planning_series(), error = function(e) e)
+  if (!inherits(le, "error")) {
+    value <- le$value[le$area == "Portugal" & le$year == 2019]
+    cat(sprintf("   Portugal 2017-2019 life expectancy = %.1f (Eurostat 2019: 82.0) %s\n", value, if (abs(value - 82.0) <= 0.2) "OK" else "MISMATCH"))
+  }
   session$setInputs(planning_area = "ULS Guarda", planning_indicator = "ageing_index", planning_years = c(2020, 2025))
   ranking <- tryCatch(output$planningRankingPlot, error = function(e) e)
   cat("   ULS ranking chart:", if (inherits(ranking, "error")) conditionMessage(ranking) else "OK", "\n")

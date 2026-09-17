@@ -43,6 +43,7 @@ for (app_file in c(
   "R/standardisation.R",
   "R/avoidable.R",
   "R/planning_indicators.R",
+  "R/life_expectancy.R",
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/data_versions.R",
@@ -4313,6 +4314,14 @@ server <- function(input, output, session) {
     notes <- character(0)
     if (any(grepl("\\*", series$flag))) notes <- c(notes, "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.")
     if (any(grepl("\u2020", series$flag))) notes <- c(notes, "\u2020 triénio com anos em que os óbitos com menos de 1 ano por município estão incompletos no INE (1995-2001): valor subestimado.")
+    if (any(grepl("\u2021", series$flag))) notes <- c(notes, "\u2021 mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.")
+    if (spec$id %in% life_expectancy_ids) {
+      notes <- c(notes, paste(
+        "Tábua de mortalidade abreviada por triénio (método de Chiang, como o Eurostat e o PHE).",
+        "Fica cerca de 0,8-0,9 anos acima dos valores publicados pelo INE, que usa outra metodologia;",
+        "a ordenação das regiões coincide. Compare valores da aplicação entre si, não com os do INE."
+      ))
+    }
     breaks <- PLANNING_SERIES_BREAKS[PLANNING_SERIES_BREAKS$indicator == spec$id & PLANNING_SERIES_BREAKS$year %in% planning_year_range(), , drop = FALSE]
     if (nrow(breaks) > 0) notes <- c(notes, paste0("Linha pontilhada em ", breaks$year, ": ", breaks$note))
     if (length(notes) == 0) return(NULL)
