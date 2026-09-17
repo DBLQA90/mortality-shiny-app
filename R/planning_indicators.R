@@ -29,35 +29,39 @@
 # A count, a crude rate or an all-ages proportion needs no age, so it reads the
 # total and is exact at every level.
 
+# `comparable`: whether the indicator does not depend on the size of the area -
+# a rate, share, index or per-capita value. Only those are set beside
+# comparators; a count of people or events is not, since a municipality's count
+# says nothing next to its region's.
 PLANNING_INDICATORS <- tibble::tribble(
-  ~id,                   ~theme,                ~label,                                                    ~ref,  ~unit,                      ~window, ~digits,
-  "pop_total",           "Demografia",          "População residente (estimativa)",                        "I1",  "N.º",                      1L,      0L,
-  "pct_0_14",            "Demografia",          "Proporção de jovens (0-14 anos)",                         "I1",  "%",                        1L,      1L,
-  "pct_65_plus",         "Demografia",          "Proporção de idosos (65 e mais anos)",                    "I1",  "%",                        1L,      1L,
-  "pct_75_plus",         "Demografia",          "Proporção de 75 e mais anos",                             "I1",  "%",                        1L,      1L,
-  "ageing_index",        "Demografia",          "Índice de envelhecimento",                                "I4",  "por 100 jovens",           1L,      1L,
-  "youth_dependency",    "Demografia",          "Índice de dependência de jovens",                         "I5",  "por 100 em idade activa",  1L,      1L,
-  "old_dependency",      "Demografia",          "Índice de dependência de idosos",                         "I6",  "por 100 em idade activa",  1L,      1L,
-  "births",              "Natalidade",          "Nados-vivos",                                             "I7",  "N.º",                      1L,      0L,
-  "birth_rate",          "Natalidade",          "Taxa bruta de natalidade",                                "I8",  "‰",                        1L,      1L,
-  "fertility_index",     "Natalidade",          "Índice sintético de fecundidade",                         "I9",  "filhos por mulher",        1L,      2L,
-  "teen_births_pct",     "Natalidade",          "Nascimentos em mães com menos de 20 anos (triénio)",      "I32", "%",                        3L,      1L,
-  "older_births_pct",    "Natalidade",          "Nascimentos em mães com 35 e mais anos (triénio)",        "I33", "%",                        3L,      1L,
-  "preterm_pct",         "Natalidade",          "Nascimentos pré-termo (triénio)",                         "I35", "%",                        3L,      1L,
-  "rsi_beneficiaries",   "Contexto social",     "Beneficiários do rendimento social de inserção",          "I13", "N.º",                      1L,      0L,
-  "rsi_rate",            "Contexto social",     "Beneficiários do RSI por 1.000 habitantes com 15+ anos",  "I14", "‰",                        1L,      1L,
-  "pensioners",          "Contexto social",     "Pensionistas da segurança social",                        "I15", "N.º",                      1L,      0L,
-  "pensioners_rate",     "Contexto social",     "Pensionistas por 1.000 habitantes com 15+ anos",          "I16", "‰",                        1L,      1L,
-  "pension_mean",        "Contexto social",     "Valor médio anual das pensões",                           "I17", "€",                        1L,      0L,
-  "purchasing_power",    "Contexto social",     "Poder de compra per capita",                              "I28", "Portugal = 100",           1L,      1L,
-  "waste_per_capita",    "Ambiente",            "Resíduos urbanos recolhidos por habitante",               "I64", "kg/hab.",                  1L,      0L,
-  "waste_selective_per_capita", "Ambiente",     "Resíduos recolhidos selectivamente por habitante",        "I65", "kg/hab.",                  1L,      0L,
-  "deaths",              "Mortalidade",         "Óbitos",                                                  "I37", "N.º",                      1L,      0L,
-  "death_rate",          "Mortalidade",         "Taxa bruta de mortalidade",                               "I38", "‰",                        1L,      1L,
-  "infant_rate",         "Mortalidade",         "Taxa de mortalidade infantil (triénio)",                  "I39", "‰ nados-vivos",            3L,      1L,
-  "neonatal_rate",       "Mortalidade",         "Taxa de mortalidade neonatal (triénio)",                  "I40", "‰ nados-vivos",            3L,      1L,
-  "early_neonatal_rate", "Mortalidade",         "Taxa de mortalidade neonatal precoce (triénio)",          "I41", "‰ nados-vivos",            3L,      1L,
-  "postneonatal_rate",   "Mortalidade",         "Taxa de mortalidade pós-neonatal (triénio)",              "I42", "‰ nados-vivos",            3L,      1L
+  ~id,                   ~theme,                ~label,                                                    ~ref,  ~unit,                      ~window, ~digits, ~comparable,
+  "pop_total",           "Demografia",          "População residente (estimativa)",                        "I1",  "N.º",                      1L,      0L, FALSE,
+  "pct_0_14",            "Demografia",          "Proporção de jovens (0-14 anos)",                         "I1",  "%",                        1L,      1L, TRUE,
+  "pct_65_plus",         "Demografia",          "Proporção de idosos (65 e mais anos)",                    "I1",  "%",                        1L,      1L, TRUE,
+  "pct_75_plus",         "Demografia",          "Proporção de 75 e mais anos",                             "I1",  "%",                        1L,      1L, TRUE,
+  "ageing_index",        "Demografia",          "Índice de envelhecimento",                                "I4",  "por 100 jovens",           1L,      1L, TRUE,
+  "youth_dependency",    "Demografia",          "Índice de dependência de jovens",                         "I5",  "por 100 em idade activa",  1L,      1L, TRUE,
+  "old_dependency",      "Demografia",          "Índice de dependência de idosos",                         "I6",  "por 100 em idade activa",  1L,      1L, TRUE,
+  "births",              "Natalidade",          "Nados-vivos",                                             "I7",  "N.º",                      1L,      0L, FALSE,
+  "birth_rate",          "Natalidade",          "Taxa bruta de natalidade",                                "I8",  "‰",                        1L,      1L, TRUE,
+  "fertility_index",     "Natalidade",          "Índice sintético de fecundidade",                         "I9",  "filhos por mulher",        1L,      2L, TRUE,
+  "teen_births_pct",     "Natalidade",          "Nascimentos em mães com menos de 20 anos (triénio)",      "I32", "%",                        3L,      1L, TRUE,
+  "older_births_pct",    "Natalidade",          "Nascimentos em mães com 35 e mais anos (triénio)",        "I33", "%",                        3L,      1L, TRUE,
+  "preterm_pct",         "Natalidade",          "Nascimentos pré-termo (triénio)",                         "I35", "%",                        3L,      1L, TRUE,
+  "rsi_beneficiaries",   "Contexto social",     "Beneficiários do rendimento social de inserção",          "I13", "N.º",                      1L,      0L, FALSE,
+  "rsi_rate",            "Contexto social",     "Beneficiários do RSI por 1.000 habitantes com 15+ anos",  "I14", "‰",                        1L,      1L, TRUE,
+  "pensioners",          "Contexto social",     "Pensionistas da segurança social",                        "I15", "N.º",                      1L,      0L, FALSE,
+  "pensioners_rate",     "Contexto social",     "Pensionistas por 1.000 habitantes com 15+ anos",          "I16", "‰",                        1L,      1L, TRUE,
+  "pension_mean",        "Contexto social",     "Valor médio anual das pensões",                           "I17", "€",                        1L,      0L, TRUE,
+  "purchasing_power",    "Contexto social",     "Poder de compra per capita",                              "I28", "Portugal = 100",           1L,      1L, TRUE,
+  "waste_per_capita",    "Ambiente",            "Resíduos urbanos recolhidos por habitante",               "I64", "kg/hab.",                  1L,      0L, TRUE,
+  "waste_selective_per_capita", "Ambiente",     "Resíduos recolhidos selectivamente por habitante",        "I65", "kg/hab.",                  1L,      0L, TRUE,
+  "deaths",              "Mortalidade",         "Óbitos",                                                  "I37", "N.º",                      1L,      0L, FALSE,
+  "death_rate",          "Mortalidade",         "Taxa bruta de mortalidade",                               "I38", "‰",                        1L,      1L, TRUE,
+  "infant_rate",         "Mortalidade",         "Taxa de mortalidade infantil (triénio)",                  "I39", "‰ nados-vivos",            3L,      1L, TRUE,
+  "neonatal_rate",       "Mortalidade",         "Taxa de mortalidade neonatal (triénio)",                  "I40", "‰ nados-vivos",            3L,      1L, TRUE,
+  "early_neonatal_rate", "Mortalidade",         "Taxa de mortalidade neonatal precoce (triénio)",          "I41", "‰ nados-vivos",            3L,      1L, TRUE,
+  "postneonatal_rate",   "Mortalidade",         "Taxa de mortalidade pós-neonatal (triénio)",              "I42", "‰ nados-vivos",            3L,      1L, TRUE
 )
 
 # Where a source changes definition, so the series is not continuous across the
@@ -471,202 +475,244 @@ planning_age_lower <- function(age_band) {
   suppressWarnings(as.integer(sub("^(\\d+).*$", "\\1", as.character(age_band))))
 }
 
-# Components of one area in one year. Portugal and Continente use INE's
-# published row where the year's file has one; everything else is the sum of
-# its members. `members_found` reports how many members had a population row,
-# so partial coverage is visible rather than read as a small area.
-planning_components_year <- function(area, year, lookup = get_nuts_lookup()) {
-  members <- planning_area_members(area, lookup)
-  table <- planning_year_components(year)
-  present <- attr(table, "present")
-
-  published <- area %in% planning_published_areas && area %in% table$area
-  value_of <- function(column) {
-    if (!planning_column_block(column) %in% present) return(NA_real_)
-    values <- table[[column]]
-    if (published) {
-      own <- values[table$area == area][[1]]
-      if (!is.na(own)) return(own)
-    }
-    sum(values[table$area %in% members], na.rm = TRUE)
+# Membership of each area in the municipalities of the lookup, as a 0/1 matrix
+# (areas x municipalities). Summing components over any set of areas is then one
+# matrix product per year, which is what lets an export cover every area.
+planning_membership_matrix <- function(areas, lookup = get_nuts_lookup()) {
+  areas <- unique(as.character(areas))
+  municipalities <- sort(unique(as.character(lookup$municipality)))
+  membership <- matrix(0, length(areas), length(municipalities), dimnames = list(areas, municipalities))
+  for (i in seq_along(areas)) {
+    members <- intersect(planning_area_members(areas[[i]], lookup), municipalities)
+    if (length(members) > 0) membership[i, members] <- 1
   }
-
-  values <- lapply(planning_component_columns, value_of)
-  names(values) <- planning_component_columns
-
-  dplyr::bind_cols(
-    tibble::tibble(
-      area = area,
-      year = as.integer(year),
-      members = length(members),
-      members_found = sum(members %in% table$area[!is.na(table$pop_total)])
-    ),
-    tibble::as_tibble(values)
-  )
+  membership
 }
 
+# Components of each area in each year. Portugal and Continente use INE's
+# published row where the year's file has one; everything else is the sum of
+# its municipalities. `members_found` counts members with a population row, so
+# partial coverage is visible rather than read as a small area.
 planning_components <- function(areas, years, lookup = get_nuts_lookup()) {
-  grid <- tidyr::expand_grid(area = as.character(areas), year = as.integer(years))
-  dplyr::bind_rows(purrr::map2(grid$area, grid$year, planning_components_year, lookup = lookup))
+  membership <- planning_membership_matrix(areas, lookup)
+  areas <- rownames(membership)
+  municipalities <- colnames(membership)
+  columns <- planning_component_columns
+  blocks <- vapply(columns, planning_column_block, character(1))
+
+  frames <- lapply(as.integer(years), function(year) {
+    table <- planning_year_components(year)
+    present <- attr(table, "present")
+
+    rows <- match(municipalities, table$area)
+    found <- !is.na(rows)
+    values <- matrix(0, length(municipalities), length(columns))
+    if (any(found)) {
+      values[found, ] <- as.matrix(table[rows[found], columns, drop = FALSE])
+    }
+    values[is.na(values)] <- 0
+    sums <- membership %*% values
+    colnames(sums) <- columns
+
+    for (area in intersect(areas, planning_published_areas)) {
+      if (!area %in% table$area) next
+      own <- as.numeric(table[match(area, table$area), columns, drop = FALSE])
+      sums[area, !is.na(own)] <- own[!is.na(own)]
+    }
+    sums[, !blocks %in% present] <- NA
+
+    with_population <- found & !is.na(table$pop_total[ifelse(found, rows, 1L)])
+    tibble::as_tibble(sums) %>%
+      dplyr::mutate(
+        area = areas,
+        year = as.integer(year),
+        members = as.integer(rowSums(membership)),
+        members_found = as.integer(membership %*% as.numeric(with_population)),
+        .before = 1
+      )
+  })
+  dplyr::bind_rows(frames)
+}
+
+planning_components_year <- function(area, year, lookup = get_nuts_lookup()) {
+  planning_components(area, year, lookup)
 }
 
 # ---------------------------------------------------------
 # Indicators
 # ---------------------------------------------------------
+# Exact intervals in closed form, vectorised: the Poisson one is the interval
+# stats::poisson.test() reports for the rounded count, the binomial one the
+# Clopper-Pearson interval of stats::binom.test().
+planning_poisson_ci <- function(events, confidence = 0.95) {
+  alpha <- 1 - confidence
+  n <- round(events)
+  lower <- ifelse(is.na(n), NA_real_, ifelse(n == 0, 0, stats::qgamma(alpha / 2, pmax(n, 1e-12))))
+  upper <- ifelse(is.na(n), NA_real_, stats::qgamma(1 - alpha / 2, n + 1))
+  list(lower = lower, upper = upper)
+}
+
+planning_binomial_ci <- function(successes, trials, confidence = 0.95) {
+  alpha <- 1 - confidence
+  n <- round(trials)
+  x <- pmin(round(successes), n)
+  ok <- !is.na(x) & !is.na(n) & n > 0
+  lower <- rep(NA_real_, length(x))
+  upper <- rep(NA_real_, length(x))
+  lower[ok] <- ifelse(x[ok] == 0, 0, stats::qbeta(alpha / 2, pmax(x[ok], 1e-12), n[ok] - x[ok] + 1))
+  upper[ok] <- ifelse(x[ok] == n[ok], 1, stats::qbeta(1 - alpha / 2, x[ok] + 1, pmax(n[ok] - x[ok], 1e-12)))
+  list(lower = lower * 100, upper = upper * 100)
+}
+
 planning_poisson_rate <- function(events, denominator, multiplier) {
-  if (!is.finite(events) || !is.finite(denominator) || denominator <= 0) {
-    return(c(value = NA_real_, lower = NA_real_, upper = NA_real_))
-  }
-  ci <- stats::poisson.test(round(events))$conf.int
-  c(
-    value = events / denominator * multiplier,
-    lower = ci[[1]] / denominator * multiplier,
-    upper = ci[[2]] / denominator * multiplier
+  ok <- is.finite(events) & is.finite(denominator) & denominator > 0
+  ci <- planning_poisson_ci(events)
+  list(
+    value = ifelse(ok, events / denominator * multiplier, NA_real_),
+    lower = ifelse(ok, ci$lower / denominator * multiplier, NA_real_),
+    upper = ifelse(ok, ci$upper / denominator * multiplier, NA_real_)
   )
 }
 
-# One indicator for one area, ending in `year`. Takes the component table so a
-# ranking over many areas reads the snapshots once.
+# Every requested indicator for every area and year of a component table, in one
+# pass. Pooled indicators sum their components over the window ending in the
+# year, and are missing unless every year of the window is present.
 #
 # Population-based indices carry no interval: the population estimates are not
 # a sample of events, and INE publishes no error for them. Event rates get an
 # exact Poisson interval on the count, the denominator treated as fixed.
-compute_planning_indicator <- function(components, id, area, year, undercount_years = integer(0)) {
-  spec <- planning_indicator_spec(id)
-  window_years <- seq.int(as.integer(year) - spec$window + 1L, as.integer(year))
-  rows <- components[components$area == area & components$year %in% window_years, , drop = FALSE]
-
-  empty <- tibble::tibble(
-    area = area, year = as.integer(year), indicator = id, value = NA_real_,
-    lower = NA_real_, upper = NA_real_, numerator = NA_real_, denominator = NA_real_, flag = ""
-  )
-  if (nrow(rows) < length(window_years)) return(empty)
-
-  total <- function(col) {
-    v <- rows[[col]]
-    if (any(is.na(v))) NA_real_ else sum(v)
+planning_compute_indicators <- function(components, ids, undercount_years = integer(0)) {
+  keys <- paste(components$area, components$year)
+  lag_of <- function(column, k) components[[column]][match(paste(components$area, components$year - k), keys)]
+  pooled <- function(column, window) {
+    out <- components[[column]]
+    if (window > 1) for (k in seq_len(window - 1)) out <- out + lag_of(column, k)
+    out
   }
-  ratio <- function(num, den, multiplier) {
-    if (!is.finite(num) || !is.finite(den) || den <= 0) NA_real_ else num / den * multiplier
+  ratio <- function(num, den, multiplier) ifelse(is.finite(num) & is.finite(den) & den > 0, num / den * multiplier, NA_real_)
+  unstable <- function(births) !is.na(births) & births < infant_stable_births_min
+
+  one <- function(id) {
+    window <- planning_indicator_spec(id)$window
+    total <- function(column) pooled(column, window)
+    value <- numerator <- denominator <- lower <- upper <- rep(NA_real_, nrow(components))
+    flag <- rep("", nrow(components))
+
+    set_ratio <- function(num_col, den_col, multiplier) {
+      numerator <<- total(num_col)
+      denominator <<- total(den_col)
+      value <<- ratio(numerator, denominator, multiplier)
+    }
+    set_rate <- function(num_col, den_col, multiplier) {
+      numerator <<- total(num_col)
+      denominator <<- total(den_col)
+      rate <- planning_poisson_rate(numerator, denominator, multiplier)
+      value <<- rate$value
+      lower <<- rate$lower
+      upper <<- rate$upper
+    }
+    set_count <- function(column, interval = TRUE) {
+      value <<- total(column)
+      if (interval) {
+        ci <- planning_poisson_ci(value)
+        lower <<- ci$lower
+        upper <<- ci$upper
+      }
+    }
+    set_share <- function(num_col, den_col) {
+      numerator <<- total(num_col)
+      denominator <<- total(den_col)
+      value <<- ratio(numerator, denominator, 100)
+      ci <- planning_binomial_ci(numerator, denominator)
+      ok <- is.finite(numerator) & is.finite(denominator) & denominator > 0
+      lower <<- ifelse(ok, ci$lower, NA_real_)
+      upper <<- ifelse(ok, ci$upper, NA_real_)
+    }
+
+    switch(
+      id,
+      pop_total = set_count("pop_total", interval = FALSE),
+      pct_0_14 = set_ratio("pop_0_14", "pop_total", 100),
+      pct_65_plus = set_ratio("pop_65_plus", "pop_total", 100),
+      pct_75_plus = set_ratio("pop_75_plus", "pop_total", 100),
+      ageing_index = set_ratio("pop_65_plus", "pop_0_14", 100),
+      youth_dependency = set_ratio("pop_0_14", "pop_15_64", 100),
+      old_dependency = set_ratio("pop_65_plus", "pop_15_64", 100),
+      births = set_count("births"),
+      birth_rate = set_rate("births", "pop_total", 1000),
+      deaths = set_count("deaths"),
+      death_rate = set_rate("deaths", "pop_total", 1000),
+      infant_rate = {
+        set_rate("infant_deaths", "births", 1000)
+        flag <- ifelse(unstable(denominator), "*", "")
+        # Municipal under-1 counts incomplete in the source (1995-2001).
+        in_window <- Reduce(`|`, lapply(seq_len(window) - 1L, function(k) (components$year - k) %in% undercount_years))
+        flag <- ifelse(components$area != "Portugal" & in_window, paste0(flag, "†"), flag)
+      },
+      neonatal_rate = , early_neonatal_rate = , postneonatal_rate = {
+        column <- switch(id, neonatal_rate = "neonatal_deaths", early_neonatal_rate = "early_neonatal_deaths",
+                         postneonatal_rate = "postneonatal_deaths")
+        set_rate(column, "births", 1000)
+        flag <- ifelse(unstable(denominator), "*", "")
+      },
+      fertility_index = {
+        # Sum of age-specific fertility rates over the seven five-year groups
+        # 15-49, times five: births to mothers of each group per woman of that
+        # group. Women are counted at mid-year, as the mean of the estimates at
+        # the end of the previous year and of this one - which reproduces INE's
+        # published index (Portugal 2019 1.43, 2023 1.32, 2024 1.27); the
+        # end-of-year estimate alone reads up to 0.03 low.
+        rates <- lapply(seq(15, 45, by = 5), function(g) {
+          column <- paste0("pop_f_", g)
+          now <- components[[column]]
+          before <- lag_of(column, 1)
+          women <- ifelse(is.finite(before), (now + before) / 2, now)
+          ratio(components[[paste0("births_mage_", g)]], women, 1)
+        })
+        value <- Reduce(`+`, rates) * 5
+      },
+      teen_births_pct = set_share("births_mother_lt20", "births_mother_total"),
+      older_births_pct = set_share("births_mother_ge35", "births_mother_total"),
+      preterm_pct = set_share("births_preterm", "births_gest_known"),
+      rsi_beneficiaries = set_count("rsi", interval = FALSE),
+      pensioners = set_count("pensioners", interval = FALSE),
+      rsi_rate = set_ratio("rsi", "pop_15_plus", 1000),
+      pensioners_rate = set_ratio("pensioners", "pop_15_plus", 1000),
+      pension_mean = set_ratio("pension_value", "pensioners", 1),
+      purchasing_power = set_ratio("pp_share", "pp_weight", 100),
+      waste_per_capita = set_ratio("waste_total", "pop_total", 1000),
+      waste_selective_per_capita = set_ratio("waste_selective", "pop_total", 1000),
+      stop("No computation for planning indicator ", id, call. = FALSE)
+    )
+
+    tibble::tibble(
+      area = components$area, year = components$year, indicator = id,
+      value = value, lower = lower, upper = upper,
+      numerator = numerator, denominator = denominator, flag = flag
+    )
   }
 
-  out <- empty
-  set <- function(value, numerator = NA_real_, denominator = NA_real_, lower = NA_real_, upper = NA_real_, flag = "") {
-    out$value <<- value
-    out$numerator <<- numerator
-    out$denominator <<- denominator
-    out$lower <<- lower
-    out$upper <<- upper
-    out$flag <<- flag
-  }
-
-  switch(
-    id,
-    pop_total = set(total("pop_total")),
-    pct_0_14 = set(ratio(total("pop_0_14"), total("pop_total"), 100), total("pop_0_14"), total("pop_total")),
-    pct_65_plus = set(ratio(total("pop_65_plus"), total("pop_total"), 100), total("pop_65_plus"), total("pop_total")),
-    pct_75_plus = set(ratio(total("pop_75_plus"), total("pop_total"), 100), total("pop_75_plus"), total("pop_total")),
-    ageing_index = set(ratio(total("pop_65_plus"), total("pop_0_14"), 100), total("pop_65_plus"), total("pop_0_14")),
-    youth_dependency = set(ratio(total("pop_0_14"), total("pop_15_64"), 100), total("pop_0_14"), total("pop_15_64")),
-    old_dependency = set(ratio(total("pop_65_plus"), total("pop_15_64"), 100), total("pop_65_plus"), total("pop_15_64")),
-    births = {
-      n <- total("births")
-      ci <- if (is.finite(n)) stats::poisson.test(round(n))$conf.int else c(NA_real_, NA_real_)
-      set(n, lower = ci[[1]], upper = ci[[2]])
-    },
-    birth_rate = {
-      r <- planning_poisson_rate(total("births"), total("pop_total"), 1000)
-      set(r[["value"]], total("births"), total("pop_total"), r[["lower"]], r[["upper"]])
-    },
-    deaths = {
-      n <- total("deaths")
-      ci <- if (is.finite(n)) stats::poisson.test(round(n))$conf.int else c(NA_real_, NA_real_)
-      set(n, lower = ci[[1]], upper = ci[[2]])
-    },
-    death_rate = {
-      r <- planning_poisson_rate(total("deaths"), total("pop_total"), 1000)
-      set(r[["value"]], total("deaths"), total("pop_total"), r[["lower"]], r[["upper"]])
-    },
-    infant_rate = {
-      births <- total("births")
-      r <- planning_poisson_rate(total("infant_deaths"), births, 1000)
-      flag <- if (is.finite(births) && infant_rate_is_unstable(births)) "*" else ""
-      # Municipal under-1 counts incomplete in the source (1995-2001).
-      if (!identical(area, "Portugal") && any(window_years %in% undercount_years)) {
-        flag <- paste0(flag, "\u2020")
-      }
-      set(r[["value"]], total("infant_deaths"), births, r[["lower"]], r[["upper"]], flag)
-    },
-    neonatal_rate = , early_neonatal_rate = , postneonatal_rate = {
-      column <- switch(id, neonatal_rate = "neonatal_deaths", early_neonatal_rate = "early_neonatal_deaths",
-                       postneonatal_rate = "postneonatal_deaths")
-      births <- total("births")
-      r <- planning_poisson_rate(total(column), births, 1000)
-      flag <- if (is.finite(births) && infant_rate_is_unstable(births)) "*" else ""
-      set(r[["value"]], total(column), births, r[["lower"]], r[["upper"]], flag)
-    },
-    fertility_index = {
-      # Sum of age-specific fertility rates over the seven five-year groups
-      # 15-49, times five: births to mothers of each group per woman of that
-      # group. Women are counted at mid-year, as the mean of the estimates at the
-      # end of the previous year and of this one - which reproduces INE's
-      # published index (Portugal 2019 1.43, 2023 1.32, 2024 1.27); the
-      # end-of-year estimate alone reads up to 0.03 low.
-      previous <- components[components$area == area & components$year == as.integer(year) - 1L, , drop = FALSE]
-      women <- function(g) {
-        column <- paste0("pop_f_", g)
-        now <- total(column)
-        before <- if (nrow(previous) == 1) previous[[column]] else NA_real_
-        if (is.finite(before)) (now + before) / 2 else now
-      }
-      groups <- seq(15, 45, by = 5)
-      rates <- vapply(groups, function(g) ratio(total(paste0("births_mage_", g)), women(g), 1), numeric(1))
-      set(if (any(is.na(rates))) NA_real_ else sum(rates) * 5)
-    },
-    teen_births_pct = , older_births_pct = , preterm_pct = {
-      num_col <- switch(id, teen_births_pct = "births_mother_lt20", older_births_pct = "births_mother_ge35",
-                        preterm_pct = "births_preterm")
-      den_col <- if (identical(id, "preterm_pct")) "births_gest_known" else "births_mother_total"
-      num <- total(num_col)
-      den <- total(den_col)
-      ci <- if (is.finite(num) && is.finite(den) && den > 0) {
-        compute_proportion_interval_safe(num, den)
-      } else {
-        c(NA_real_, NA_real_)
-      }
-      set(ratio(num, den, 100), num, den, ci[[1]], ci[[2]])
-    },
-    rsi_beneficiaries = set(total("rsi")),
-    pensioners = set(total("pensioners")),
-    rsi_rate = set(ratio(total("rsi"), total("pop_15_plus"), 1000), total("rsi"), total("pop_15_plus")),
-    pensioners_rate = set(ratio(total("pensioners"), total("pop_15_plus"), 1000), total("pensioners"), total("pop_15_plus")),
-    pension_mean = set(ratio(total("pension_value"), total("pensioners"), 1), total("pension_value"), total("pensioners")),
-    purchasing_power = set(ratio(total("pp_share"), total("pp_weight"), 100), total("pp_share"), total("pp_weight")),
-    waste_per_capita = set(ratio(total("waste_total"), total("pop_total"), 1000), total("waste_total"), total("pop_total")),
-    waste_selective_per_capita = set(ratio(total("waste_selective"), total("pop_total"), 1000), total("waste_selective"), total("pop_total"))
-  )
-
-  out
+  dplyr::bind_rows(lapply(ids, one))
 }
 
 planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup()) {
   years <- as.integer(years)
+  areas <- unique(as.character(areas))
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
   # One year earlier than the widest window: the fertility index needs the
   # previous year's population for its mid-year denominator.
   component_years <- seq.int(min(years) - max_window, max(years))
   components <- planning_components(areas, component_years, lookup)
 
-  undercount <- if ("infant_rate" %in% ids) {
+  undercount <- if (any(c("infant_rate") %in% ids)) {
     infant_undercount_years(component_years, municipalities = lookup$municipality)
   } else {
     integer(0)
   }
 
-  grid <- tidyr::expand_grid(area = as.character(areas), year = years, indicator = ids)
-  dplyr::bind_rows(purrr::pmap(grid, function(area, year, indicator) {
-    compute_planning_indicator(components, indicator, area, year, undercount_years = undercount)
-  }))
+  planning_compute_indicators(components, ids, undercount_years = undercount) %>%
+    dplyr::filter(.data$year %in% years) %>%
+    dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
 }
 
 planning_period_label <- function(id, year) {
@@ -680,35 +726,6 @@ planning_format_value <- function(value, digits) {
     if (is.na(value[[i]])) return("—")
     formatC(value[[i]], format = "f", digits = digits[[i]], big.mark = ".", decimal.mark = ",")
   }, character(1))
-}
-
-# Wide profile for display: one row per indicator, one column per area, each
-# cell "value (lower-upper)" with the thin-denominator star where it applies.
-planning_profile_wide <- function(table) {
-  if (nrow(table) == 0) return(tibble::tibble())
-  specs <- PLANNING_INDICATORS
-  table %>%
-    dplyr::left_join(specs, by = c("indicator" = "id")) %>%
-    dplyr::mutate(
-      cell = paste0(
-        planning_format_value(.data$value, .data$digits),
-        .data$flag,
-        ifelse(
-          is.na(.data$lower),
-          "",
-          paste0(" (", planning_format_value(.data$lower, .data$digits), "-", planning_format_value(.data$upper, .data$digits), ")")
-        )
-      ),
-      Período = purrr::map2_chr(.data$indicator, .data$year, planning_period_label),
-      Tema = .data$theme,
-      Indicador = paste0(.data$label, " [", .data$ref, "]"),
-      Unidade = .data$unit,
-      order = match(.data$indicator, specs$id)
-    ) %>%
-    dplyr::select(order, Tema, Indicador, Unidade, Período, area, cell) %>%
-    tidyr::pivot_wider(names_from = area, values_from = cell) %>%
-    dplyr::arrange(order) %>%
-    dplyr::select(-order)
 }
 
 # ---------------------------------------------------------
@@ -779,8 +796,8 @@ planning_proportional <- function(area, end_year, window = 3L, sex = "HM", looku
 
 compute_proportion_interval_safe <- function(deaths, total) {
   if (!is.finite(total) || total <= 0) return(c(NA_real_, NA_real_))
-  ci <- stats::binom.test(min(round(deaths), round(total)), round(total))$conf.int * 100
-  c(ci[[1]], ci[[2]])
+  ci <- planning_binomial_ci(deaths, total)
+  c(ci$lower, ci$upper)
 }
 
 # ---------------------------------------------------------
@@ -816,4 +833,140 @@ planning_uls_units <- function() {
   lookup <- get_health_lookup()
   if (is.null(lookup) || nrow(lookup) == 0) return(character(0))
   sort(unique(as.character(lookup$unit[lookup$kind != "ARS"])))
+}
+
+# ---------------------------------------------------------
+# Levels and comparators
+# ---------------------------------------------------------
+PLANNING_LEVELS <- c("Local", "ULS", "ARS", "NUTS III", "NUTS II", "NUTS I", "Portugal")
+
+# Fixed colour per level (the reference categorical palette, in its validated
+# order), so a level keeps its colour whichever comparators are shown.
+PLANNING_LEVEL_COLOURS <- c(
+  "Local" = "#2a78d6", "ULS" = "#eb6834", "ARS" = "#1baf7a", "NUTS III" = "#eda100",
+  "NUTS II" = "#e87ba4", "NUTS I" = "#008300", "Portugal" = "#4a3aa7"
+)
+
+# Every area the app can build, with its level, highest level first. A label
+# naming several levels at once (the islands are NUTS I, II and III) keeps the
+# highest.
+planning_area_levels <- function(lookup = get_nuts_lookup(), health = get_health_lookup()) {
+  nuts <- function(column, level) {
+    if (!column %in% names(lookup)) return(tibble::tibble(area = character(0), level = character(0)))
+    tibble::tibble(area = unique(stats::na.omit(as.character(lookup[[column]]))), level = level)
+  }
+  health_units <- function(kinds, level) {
+    if (is.null(health) || nrow(health) == 0) return(tibble::tibble(area = character(0), level = character(0)))
+    units <- health_unit_choices(health)
+    tibble::tibble(area = units[units %in% health$unit[health$kind %in% kinds]], level = level)
+  }
+  dplyr::bind_rows(
+    tibble::tibble(area = "Portugal", level = "Portugal"),
+    nuts("nuts1", "NUTS I"),
+    nuts("nuts2", "NUTS II"),
+    nuts("nuts3", "NUTS III"),
+    health_units("ARS", "ARS"),
+    health_units(c("ULS", "ULS (grupo)"), "ULS"),
+    tibble::tibble(area = sort(unique(as.character(lookup$municipality))), level = "Município")
+  ) %>%
+    dplyr::distinct(area, .keep_all = TRUE)
+}
+
+# A ULS can sit inside a NUTS III (ULS Matosinhos in the Área Metropolitana do
+# Porto), and a NUTS III inside an ARS, so the ranks interleave the two trees.
+planning_level_rank <- c("Município" = 1, "ULS" = 1.5, "NUTS III" = 2, "ARS" = 3, "NUTS II" = 3, "NUTS I" = 4, "Portugal" = 5)
+
+# The areas that contain `area`, one per level above it, nearest first: for a
+# municipality its ULS, ARS, NUTS III, NUTS II, NUTS I and Portugal. A containing
+# unit with exactly the same municipalities is left out (ULS Algarve is also
+# NUTS II and NUTS III Algarve), since it would repeat the area's own values.
+planning_comparators <- function(area, lookup = get_nuts_lookup(), health = get_health_lookup()) {
+  levels <- planning_area_levels(lookup, health)
+  own_level <- levels$level[match(area, levels$area)]
+  if (is.na(own_level) || identical(own_level, "Portugal")) {
+    return(tibble::tibble(level = character(0), area = character(0)))
+  }
+  members <- planning_area_members(area, lookup)
+  candidates <- levels[levels$level != "Município" &
+                         planning_level_rank[levels$level] > planning_level_rank[[own_level]], , drop = FALSE]
+
+  keep <- vapply(seq_len(nrow(candidates)), function(i) {
+    if (identical(candidates$level[[i]], "Portugal")) return(TRUE)
+    unit <- planning_area_members(candidates$area[[i]], lookup)
+    all(members %in% unit) && !setequal(members, unit)
+  }, logical(1))
+
+  found <- candidates[keep, , drop = FALSE]
+  found <- found[order(match(found$level, PLANNING_LEVELS)), , drop = FALSE]
+  # One per level; drop a unit whose municipalities equal a nearer comparator's.
+  found <- found[!duplicated(found$level), , drop = FALSE]
+  sets <- lapply(found$area, planning_area_members, lookup = lookup)
+  # Portugal always stays: it reads INE's national row, which also counts
+  # residents of unknown municipality.
+  repeated <- vapply(seq_along(sets), function(i) {
+    i > 1 && !identical(found$level[[i]], "Portugal") &&
+      any(vapply(seq_len(i - 1), function(j) setequal(sets[[i]], sets[[j]]), logical(1)))
+  }, logical(1))
+  tibble::tibble(level = found$level[!repeated], area = found$area[!repeated])
+}
+
+# ---------------------------------------------------------
+# Proportional mortality for many areas
+# ---------------------------------------------------------
+# The same figures as planning_proportional(), for every area and triennium in
+# one pass: the cause counts are summed with the membership matrix.
+planning_proportional_table <- function(areas, end_years, window = 3L, sex = "HM", lookup = get_nuts_lookup()) {
+  membership <- planning_membership_matrix(areas, lookup)
+  areas <- rownames(membership)
+  municipalities <- colnames(membership)
+  causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
+  needed <- sort(unique(unlist(lapply(as.integer(end_years), function(y) seq.int(y - window + 1L, y)))))
+
+  per_year <- lapply(needed, function(year) {
+    frame <- planning_year_causes(year, sex = sex)
+    if (is.null(frame)) return(NULL)
+    wide <- matrix(0, length(municipalities), length(causes), dimnames = list(municipalities, causes))
+    hit <- frame[frame$area %in% municipalities & frame$cause %in% causes, , drop = FALSE]
+    wide[cbind(match(hit$area, municipalities), match(hit$cause, causes))] <- hit$deaths
+    sums <- membership %*% wide
+    for (area in intersect(areas, planning_published_areas)) {
+      own <- frame[frame$area == area & frame$cause %in% causes, , drop = FALSE]
+      if (nrow(own) > 0) {
+        sums[area, ] <- 0
+        sums[area, match(own$cause, causes)] <- own$deaths
+      }
+    }
+    sums
+  })
+  names(per_year) <- needed
+
+  dplyr::bind_rows(lapply(as.integer(end_years), function(end_year) {
+    years <- as.character(seq.int(end_year - window + 1L, end_year))
+    if (!all(years %in% names(per_year)) || any(vapply(per_year[years], is.null, logical(1)))) return(NULL)
+    pooled <- Reduce(`+`, per_year[years])
+    total <- pooled[, planning_all_causes]
+    groups <- pooled[, PLANNING_CAUSE_GROUPS$cause, drop = FALSE]
+    other <- pmax(total - rowSums(groups), 0)
+    counts <- cbind(total, groups, other)
+    codes <- c("C00", PLANNING_CAUSE_GROUPS$code, "Outras")
+    labels <- c("Todas as causas de morte", PLANNING_CAUSE_GROUPS$label, "Restantes causas")
+    long <- tibble::tibble(
+      area = rep(areas, times = length(codes)),
+      code = rep(codes, each = length(areas)),
+      group = rep(labels, each = length(areas)),
+      deaths = as.numeric(counts),
+      all_deaths = rep(total, times = length(codes))
+    )
+    ci <- planning_binomial_ci(long$deaths, long$all_deaths)
+    long %>%
+      dplyr::mutate(
+        period = paste0(min(years), "-", max(years)),
+        end_year = end_year,
+        share = ifelse(.data$all_deaths > 0, .data$deaths / .data$all_deaths * 100, NA_real_),
+        lower = ifelse(.data$code == "C00", 100, ci$lower),
+        upper = ifelse(.data$code == "C00", 100, ci$upper)
+      ) %>%
+      dplyr::select(-all_deaths)
+  })) %>%
+    dplyr::arrange(match(.data$area, areas), .data$end_year, match(.data$code, c("C00", PLANNING_CAUSE_GROUPS$code, "Outras")))
 }

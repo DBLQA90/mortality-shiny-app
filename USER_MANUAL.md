@@ -891,9 +891,9 @@ Continente, regiões NUTS, ARS, ULS e municípios. Seguem os indicadores do
 ficheiro de apoio aos PLS (a referência `[I…]` de cada linha), recalculados a
 partir dos dados actuais do INE.
 
-Ao contrário dos separadores de mortalidade, **cada local seleccionado é uma
-coluna própria**, lida lado a lado, e não é somado aos outros. Pode escolher até
-8 locais.
+O separador é construído à volta de **um local**. Escolhe-se o local, o indicador
+e o intervalo de anos; o separador mostra esse indicador em gráfico e tabela, ao
+lado das áreas que contêm o local, e resume todos os outros.
 
 | Indicador | Ref. | Cálculo |
 |---|---|---|
@@ -927,18 +927,70 @@ municípios sem dados que o INE não publica a esse nível (esperança de vida,
 ganho médio mensal), os dos Censos (I2, I12, I24, I26) e os que não vêm do INE
 (IEFP, PORDATA, SIM@SNS).
 
+### Comparadores
+
+Para cada local, a aplicação propõe as áreas que o contêm, uma por nível:
+
+| Local escolhido | Comparadores propostos |
+|---|---|
+| Município | a sua ULS, ARS, NUTS III, NUTS II, NUTS I e Portugal |
+| ULS | a ARS, a NUTS III ou NUTS II em que cabe inteira, o Continente e Portugal |
+| ARS ou NUTS II | o NUTS I (Continente ou região autónoma) e Portugal |
+| NUTS I | Portugal |
+
+Todos começam seleccionados; pode desmarcar os que não interessam. Uma área com
+exactamente os mesmos municípios do local não é proposta, porque repetiria os
+mesmos valores: o município de Matosinhos não tem a ULS Matosinhos como
+comparador. As regiões autónomas não têm ULS nem ARS na aplicação.
+
+**Só os indicadores comparáveis têm comparadores**: taxas, proporções, índices e
+valores por habitante, que não dependem do tamanho da área. As contagens
+(população, nados-vivos, óbitos, beneficiários do RSI, pensionistas) mostram-se
+apenas para o local, porque o número de um município não diz nada ao lado do da
+sua região. Ao escolher uma contagem, os comparadores desaparecem e o gráfico
+passa a barras.
+
+Cada nível tem sempre a mesma cor em todos os gráficos: o local a azul, a ULS a
+laranja, a ARS a verde-água, a NUTS III a amarelo, a NUTS II a rosa, o NUTS I a
+verde e Portugal a violeta.
+
 ### Os subseparadores
 
-- **Perfil** — todos os indicadores para o ano escolhido, um local por coluna.
-- **Evolução** — o indicador escolhido ao longo de todos os anos disponíveis,
-  com o intervalo de confiança sombreado quando existe.
+- **Indicador** — o gráfico do indicador ao longo dos anos escolhidos e, por
+  baixo, a tabela com os valores e os intervalos de confiança (o período mais
+  recente primeiro). Para indicadores comparáveis, linhas: o local com a sua faixa
+  de intervalo de confiança, e uma linha por comparador. Para contagens, barras do
+  local com o intervalo como barra de erro. Pontos vazios têm uma marca (`*` ou
+  `†`); uma linha pontilhada vertical marca uma mudança de série.
+- **Resumo do local** — todos os indicadores no último período disponível até ao
+  último ano escolhido, com os comparadores ao lado dos que são comparáveis.
 - **Comparação entre ULS** — as 34 ULS do Continente e os dois agrupamentos
-  exactos, ordenados, com Portugal como linha tracejada. As ULS que tiver
-  seleccionado aparecem a vermelho.
-- **Pirâmide etária** — a estrutura por idade e sexo, em percentagem, para os
-  primeiros quatro locais (I3).
-- **Mortalidade proporcional** — os 13 grandes grupos de causas do I45, mais uma
-  linha «Restantes causas» para que a coluna feche em 100%.
+  exactos, ordenados, com Portugal como linha tracejada. A ULS do local (ou o
+  próprio local, se for uma ULS) aparece a azul. Só para indicadores comparáveis.
+- **Pirâmide etária** — a estrutura por idade e sexo do local, em percentagem da
+  sua população, com o contorno do primeiro comparador seleccionado (ou de
+  Portugal) por cima, para comparar estruturas de áreas de tamanhos diferentes (I3).
+- **Mortalidade proporcional** — os 13 grandes grupos de causas do I45, mais
+  «Restantes causas» para que o total feche em 100%: barras para o local, pontos
+  para os comparadores, e a tabela por baixo.
+- **Notas** — definições, fontes, mudanças de série e diferenças face ao ficheiro
+  de apoio.
+
+Todos os gráficos mostram o valor exacto ao passar o rato sobre um ponto ou barra.
+
+### Descarregar em Excel
+
+No fim do separador há dois ficheiros Excel:
+
+| Ficheiro | Conteúdo |
+|---|---|
+| **Local e comparadores** | o local e os comparadores seleccionados, nos anos escolhidos: folha Leia-me, Resumo, uma folha por indicador (áreas em linhas, anos em colunas), Dados em formato longo com intervalos de confiança, numerador e denominador, Pirâmide etária e Mortalidade proporcional |
+| **Todas as áreas** | Portugal, NUTS I, II e III, as 5 ARS, as 36 ULS e agrupamentos e os 308 municípios, todos os indicadores e anos, uma folha por indicador, mais a pirâmide (2011, 2021 e o último ano) e a mortalidade proporcional de todos os triénios. É o equivalente automático do ficheiro de apoio aos PLS |
+
+Nos dois, a folha Leia-me indica a **data de importação dos dados** e a definição
+das regiões usada, e os valores com uma marca aparecem a cinzento e itálico. O
+ficheiro de todas as áreas é gerado da primeira vez que é pedido (cerca de meio
+minuto) e guardado até à importação seguinte.
 
 ### Como são construídos os valores
 

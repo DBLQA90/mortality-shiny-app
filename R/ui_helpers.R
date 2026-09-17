@@ -810,117 +810,120 @@ avoidable_tab_ui <- function() {
   )
 }
 
-# Planning indicators: one profile per area, read side by side, in the form the
-# local health plans report them. Each selected area is its own column rather
-# than being pooled with the others as in the mortality tabs.
+# Planning indicators, built around one location: each indicator as a chart and
+# a table, set against the areas that contain the location where the indicator
+# is comparable across sizes, plus a summary of every indicator, the ranking of
+# ULS, the pyramid and proportional mortality. Excel downloads close the tab.
 planning_tab_ui <- function() {
-  years <- tryCatch(planning_indicator_years("pop_total"), error = function(e) integer(0))
-  death_years <- tryCatch(planning_indicator_years("deaths"), error = function(e) integer(0))
-  default_year <- if (length(death_years) > 0) max(death_years) else if (length(years) > 0) max(years) else NULL
+  years <- tryCatch(
+    sort(unique(unlist(lapply(PLANNING_INDICATORS$id, planning_indicator_years)))),
+    error = function(e) integer(0)
+  )
+  if (length(years) == 0) years <- c(1991L, 2025L)
+  last <- max(years)
 
   tabPanel(
     "Indicadores de Planeamento",
     sidebarLayout(
       sidebarPanel(
-        selectInput(
-          "planning_area",
-          "Locais (um por coluna):",
-          choices = local_area,
-          multiple = TRUE,
-          selected = c("Portugal", "Continente")
-        ),
-        selectInput(
-          "planning_year",
-          "Ano:",
-          choices = sort(years, decreasing = TRUE),
-          selected = default_year
-        ),
-        selectInput(
-          "planning_indicator",
-          "Indicador para a evolução e a comparação:",
-          choices = planning_indicator_choices(),
-          selected = "ageing_index"
+        width = 3,
+        selectInput("planning_area", "Local:", choices = local_area, selected = "Portugal"),
+        selectInput("planning_indicator", "Indicador:", choices = planning_indicator_choices(), selected = "ageing_index"),
+        uiOutput("planningComparatorsUI"),
+        sliderInput(
+          "planning_years", "Anos:",
+          min = min(years), max = last, value = c(max(min(years), last - 19L), last), step = 1, sep = ""
         ),
         helpText(
-          "Cada local é calculado somando os seus municípios e dividindo as ",
-          "somas. Portugal e Continente usam as linhas publicadas pelo INE, que ",
-          "incluem os acontecimentos de residência desconhecida."
-        ),
-        actionButton("go_planning", "Carregar"),
-        br(), br(),
-        downloadButton("downloadPlanningCSV", "Descarregar indicadores (CSV)")
+          "Cada local é a soma dos seus municípios, e cada indicador a razão dessas ",
+          "somas. Portugal e o Continente usam as linhas publicadas pelo INE."
+        )
       ),
       mainPanel(
+        width = 9,
         tabsetPanel(
+          id = "planning_view",
           tabPanel(
-            "Perfil",
+            "Indicador",
             br(),
-            tableOutput("planningProfile"),
-            helpText(planning_profile_note())
+            uiOutput("planningIndicatorHeader"),
+            plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
+            uiOutput("planningIndicatorNotes"),
+            h5("Valores"),
+            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable"))
           ),
           tabPanel(
-            "Evolução",
+            "Resumo do local",
             br(),
-            plotOutput("planningTrend", height = "420px"),
-            downloadButton("downloadPlanningTrend", "Descarregar gráfico (PNG)")
+            helpText(
+              "Todos os indicadores no último período disponível para o local, até ao ",
+              "último ano escolhido. As contagens absolutas não têm comparadores."
+            ),
+            div(style = "overflow-x:auto;", tableOutput("planningSummaryTable"))
           ),
           tabPanel(
             "Comparação entre ULS",
             br(),
-            helpText(
-              "Todas as ULS do Continente para o indicador e o ano escolhidos. ",
-              "As cinco ULS que partilham municípios ao nível da freguesia ",
-              "aparecem nos dois agrupamentos exactos. A linha tracejada é Portugal."
-            ),
-            plotOutput("planningRanking", height = "760px"),
-            downloadButton("downloadPlanningRanking", "Descarregar gráfico (PNG)"),
-            downloadButton("downloadPlanningRankingCSV", "Descarregar tabela (CSV)")
+            uiOutput("planningRankingNote"),
+            plotly::plotlyOutput("planningRankingPlot", height = "820px")
           ),
           tabPanel(
             "Pirâmide etária",
             br(),
-            plotOutput("planningPyramid", height = "520px"),
-            helpText("Percentagem da população de cada local em cada grupo etário e sexo, para comparar estruturas de tamanhos diferentes."),
-            downloadButton("downloadPlanningPyramid", "Descarregar gráfico (PNG)")
+            helpText(
+              "Percentagem da população em cada grupo etário e sexo, no último ano ",
+              "escolhido. O contorno escuro é o primeiro comparador seleccionado ",
+              "(ou Portugal), para comparar a estrutura de áreas de tamanhos diferentes."
+            ),
+            plotly::plotlyOutput("planningPyramidPlot", height = "540px")
           ),
           tabPanel(
             "Mortalidade proporcional",
             br(),
-            helpText(
-              "Todas as idades, ambos os sexos, triénio terminado no ano escolhido ",
-              "[I45]. Lidos dos totais municipais de óbitos, que estão completos. ",
-              "«Restantes causas» reúne o que os 13 grandes grupos não cobrem ",
-              "(perturbações mentais, pele, gravidez, malformações congénitas), ",
-              "para que a coluna some 100%."
-            ),
-            tableOutput("planningProportional"),
-            downloadButton("downloadPlanningProportionalCSV", "Descarregar tabela (CSV)")
+            uiOutput("planningProportionalNote"),
+            plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
+            div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
           ),
-          tabPanel(
-            "Notas",
-            br(),
-            planning_method_notes()
-          )
+          tabPanel("Notas", br(), planning_method_notes())
+        ),
+        hr(),
+        wellPanel(
+          h4("Descarregar em Excel"),
+          fluidRow(
+            column(
+              6,
+              downloadButton("downloadPlanningSelectionXLSX", "Local e comparadores"),
+              helpText(
+                "O local escolhido e os comparadores seleccionados, com todos os ",
+                "indicadores nos anos escolhidos: resumo, uma folha por indicador, ",
+                "dados com intervalos de confiança, pirâmide etária e mortalidade proporcional."
+              )
+            ),
+            column(
+              6,
+              downloadButton("downloadPlanningFullXLSX", "Todas as áreas"),
+              helpText(
+                "Portugal, NUTS I, II e III, ARS, ULS e os 308 municípios, todos os ",
+                "indicadores e anos, uma folha por indicador. Pode demorar cerca de meio ",
+                "minuto a gerar da primeira vez."
+              )
+            )
+          ),
+          uiOutput("planningDataDate")
         )
       )
     )
   )
 }
 
-planning_profile_note <- function() {
-  paste(
-    "Entre parênteses, o intervalo de confiança de 95% (Poisson exacto) para",
-    "contagens e taxas de acontecimentos. Os índices de estrutura da população",
-    "não têm intervalo: as estimativas de população não são uma amostra de",
-    "acontecimentos. * taxa de mortalidade infantil sobre menos de 1.000",
-    "nados-vivos no triénio - exacta, mas instável. \u2020 triénio com anos",
-    "(1995-2001) em que os óbitos com menos de 1 ano por município estão",
-    "incompletos no INE: o valor está subestimado."
-  )
-}
-
 planning_method_notes <- function() {
   tagList(
+    h4("Comparadores"),
+    tags$ul(
+      tags$li("Para cada local, a aplicação propõe as áreas que o contêm, uma por nível: ULS, ARS, NUTS III, NUTS II, NUTS I e Portugal. Uma área com exactamente os mesmos municípios do local (por exemplo a ULS Matosinhos para o município de Matosinhos) é omitida, porque repetiria os mesmos valores."),
+      tags$li("Só têm comparadores os indicadores que não dependem do tamanho da área: taxas, proporções, índices e valores por habitante. As contagens (população, nados-vivos, óbitos, beneficiários, pensionistas) mostram-se apenas para o local."),
+      tags$li("Cada nível tem sempre a mesma cor, e o intervalo de confiança do local aparece como faixa. Os pontos vazios têm uma marca (* ou \u2020).")
+    ),
     h4("Como são calculados"),
     tags$ul(
       tags$li("Índice de envelhecimento: população com 65 e mais anos por 100 com 0-14 anos."),

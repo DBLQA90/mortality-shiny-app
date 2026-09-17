@@ -43,6 +43,8 @@ for (app_file in c(
   "R/standardisation.R",
   "R/avoidable.R",
   "R/planning_indicators.R",
+  "R/planning_export.R",
+  "R/planning_charts.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
@@ -4195,247 +4197,295 @@ server <- function(input, output, session) {
   # -------------------------
   # Planning indicators
   # -------------------------
-  # Every selected area is computed on its own and shown as a column. The
-  # components are read from year files cached for the session, so switching the
-  # indicator or rereading a year does not touch the disk again.
-  planning_request <- eventReactive(input$go_planning, {
-    areas <- unique(as.character(input$planning_area))
-    validate(need(length(areas) > 0, "Seleccione pelo menos um local."))
-    validate(need(length(areas) <= 8, "Seleccione no máximo 8 locais: cada um é uma coluna."))
-
-    mismatch <- vintage_mismatch_message(areas, active_nuts_vintage(), active_nuts_lookup())
-    validate(need(is.null(mismatch), mismatch))
-
-    list(
-      areas = areas,
-      year = as.integer(input$planning_year),
-      indicator = input$planning_indicator,
-      lookup = active_nuts_lookup(),
-      vintage = active_nuts_vintage()
-    )
-  }, ignoreNULL = TRUE)
-
-  planning_profile <- reactive({
-    request <- planning_request()
-    shiny::withProgress(message = "A calcular indicadores...", value = 0.3, {
-      planning_indicator_table(request$areas, request$year, lookup = request$lookup)
-    })
+  # Built around one location. Its comparators are the areas that contain it,
+  # offered only for indicators that do not depend on the size of an area.
+  planning_data_date <- reactive({
+    tryCatch(latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))), error = function(e) NA_character_)
   })
 
-  output$planningProfile <- renderTable({
-    planning_profile_wide(planning_profile())
+  planning_spec <- reactive({
+    req(input$planning_indicator)
+    planning_indicator_spec(input$planning_indicator)
+  })
+
+  planning_location <- reactive({
+    req(input$planning_area)
+    area <- as.character(input$planning_area)[[1]]
+    mismatch <- vintage_mismatch_message(area, active_nuts_vintage(), active_nuts_lookup())
+    validate(need(is.null(mismatch), mismatch))
+    area
+  })
+
+  planning_available_comparators <- reactive({
+    planning_comparators(planning_location(), active_nuts_lookup())
+  })
+
+  # Comparators start all selected for a new location and keep the user's choice
+  # while only the indicator or years change.
+  planning_comparator_state <- reactiveValues(area = NULL, selected = NULL)
+
+  observeEvent(input$planning_comparators, {
+    planning_comparator_state$selected <- input$planning_comparators
+  }, ignoreNULL = FALSE, ignoreInit = TRUE)
+
+  output$planningComparatorsUI <- renderUI({
+    spec <- planning_spec()
+    comparators <- planning_available_comparators()
+    area <- planning_location()
+
+    if (!identical(isolate(planning_comparator_state$area), area)) {
+      planning_comparator_state$area <- area
+      planning_comparator_state$selected <- comparators$area
+    }
+    if (!isTRUE(spec$comparable)) {
+      return(helpText(
+        tags$b("Sem comparadores. "),
+        spec$label, " é uma contagem absoluta: depende do tamanho da área, ",
+        "por isso não se compara com áreas maiores."
+      ))
+    }
+    if (nrow(comparators) == 0) {
+      return(helpText("Portugal não tem níveis acima para comparar."))
+    }
+    checkboxGroupInput(
+      "planning_comparators", "Comparar com:",
+      choices = stats::setNames(comparators$area, paste0(comparators$level, ": ", comparators$area)),
+      selected = isolate(intersect(planning_comparator_state$selected, comparators$area))
+    )
+  })
+
+  planning_areas <- reactive({
+    local <- planning_location()
+    comparators <- planning_available_comparators()
+    chosen <- if (isTRUE(planning_spec()$comparable)) {
+      intersect(input$planning_comparators, comparators$area)
+    } else {
+      character(0)
+    }
+    dplyr::bind_rows(
+      tibble::tibble(area = local, level = "Local"),
+      comparators[comparators$area %in% chosen, c("area", "level")]
+    )
+  })
+
+  planning_year_range <- reactive({
+    req(input$planning_years)
+    seq.int(as.integer(input$planning_years[[1]]), as.integer(input$planning_years[[2]]))
+  })
+
+  planning_series <- reactive({
+    spec <- planning_spec()
+    areas <- planning_areas()
+    years <- intersect(planning_year_range(), planning_indicator_years(spec$id))
+    validate(need(length(years) > 0, paste0(
+      "Sem dados de «", spec$label, "» nos anos escolhidos. Disponível: ",
+      paste(range(planning_indicator_years(spec$id)), collapse = "-"), "."
+    )))
+    planning_indicator_table(areas$area, years, ids = spec$id, lookup = active_nuts_lookup())
+  })
+
+  output$planningIndicatorHeader <- renderUI({
+    spec <- planning_spec()
+    tagList(
+      h4(paste0(spec$label, " [", spec$ref, "]")),
+      helpText(paste0(
+        "Unidade: ", spec$unit, ". ",
+        if (spec$window > 1) "Cada valor soma três anos e é identificado pelo último. " else "",
+        if (!isTRUE(spec$comparable)) "Contagem absoluta, mostrada só para o local." else "Linhas: o local e os comparadores; faixa: intervalo de confiança de 95% do local, quando existe."
+      ))
+    )
+  })
+
+  output$planningIndicatorPlot <- plotly::renderPlotly({
+    spec <- planning_spec()
+    series <- planning_series()
+    validate(need(any(!is.na(series$value)), "Sem valores para este local nos anos escolhidos."))
+    if (isTRUE(spec$comparable)) {
+      planning_trend_chart(series, spec, planning_areas())
+    } else {
+      planning_count_chart(series, spec, planning_location())
+    }
+  })
+
+  output$planningIndicatorNotes <- renderUI({
+    spec <- planning_spec()
+    series <- planning_series()
+    notes <- character(0)
+    if (any(grepl("\\*", series$flag))) notes <- c(notes, "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.")
+    if (any(grepl("\u2020", series$flag))) notes <- c(notes, "\u2020 triénio com anos em que os óbitos com menos de 1 ano por município estão incompletos no INE (1995-2001): valor subestimado.")
+    breaks <- PLANNING_SERIES_BREAKS[PLANNING_SERIES_BREAKS$indicator == spec$id & PLANNING_SERIES_BREAKS$year %in% planning_year_range(), , drop = FALSE]
+    if (nrow(breaks) > 0) notes <- c(notes, paste0("Linha pontilhada em ", breaks$year, ": ", breaks$note))
+    if (length(notes) == 0) return(NULL)
+    helpText(HTML(paste(htmltools::htmlEscape(notes), collapse = "<br>")))
+  })
+
+  output$planningIndicatorTable <- renderTable({
+    planning_series_display(planning_series(), planning_spec(), planning_areas())
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
 
-  planning_long_table <- reactive({
-    planning_profile() %>%
-      dplyr::left_join(PLANNING_INDICATORS, by = c("indicator" = "id")) %>%
-      dplyr::transmute(
-        Local = .data$area,
-        Indicador = .data$label,
-        Referência = .data$ref,
-        Período = purrr::map2_chr(.data$indicator, .data$year, planning_period_label),
-        Unidade = .data$unit,
-        Valor = .data$value,
-        `IC 95% inferior` = .data$lower,
-        `IC 95% superior` = .data$upper,
-        Numerador = .data$numerator,
-        Denominador = .data$denominator,
-        Nota = .data$flag
+  # Every indicator, up to the last year chosen, for the summary tab.
+  planning_all_indicators <- reactive({
+    areas <- planning_areas_all_comparators()
+    last <- max(planning_year_range())
+    years <- seq.int(max(1991L, last - 4L), last)
+    planning_indicator_table(areas$area, years, lookup = active_nuts_lookup())
+  })
+
+  # The summary shows every checked comparator whatever the indicator in view.
+  planning_areas_all_comparators <- reactive({
+    comparators <- planning_available_comparators()
+    chosen <- intersect(planning_comparator_state$selected, comparators$area)
+    dplyr::bind_rows(
+      tibble::tibble(area = planning_location(), level = "Local"),
+      comparators[comparators$area %in% chosen, c("area", "level")]
+    )
+  })
+
+  output$planningSummaryTable <- renderTable({
+    planning_summary_display(planning_all_indicators(), planning_areas_all_comparators())
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  planning_ranking_year <- reactive({
+    spec <- planning_spec()
+    available <- planning_indicator_years(spec$id)
+    available <- available[available <= max(planning_year_range())]
+    validate(need(length(available) > 0, "Sem anos disponíveis para este indicador."))
+    max(available)
+  })
+
+  output$planningRankingNote <- renderUI({
+    spec <- planning_spec()
+    helpText(if (isTRUE(spec$comparable)) {
+      paste0(
+        "Todas as ULS do Continente em ", planning_period_label(spec$id, planning_ranking_year()),
+        " (o último período disponível até ao ano escolhido). A azul, a ULS do local; a tracejado, Portugal. ",
+        "As cinco ULS que partilham municípios aparecem nos dois agrupamentos exactos."
       )
-  })
-
-  output$downloadPlanningCSV <- downloadHandler(
-    filename = function() paste0("indicadores_planeamento_", input$planning_year, "_", Sys.Date(), ".csv"),
-    content = function(file) write_csv_utf8(planning_long_table(), file)
-  )
-
-  planning_trend_plot <- reactive({
-    request <- planning_request()
-    spec <- planning_indicator_spec(request$indicator)
-    years <- planning_indicator_years(request$indicator)
-    validate(need(length(years) > 0, "Sem anos disponíveis para este indicador."))
-
-    series <- shiny::withProgress(message = "A calcular a série...", value = 0.3, {
-      planning_indicator_table(request$areas, years, ids = request$indicator, lookup = request$lookup)
-    }) %>%
-      dplyr::filter(!is.na(.data$value))
-    validate(need(nrow(series) > 0, "Sem valores para a selecção."))
-
-    x_label <- if (spec$window > 1) "Último ano do triénio" else "Ano"
-    breaks <- PLANNING_SERIES_BREAKS[PLANNING_SERIES_BREAKS$indicator == request$indicator, , drop = FALSE]
-    plot <- ggplot(series, aes(x = year, y = value, colour = area, fill = area)) +
-      geom_line(linewidth = 0.9) +
-      geom_point(size = 1.4)
-    if (nrow(breaks) > 0) {
-      # Drawn between the last year of the old series and the first of the new.
-      plot <- plot + geom_vline(xintercept = breaks$year - 0.5, linetype = "dotted", colour = "grey30")
-    }
-    if (any(!is.na(series$lower))) {
-      plot <- plot + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA)
-    }
-    plot +
-      labs(
-        title = paste0(spec$label, " [", spec$ref, "]"),
-        subtitle = paste0(
-          "Unidade: ", spec$unit,
-          if (any(!is.na(series$lower))) " · sombreado: IC 95%" else "",
-          if (nrow(breaks) > 0) paste0("\nLinha pontilhada: mudança de série. ", paste(unique(breaks$note), collapse = " ")) else ""
-        ),
-        x = x_label, y = NULL, colour = NULL, fill = NULL
-      ) +
-      theme_minimal() +
-      theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
-  })
-
-  output$planningTrend <- renderPlot({
-    planning_trend_plot()
-  })
-
-  output$downloadPlanningTrend <- downloadHandler(
-    filename = function() paste0("planeamento_evolucao_", input$planning_indicator, "_", Sys.Date(), ".png"),
-    content = function(file) save_ggplot_png(file, planning_trend_plot())
-  )
-
-  planning_ranking <- reactive({
-    request <- planning_request()
-    units <- planning_uls_units()
-    validate(need(length(units) > 0, "A tabela de ULS não está disponível."))
-
-    shiny::withProgress(message = "A calcular todas as ULS...", value = 0.3, {
-      planning_indicator_table(c("Portugal", units), request$year, ids = request$indicator, lookup = request$lookup)
+    } else {
+      "As contagens absolutas não se comparam entre ULS de tamanhos diferentes. Escolha uma taxa, proporção ou índice."
     })
   })
 
-  planning_ranking_plot <- reactive({
-    request <- planning_request()
-    spec <- planning_indicator_spec(request$indicator)
-    ranking <- planning_ranking()
-    reference <- ranking$value[ranking$area == "Portugal"]
-    units <- ranking %>%
-      dplyr::filter(.data$area != "Portugal", !is.na(.data$value)) %>%
-      dplyr::mutate(
-        selected = .data$area %in% request$areas,
-        label = paste0(.data$area, .data$flag),
-        label = stats::reorder(.data$label, .data$value)
-      )
-    validate(need(nrow(units) > 0, "Sem valores para este indicador e ano."))
-
-    plot <- ggplot(units, aes(x = label, y = value, fill = selected)) +
-      geom_col(width = 0.75)
-    if (any(!is.na(units$lower))) {
-      plot <- plot + geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.3, colour = "grey35")
-    }
-    if (length(reference) == 1 && is.finite(reference)) {
-      plot <- plot + geom_hline(yintercept = reference, linetype = "dashed", colour = "grey20")
-    }
-    plot +
-      coord_flip() +
-      scale_fill_manual(values = c(`FALSE` = "#8fb3d9", `TRUE` = "#d9534f"), guide = "none") +
-      labs(
-        title = paste0(spec$label, " - ", planning_period_label(request$indicator, request$year)),
-        subtitle = paste0("Unidade: ", spec$unit, ". A vermelho, as ULS seleccionadas."),
-        x = NULL, y = NULL
-      ) +
-      theme_minimal() +
-      theme(plot.title = element_text(hjust = 0.5))
+  output$planningRankingPlot <- plotly::renderPlotly({
+    spec <- planning_spec()
+    validate(need(isTRUE(spec$comparable), "Sem comparação para contagens absolutas."))
+    year <- planning_ranking_year()
+    units <- planning_uls_units()
+    ranking <- planning_indicator_table(c("Portugal", units), year, ids = spec$id, lookup = active_nuts_lookup())
+    local <- planning_location()
+    highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
+    planning_ranking_chart(ranking, spec, year, highlight = highlight)
   })
 
-  output$planningRanking <- renderPlot({
-    planning_ranking_plot()
+  planning_pyramid_year <- reactive({
+    available <- snapshot_years_for("population")
+    available <- available[available <= max(planning_year_range())]
+    validate(need(length(available) > 0, "Sem população para os anos escolhidos."))
+    max(available)
   })
 
-  output$downloadPlanningRanking <- downloadHandler(
-    filename = function() paste0("planeamento_uls_", input$planning_indicator, "_", input$planning_year, "_", Sys.Date(), ".png"),
-    content = function(file) save_ggplot_png(file, planning_ranking_plot(), height = 1400)
-  )
-
-  output$downloadPlanningRankingCSV <- downloadHandler(
-    filename = function() paste0("planeamento_uls_", input$planning_indicator, "_", input$planning_year, "_", Sys.Date(), ".csv"),
-    content = function(file) {
-      write_csv_utf8(
-        planning_ranking() %>%
-          dplyr::arrange(dplyr::desc(.data$value)) %>%
-          dplyr::transmute(Local = .data$area, Valor = .data$value, `IC 95% inferior` = .data$lower,
-                           `IC 95% superior` = .data$upper, Nota = .data$flag),
-        file
-      )
-    }
-  )
-
-  planning_pyramid_plot <- reactive({
-    request <- planning_request()
-    pyramid <- dplyr::bind_rows(lapply(utils::head(request$areas, 4), planning_pyramid, year = request$year, lookup = request$lookup))
-    validate(need(nrow(pyramid) > 0, "Sem população para o ano escolhido."))
-
-    pyramid <- pyramid %>%
-      dplyr::mutate(
-        age_band = factor(.data$age_band, levels = unique(.data$age_band[order(.data$lower)])),
-        signed = ifelse(.data$sex == "H", -.data$share, .data$share),
-        sex = ifelse(.data$sex == "H", "Homens", "Mulheres"),
-        area = factor(.data$area, levels = utils::head(request$areas, 4))
-      )
-    limit <- max(abs(pyramid$signed))
-
-    ggplot(pyramid, aes(x = age_band, y = signed, fill = sex)) +
-      geom_col(width = 0.9) +
-      coord_flip() +
-      facet_wrap(~area) +
-      scale_y_continuous(limits = c(-limit, limit), labels = function(x) paste0(format(abs(x), decimal.mark = ","), "%")) +
-      scale_fill_manual(values = c(Homens = "#4a7fb5", Mulheres = "#c0506b")) +
-      labs(
-        title = paste0("Pirâmide etária - ", request$year),
-        subtitle = if (length(request$areas) > 4) "Mostram-se os primeiros 4 locais seleccionados." else NULL,
-        x = NULL, y = NULL, fill = NULL
-      ) +
-      theme_minimal() +
-      theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+  output$planningPyramidPlot <- plotly::renderPlotly({
+    year <- planning_pyramid_year()
+    lookup <- active_nuts_lookup()
+    local <- planning_location()
+    own <- planning_pyramid(local, year, lookup)
+    validate(need(nrow(own) > 0, "Sem população para este local."))
+    comparators <- planning_areas_all_comparators()
+    comparator <- if (nrow(comparators) > 1) comparators$area[[2]] else if (!identical(local, "Portugal")) "Portugal" else NULL
+    other <- if (is.null(comparator)) NULL else planning_pyramid(comparator, year, lookup)
+    planning_pyramid_chart(own, other, paste0(local, " ", year), if (is.null(comparator)) NULL else paste0(comparator, " ", year))
   })
 
-  output$planningPyramid <- renderPlot({
-    planning_pyramid_plot()
+  planning_proportional_view <- reactive({
+    available <- planning_proportional_years()
+    available <- available[available <= max(planning_year_range())]
+    validate(need(length(available) > 0, "A mortalidade proporcional precisa de três anos de óbitos até ao ano escolhido."))
+    end_year <- max(available)
+    list(
+      end_year = end_year,
+      table = planning_proportional_table(planning_areas_all_comparators()$area, end_year, lookup = active_nuts_lookup())
+    )
   })
 
-  output$downloadPlanningPyramid <- downloadHandler(
-    filename = function() paste0("planeamento_piramide_", input$planning_year, "_", Sys.Date(), ".png"),
-    content = function(file) save_ggplot_png(file, planning_pyramid_plot())
-  )
-
-  planning_proportional_table <- reactive({
-    request <- planning_request()
-    validate(need(
-      request$year %in% planning_proportional_years(),
-      "A mortalidade proporcional precisa dos três anos do triénio terminado no ano escolhido."
+  output$planningProportionalNote <- renderUI({
+    view <- planning_proportional_view()
+    helpText(paste0(
+      "Todas as idades, ambos os sexos, triénio ", view$end_year - 2L, "-", view$end_year, " [I45]. ",
+      "Barras: o local; pontos: os comparadores. «Restantes causas» reúne o que os 13 grandes ",
+      "grupos não cobrem, para que o total feche em 100%."
     ))
-    dplyr::bind_rows(lapply(request$areas, planning_proportional, end_year = request$year, lookup = request$lookup))
   })
 
-  output$planningProportional <- renderTable({
-    prop <- planning_proportional_table()
-    validate(need(nrow(prop) > 0, "Sem dados."))
-    prop %>%
+  output$planningProportionalPlot <- plotly::renderPlotly({
+    view <- planning_proportional_view()
+    planning_proportional_chart(view$table, planning_areas_all_comparators())
+  })
+
+  output$planningProportionalTable <- renderTable({
+    view <- planning_proportional_view()
+    areas <- planning_areas_all_comparators()
+    columns <- planning_series_name(areas$area, areas$level)
+    view$table %>%
       dplyr::mutate(
-        cell = paste0(
-          planning_format_value(.data$share, 1), "% (",
-          formatC(.data$deaths, format = "d", big.mark = ".", decimal.mark = ","), ")"
-        ),
+        column = columns[match(.data$area, areas$area)],
+        cell = paste0(planning_format_value(.data$share, 1), "% (", planning_format_value(.data$deaths, 0), ")"),
         order = match(.data$code, unique(.data$code))
       ) %>%
-      dplyr::select(order, `Grupo de causas` = group, Período = period, area, cell) %>%
-      tidyr::pivot_wider(names_from = area, values_from = cell) %>%
+      dplyr::select(order, `Grupo de causas` = group, column, cell) %>%
+      tidyr::pivot_wider(names_from = column, values_from = cell) %>%
       dplyr::arrange(order) %>%
       dplyr::select(-order)
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
 
-  output$downloadPlanningProportionalCSV <- downloadHandler(
-    filename = function() paste0("planeamento_mortalidade_proporcional_", input$planning_year, "_", Sys.Date(), ".csv"),
+  output$planningDataDate <- renderUI({
+    date <- planning_data_date()
+    helpText(paste0(
+      "Os ficheiros indicam a data de importação dos dados",
+      if (is.na(date)) "." else paste0(" (", date, ")."),
+      " Definição das regiões: NUTS ", active_nuts_vintage(), "."
+    ))
+  })
+
+  output$downloadPlanningSelectionXLSX <- downloadHandler(
+    filename = function() {
+      paste0("indicadores_planeamento_", gsub("[^A-Za-z0-9]+", "_", iconv(planning_location(), to = "ASCII//TRANSLIT")), "_", Sys.Date(), ".xlsx")
+    },
     content = function(file) {
-      write_csv_utf8(
-        planning_proportional_table() %>%
-          dplyr::transmute(Local = .data$area, Período = .data$period, Código = .data$code,
-                           `Grupo de causas` = .data$group, Óbitos = .data$deaths, `%` = .data$share,
-                           `IC 95% inferior` = .data$lower, `IC 95% superior` = .data$upper),
-        file
+      areas <- planning_areas_all_comparators()
+      shiny::withProgress(message = "A preparar o Excel...", value = 0, {
+        write_planning_workbook(
+          file, areas,
+          lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
+          focus = planning_location(), years = planning_year_range(),
+          progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
+        )
+      })
+    }
+  )
+
+  # The full file depends only on the data and the NUTS vintage, so it is built
+  # once per import and kept in the cache.
+  output$downloadPlanningFullXLSX <- downloadHandler(
+    filename = function() paste0("indicadores_planeamento_todas_as_areas_NUTS", active_nuts_vintage(), "_", Sys.Date(), ".xlsx"),
+    content = function(file) {
+      date <- planning_data_date()
+      cached <- file.path(
+        get_app_dir(), ".mortality-shiny-cache", "exports",
+        paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date), ".xlsx")
       )
+      if (!file.exists(cached)) {
+        dir.create(dirname(cached), recursive = TRUE, showWarnings = FALSE)
+        shiny::withProgress(message = "A gerar o Excel de todas as áreas...", value = 0, {
+          write_planning_workbook(
+            paste0(cached, ".tmp.xlsx"), planning_full_export_areas(active_nuts_lookup()),
+            lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = date,
+            include_long = FALSE,
+            progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
+          )
+          file.rename(paste0(cached, ".tmp.xlsx"), cached)
+        })
+      }
+      file.copy(cached, file, overwrite = TRUE)
     }
   )
 

@@ -951,6 +951,35 @@ Pensions change series in 2017 (Série 1990-2023 to Série 2017, about 5.5% fewe
 pensioners); `PLANNING_SERIES_BREAKS` records it and the evolution chart marks
 it.
 
+### Location, comparators and export
+
+The tab is built around one location. `planning_comparators()` proposes, for
+that location, one containing area per level above it - ULS, ARS, NUTS III,
+NUTS II, NUTS I, Portugal - by testing which units' municipalities include all
+of the location's. The two geographies interleave (a ULS can lie inside a NUTS
+III, a NUTS III inside an ARS), so levels are ranked Município < ULS < NUTS III
+< ARS = NUTS II < NUTS I < Portugal. A containing unit with exactly the
+location's municipalities, or a nearer comparator's, is dropped as it would
+repeat the same values; Portugal is always kept, since it reads INE's national
+row. Comparators are offered only for indicators flagged `comparable` in
+`PLANNING_INDICATORS` (rates, shares, indices, per-capita values); counts are
+shown for the location alone.
+
+Components are summed with a membership matrix (areas x municipalities), one
+matrix product per year, and indicators are computed for all areas and years in
+one vectorised pass, with exact Poisson and Clopper-Pearson intervals from their
+closed forms (identical to `poisson.test()` and `binom.test()`). All 381 areas
+x 35 years x 27 indicators take about 11 seconds, which is what allows the
+all-areas Excel file (`R/planning_export.R`) to be built on demand; it is cached
+per NUTS vintage and data import date.
+
+Chart forms (`R/planning_charts.R`): lines for comparable indicators, with the
+location's 95% interval as a band; bars with error bars for counts; sorted bars
+for the ULS ranking; a share-based pyramid with the comparator as an outline;
+bars and dots for cause groups. Each level has a fixed colour from the reference
+categorical palette, in its validated order; direct labels are drawn at line
+ends only up to four series, beyond which the legend carries identity.
+
 ### Aggregation
 
 Every area is a ratio of sums. The components (population by broad age group,

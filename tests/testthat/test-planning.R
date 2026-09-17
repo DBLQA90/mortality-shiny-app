@@ -161,16 +161,6 @@ test_that("the pyramid splits by sex and sums to 100%", {
   })
 })
 
-test_that("the profile table has one row per indicator and one column per area", {
-  with_planning_fixture(function(lookup) {
-    tab <- planning_indicator_table(c("Alfa", "Beta"), 2022L, lookup = lookup)
-    wide <- planning_profile_wide(tab)
-    expect_equal(nrow(wide), nrow(PLANNING_INDICATORS))
-    expect_true(all(c("Alfa", "Beta") %in% names(wide)))
-    expect_equal(wide$Período[grepl("infantil", wide$Indicador)], "2020-2022")
-  })
-})
-
 test_that("the cause groups are chapter-level rubrics INE publishes", {
   expect_equal(nrow(PLANNING_CAUSE_GROUPS), 13)
   expect_equal(anyDuplicated(PLANNING_CAUSE_GROUPS$cause), 0L)
@@ -382,5 +372,112 @@ test_that("the fertility index counts women at mid-year", {
     planning_clear_cache()
     tab <- planning_indicator_table("Alfa", 2022L, ids = "fertility_index", lookup = lookup)
     expect_equal(tab$value, 7 * 15 / 150 * 5)
+  })
+})
+
+test_that("closed-form intervals equal poisson.test and binom.test", {
+  for (n in c(0, 1, 7, 60, 1234)) {
+    ci <- planning_poisson_ci(n)
+    expect_equal(c(ci$lower, ci$upper), as.numeric(stats::poisson.test(n)$conf.int), tolerance = 1e-8)
+  }
+  for (pair in list(c(0, 10), c(3, 10), c(10, 10), c(60, 180))) {
+    ci <- planning_binomial_ci(pair[[1]], pair[[2]])
+    expect_equal(c(ci$lower, ci$upper), as.numeric(stats::binom.test(pair[[1]], pair[[2]])$conf.int * 100), tolerance = 1e-8)
+  }
+  expect_true(all(is.na(unlist(planning_binomial_ci(3, 0)))))
+})
+
+test_that("comparators are the containing areas, one per level, nearest first", {
+  lookup <- tibble::tibble(
+    municipality = c("Alfa", "Beta", "Gama"),
+    municipality_code = c("1110001", "1110002", "1120001"),
+    nuts1 = "Continente", nuts2 = "Norte", nuts3 = c("Sub", "Sub", "Outra")
+  )
+  local_health <- tibble::tibble(unit = character(0), kind = character(0), municipality = character(0), ars = character(0))
+
+  comps <- planning_comparators("Alfa", lookup, local_health)
+  expect_equal(comps$level, c("NUTS III", "NUTS II", "Portugal"))
+  expect_equal(comps$area, c("Sub", "Norte", "Portugal"))
+  # Continente has the same municipalities as Norte here: not repeated.
+  expect_false("Continente" %in% comps$area)
+
+  expect_equal(planning_comparators("Sub", lookup, local_health)$area, c("Norte", "Portugal"))
+  expect_equal(nrow(planning_comparators("Portugal", lookup, local_health)), 0)
+
+  levels <- planning_area_levels(lookup, local_health)
+  expect_equal(levels$level[levels$area == "Norte"], "NUTS II")
+  expect_equal(levels$level[levels$area == "Alfa"], "Município")
+})
+
+test_that("every indicator is marked comparable or not, and counts are not", {
+  expect_true(is.logical(PLANNING_INDICATORS$comparable))
+  counts <- PLANNING_INDICATORS$id[PLANNING_INDICATORS$unit == "N.º"]
+  expect_true(all(!PLANNING_INDICATORS$comparable[PLANNING_INDICATORS$id %in% counts]))
+  expect_true(all(PLANNING_INDICATORS$comparable[!PLANNING_INDICATORS$id %in% counts]))
+  expect_setequal(names(PLANNING_SHEET_NAMES), PLANNING_INDICATORS$id)
+  expect_true(all(nchar(PLANNING_SHEET_NAMES) <= 31))
+  for (forbidden in c("[", "]", ":", "*", "?", "/", "\\")) {
+    expect_false(any(grepl(forbidden, PLANNING_SHEET_NAMES, fixed = TRUE)))
+  }
+})
+
+test_that("the many-area proportional table matches the single-area one", {
+  with_planning_fixture(function(lookup) {
+    single <- planning_proportional("Norte", 2022L, lookup = lookup)
+    many <- planning_proportional_table(c("Alfa", "Norte", "Portugal"), 2022L, lookup = lookup)
+    norte <- many[many$area == "Norte", ]
+    expect_equal(norte$deaths, single$deaths)
+    expect_equal(norte$lower, single$lower)
+    # Portugal reads its published row (61 all-cause deaths a year).
+    expect_equal(many$deaths[many$area == "Portugal" & many$code == "C00"], 183)
+  })
+})
+
+test_that("both Excel workbooks are written with a sheet per indicator", {
+  skip_if_not_installed("openxlsx")
+  with_planning_fixture(function(lookup) {
+    path <- tempfile(fileext = ".xlsx")
+    areas <- tibble::tibble(area = c("Alfa", "Norte", "Portugal"), level = c("Local", "NUTS II", "Portugal"))
+    write_planning_workbook(path, areas, lookup = lookup, data_date = "2026-09-17", focus = "Alfa")
+    sheets <- openxlsx::getSheetNames(path)
+    expect_true(all(c("Leia-me", "Resumo", "Dados", "I4 Envelhecimento", "I37 Óbitos") %in% sheets))
+    readme <- openxlsx::read.xlsx(path, "Leia-me", colNames = FALSE)[[1]]
+    expect_true(any(grepl("2026-09-17", readme)))
+
+    ageing <- openxlsx::read.xlsx(path, "I4 Envelhecimento", startRow = 4)
+    expect_equal(ageing$Local, c("Alfa", "Norte", "Portugal"))
+    expect_equal(ageing[["2022"]][ageing$Local == "Norte"], 5 / 3 * 100)
+
+    summary <- openxlsx::read.xlsx(path, "Resumo")
+    deaths <- summary[grepl("^Óbitos", summary$Indicador), ]
+    # A count has no comparators.
+    expect_true(is.na(deaths[["Norte.(NUTS.II)"]]))
+    expect_false(is.na(deaths[["Alfa.(Local)"]]))
+
+    full <- tempfile(fileext = ".xlsx")
+    write_planning_workbook(full, areas, lookup = lookup, include_long = FALSE)
+    expect_false("Dados" %in% openxlsx::getSheetNames(full))
+    expect_false("Resumo" %in% openxlsx::getSheetNames(full))
+  })
+})
+
+test_that("charts build for rates, counts, rankings, pyramids and causes", {
+  with_planning_fixture(function(lookup) {
+    areas <- tibble::tibble(area = c("Alfa", "Norte", "Portugal"), level = c("Local", "NUTS II", "Portugal"))
+    rate <- planning_indicator_table(areas$area, 2020:2022, ids = "death_rate", lookup = lookup)
+    expect_s3_class(planning_trend_chart(rate, planning_indicator_spec("death_rate"), areas), "plotly")
+    count <- planning_indicator_table("Alfa", 2020:2022, ids = "deaths", lookup = lookup)
+    expect_s3_class(planning_count_chart(count, planning_indicator_spec("deaths"), "Alfa"), "plotly")
+    ranking <- planning_indicator_table(c("Portugal", "Alfa", "Beta"), 2022L, ids = "death_rate", lookup = lookup)
+    expect_s3_class(planning_ranking_chart(ranking, planning_indicator_spec("death_rate"), 2022L, "Alfa"), "plotly")
+    expect_s3_class(planning_pyramid_chart(planning_pyramid("Alfa", 2022L, lookup), planning_pyramid("Portugal", 2022L, lookup), "Alfa", "Portugal"), "plotly")
+    expect_s3_class(planning_proportional_chart(planning_proportional_table(areas$area, 2022L, lookup = lookup), areas), "plotly")
+
+    shown <- planning_series_display(rate, planning_indicator_spec("death_rate"), areas)
+    expect_equal(names(shown), c("Período", "Alfa", "Norte (NUTS II)", "Portugal"))
+    expect_equal(shown$Período, c("2022", "2021", "2020"))
+
+    summary <- planning_summary_display(planning_indicator_table(areas$area, 2022L, lookup = lookup), areas)
+    expect_equal(summary$`Norte (NUTS II)`[summary$Indicador == "Óbitos [I37]"], "")
   })
 })

@@ -116,38 +116,46 @@ testServer(app, {
                 if (isTRUE(all.equal(total, co$value[1]))) "EXACT" else "MISMATCH"))
   }
 
-  # The planning tab. Its figures must agree with INE's own rows: municipal
-  # death totals are complete, so Continente built from its municipalities
-  # closes against the published Continente row to within the deaths of unknown
-  # residence, and the workbook's 2020-2022 Continente total is 356,333.
+  # The planning tab, built around one location. Its figures must agree with
+  # INE's own rows: the workbook's Continente 2020-2022 total is 356,333, and
+  # the fertility index reproduces INE's published national series.
   cat("\n=== Planning indicators ===\n")
   session$setInputs(
-    nuts_vintage = "2024",
-    planning_area = c("Portugal", "Continente", "ARS Norte", "ULS Matosinhos", "Lisboa"),
-    planning_year = 2022, planning_indicator = "ageing_index", go_planning = 1
+    nuts_vintage = "2024", planning_area = "Matosinhos", planning_indicator = "infant_rate",
+    planning_years = c(2015, 2025)
   )
-  profile <- tryCatch(planning_profile(), error = function(e) e)
-  if (inherits(profile, "error")) {
-    cat("   ERROR:", conditionMessage(profile), "\n")
-  } else {
-    wanted <- c("pop_total", "ageing_index", "birth_rate", "death_rate", "infant_rate")
-    print(as.data.frame(profile[profile$indicator %in% wanted, c("area", "indicator", "value", "flag")]))
+  comparators <- tryCatch(planning_available_comparators(), error = function(e) e)
+  if (!inherits(comparators, "error")) {
+    cat("   Matosinhos comparators:", paste(paste0(comparators$level, "=", comparators$area), collapse = "; "), "\n")
   }
-  prop <- tryCatch(planning_proportional_table(), error = function(e) e)
+  session$setInputs(planning_comparators = comparators$area)
+  series <- tryCatch(planning_series(), error = function(e) e)
+  if (inherits(series, "error")) {
+    cat("   ERROR:", conditionMessage(series), "\n")
+  } else {
+    cat("   infant rate series rows:", nrow(series), "areas:", length(unique(series$area)), "\n")
+  }
+
+  session$setInputs(planning_indicator = "pop_total")
+  cat("   absolute indicator areas:", nrow(planning_areas()), "(location only)\n")
+
+  session$setInputs(planning_area = "Continente", planning_indicator = "death_rate", planning_years = c(2020, 2022))
+  prop <- tryCatch(planning_proportional_view(), error = function(e) e)
   if (!inherits(prop, "error")) {
-    total <- prop$deaths[prop$area == "Continente" & prop$code == "C00"]
-    # 356,355 on the current files: 22 above the workbook (0.006%) - the gap
-    # the precedence rule leaves: 2022 is read from 0013166, not 0008206.
+    total <- prop$table$deaths[prop$table$area == "Continente" & prop$table$code == "C00"]
+    # 356,355 on the current files: 22 above the workbook (0.006%) - 2022 is
+    # read from 0013166, not 0008206.
     cat(sprintf("   Continente 2020-2022 all-cause deaths = %.0f (workbook I45: 356333, diff %+.0f) %s\n",
                 total, total - 356333, if (abs(total - 356333) <= 100) "OK" else "MISMATCH"))
   }
-  # The fertility index reproduces INE's published national series.
-  session$setInputs(planning_area = "Portugal", planning_year = 2023, planning_indicator = "fertility_index", go_planning = 2)
-  isf <- tryCatch(planning_profile(), error = function(e) e)
+
+  session$setInputs(planning_area = "Portugal", planning_indicator = "fertility_index", planning_years = c(2023, 2023))
+  isf <- tryCatch(planning_series(), error = function(e) e)
   if (!inherits(isf, "error")) {
-    value <- isf$value[isf$indicator == "fertility_index"]
+    value <- isf$value[isf$area == "Portugal" & isf$year == 2023]
     cat(sprintf("   Portugal 2023 fertility index = %.2f (INE 0001293: 1.32) %s\n", value, if (round(value, 2) == 1.32) "EXACT" else "MISMATCH"))
   }
-  ranking <- tryCatch(planning_ranking(), error = function(e) e)
-  if (!inherits(ranking, "error")) cat("   ULS ranked:", sum(ranking$area != "Portugal"), "\n")
+  session$setInputs(planning_area = "ULS Guarda", planning_indicator = "ageing_index", planning_years = c(2020, 2025))
+  ranking <- tryCatch(output$planningRankingPlot, error = function(e) e)
+  cat("   ULS ranking chart:", if (inherits(ranking, "error")) conditionMessage(ranking) else "OK", "\n")
 }, session = MockShinySession$new())

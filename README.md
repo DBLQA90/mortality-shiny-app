@@ -281,9 +281,12 @@ I32, I33, I35, I37-I42, I45, I64, I65). Socio-economic, birth and neonatal
 components are fetched by `tools/fetch_planning_extra.R` into
 `data/snapshots/planning_extra`.
 
-Sub-tabs: a profile table, the evolution of one indicator over all years, a
-ranking of every ULS for one indicator and year, population pyramids, and
-proportional mortality. Areas are ratios of sums over their municipalities;
+The tab is built around one location: each indicator as a chart and a table,
+with the areas containing the location (its ULS, ARS, NUTS III/II/I, Portugal)
+as comparators for rates, shares and indices but not for counts; a summary of
+every indicator; the ULS ranking; the pyramid; and proportional mortality. Two
+Excel downloads close the tab: the location and its comparators, and every area
+the app can build (the automated counterpart of the PLS workbook). Areas are ratios of sums over their municipalities;
 Portugal and Continente use INE's published rows. Deaths come from the
 municipal all-ages totals (`data/snapshots/death_totals`), which are complete,
 rather than from the age breakdown, which is not. The engine is

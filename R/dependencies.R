@@ -8,6 +8,7 @@ required_packages <- c(
   "tidyverse",
   "shiny",
   "plotly",
+  "openxlsx",
   "forecast",
   "ineptr2",
   "strucchange",
