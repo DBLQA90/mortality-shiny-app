@@ -44,6 +44,7 @@ for (app_file in c(
   "R/avoidable.R",
   "R/planning_indicators.R",
   "R/life_expectancy.R",
+  "R/planning_under75.R",
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/data_versions.R",
@@ -4404,23 +4405,31 @@ server <- function(input, output, session) {
   })
 
   planning_proportional_view <- reactive({
-    available <- planning_proportional_years()
+    under75 <- identical(input$planning_proportional_ages, "under75")
+    available <- if (under75) planning_under75_years() else planning_proportional_years()
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "A mortalidade proporcional precisa de três anos de óbitos até ao ano escolhido."))
     end_year <- max(available)
-    list(
-      end_year = end_year,
-      table = planning_proportional_table(planning_areas_all_comparators()$area, end_year, lookup = active_nuts_lookup())
-    )
+    areas <- planning_areas_all_comparators()$area
+    table <- if (under75) {
+      planning_under75_table(areas, end_year, lookup = active_nuts_lookup(), vintage = active_nuts_vintage())
+    } else {
+      planning_proportional_table(areas, end_year, lookup = active_nuts_lookup())
+    }
+    list(end_year = end_year, under75 = under75, table = table)
   })
 
   output$planningProportionalNote <- renderUI({
     view <- planning_proportional_view()
-    helpText(paste0(
-      "Todas as idades, ambos os sexos, triénio ", view$end_year - 2L, "-", view$end_year, " [I45]. ",
+    note <- paste0(
+      if (view$under75) "Óbitos antes dos 75 anos" else "Todas as idades",
+      ", ambos os sexos, triénio ", view$end_year - 2L, "-", view$end_year,
+      if (view$under75) " [I46]. " else " [I45]. ",
       "Barras: o local; pontos: os comparadores. «Restantes causas» reúne o que os 13 grandes ",
       "grupos não cobrem, para que o total feche em 100%."
-    ))
+    )
+    flagged <- if (view$under75) planning_under75_note(view$table) else NULL
+    tagList(helpText(note), if (!is.null(flagged)) helpText(flagged))
   })
 
   output$planningProportionalPlot <- plotly::renderPlotly({
@@ -4435,7 +4444,9 @@ server <- function(input, output, session) {
     view$table %>%
       dplyr::mutate(
         column = columns[match(.data$area, areas$area)],
-        cell = paste0(planning_format_value(.data$share, 1), "% (", planning_format_value(.data$deaths, 0), ")"),
+        cell = paste0(planning_format_value(.data$share, 1), "%",
+                      if ("flag" %in% names(view$table)) .data$flag else "",
+                      " (", planning_format_value(.data$deaths, 0), ")"),
         order = match(.data$code, unique(.data$code))
       ) %>%
       dplyr::select(order, `Grupo de causas` = group, column, cell) %>%

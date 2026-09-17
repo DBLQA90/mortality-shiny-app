@@ -904,7 +904,7 @@ location. The engine is `R/planning_indicators.R`.
 | Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
 | Neonatal, early neonatal, post-neonatal | I40-I42 | deaths <28 d, <7 d, 28-364 d / live births x 1,000, three years |
 | Late fetal, perinatal mortality | I43, I44 | stillbirths 28+ weeks, and those plus deaths <7 d, / (live births + stillbirths) x 1,000, three years |
-| Proportional mortality | I45 | deaths per large cause group / all deaths x 100, three years |
+| Proportional mortality | I45, I46 | deaths per large cause group / all deaths x 100, three years, all ages and under 75 |
 | Population pyramid | I3 | share by five-year band and sex |
 
 ### Life expectancy at birth (I10)
@@ -945,6 +945,35 @@ and +0.87 (2021-2023) years, standard deviation 0.3, correlation 0.97, rank
 correlation 0.94-0.95. The offset is not the open interval (a Gompertz extension
 beyond 85 would raise, not lower, the values) nor the population revision; it is
 INE's method. App values are comparable with each other, not with INE's.
+
+### Proportional mortality under 75 (I46)
+
+I45 reads the complete all-ages totals; I46 needs the age breakdown, so each
+area takes the better of two sources (`R/planning_under75.R`): INE's own
+regional row where one exists - Portugal, Continente, every NUTS region, and the
+ULS that coincide with a NUTS III unit, matched by identical membership so a
+territory published under one of its two names still counts - and otherwise the
+sum of its municipalities. An area is built entirely from one source: if any of
+the year's cause files is missing from INE's rows, the whole area falls back to
+municipal sums, so its shares always add up.
+
+How good the municipal sum is, measured against INE's rows: for 2020-2022 it
+reproduces the under-75 deaths of Alto Minho and Algarve exactly and their
+shares to within 0.08 and 0.29 points; Portugal's shares are within 0.21 points.
+The exception is 2014, where INE published an age for only 79.7% of municipal
+deaths (52.7% for the worst cause group); Alto Minho's 2012-2014 shares are then
+off by up to 2.2 points. Areas not on INE rows are marked in the three triennia
+containing 2014.
+
+Deaths are deliberately not rescaled to the complete totals. Measured against
+INE's rows, rescaling makes the shares worse: deaths with no published age sit
+mostly at older ages, so spreading them proportionally moves too many below 75
+(Portugal 2020-2022, malignant tumours: 38.69% exact, 38.48% from municipal
+sums, 39.20% rescaled). The same bias applies, mildly, to the life-expectancy
+repair, which affects only flagged municipalities.
+
+All 381 areas and 32 triennia take about 30 seconds, and the all-areas Excel
+file about 85 seconds in total.
 
 ### Socio-economic, birth and neonatal sources
 

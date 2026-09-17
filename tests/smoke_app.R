@@ -149,6 +149,17 @@ testServer(app, {
                 total, total - 356333, if (abs(total - 356333) <= 100) "OK" else "MISMATCH"))
   }
 
+  # Proportional mortality under 75 (I46): Continente 2020-2022 against the
+  # workbook's 98,546 deaths.
+  session$setInputs(planning_proportional_ages = "under75", planning_years = c(2020, 2022))
+  u75 <- tryCatch(planning_proportional_view(), error = function(e) e)
+  if (!inherits(u75, "error")) {
+    total <- u75$table$deaths[u75$table$area == "Continente" & u75$table$code == "C00"]
+    cat(sprintf("   Continente 2020-2022 deaths under 75 = %.0f (workbook I46: 98546) %s\n",
+                total, if (isTRUE(all.equal(total, 98546))) "EXACT" else "MISMATCH"))
+  }
+  session$setInputs(planning_proportional_ages = "all")
+
   session$setInputs(planning_area = "Portugal", planning_indicator = "fertility_index", planning_years = c(2023, 2023))
   isf <- tryCatch(planning_series(), error = function(e) e)
   if (!inherits(isf, "error")) {

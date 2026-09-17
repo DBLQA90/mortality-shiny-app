@@ -97,6 +97,7 @@ write_planning_workbook <- function(path,
     "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.",
     "† triénio com anos (1995-2001) em que os óbitos com menos de 1 ano por município estão incompletos no INE: valor subestimado.",
     "‡ esperança de vida em que mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.",
+    "§ mortalidade proporcional com menos de 75 anos, num triénio que inclui 2014, numa área sem linha regional do INE: as quotas podem estar desviadas em cerca de 2 pontos percentuais.",
     "",
     "Esperança de vida à nascença",
     "Tábua de mortalidade abreviada (Chiang II, grupos quinquenais até 85 e mais anos), por triénio, com o método e a variância de PHEindicatormethods. Omitida para populações até 5.000 e quando o intervalo de confiança excede 20 anos.",
@@ -111,7 +112,7 @@ write_planning_workbook <- function(path,
     "Uma folha por indicador: áreas em linhas, anos (ou triénios) em colunas, com os limites do intervalo de confiança de 95% em dois blocos por baixo, quando o indicador tem intervalo.",
     if (include_long) "Dados: formato longo, com intervalos de confiança de 95%, numerador e denominador.",
     "Pirâmide etária: população por grupo etário e sexo.",
-    "Mortalidade proporcional: óbitos por grande grupo de causas, por triénio.",
+    "Mortalidade proporcional: óbitos por grande grupo de causas, por triénio, para todas as idades [I45] e para as idades abaixo de 75 [I46].",
     "",
     "Fontes: INE (população 0003182/0008273/0012918; óbitos 0008206/0013166; nados-vivos 0000003/0008084/0012434; e os indicadores listados no manual da aplicação)."
   )
@@ -255,6 +256,24 @@ write_planning_workbook <- function(path,
     openxlsx::writeData(wb, "Mortalidade proporcional", proportional, headerStyle = header_style)
     openxlsx::freezePane(wb, "Mortalidade proporcional", firstRow = TRUE)
     openxlsx::setColWidths(wb, "Mortalidade proporcional", cols = 1:9, widths = c(11, 42, 11, 8, 50, 10, 8, 14, 14))
+  }
+
+  # --- Proportional mortality under 75 ---------------------------------------------
+  under75_years <- planning_under75_years()
+  under75_years <- under75_years[under75_years <= max(years) & under75_years >= min(years)]
+  if (length(under75_years) > 0) {
+    progress(0.95, "mortalidade proporcional < 75 anos")
+    under75 <- planning_under75_table(areas$area, under75_years, lookup = lookup, vintage = vintage) %>%
+      dplyr::left_join(areas, by = "area") %>%
+      dplyr::transmute(
+        `Nível` = .data$level, Local = .data$area, `Triénio` = .data$period, `Código` = .data$code,
+        `Grupo de causas` = .data$group, `Óbitos com menos de 75 anos` = .data$deaths, `%` = .data$share,
+        `IC 95% inferior` = .data$lower, `IC 95% superior` = .data$upper, Marca = .data$flag
+      )
+    openxlsx::addWorksheet(wb, "Mortalidade proporcional <75")
+    openxlsx::writeData(wb, "Mortalidade proporcional <75", under75, headerStyle = header_style)
+    openxlsx::freezePane(wb, "Mortalidade proporcional <75", firstRow = TRUE)
+    openxlsx::setColWidths(wb, "Mortalidade proporcional <75", cols = 1:10, widths = c(11, 42, 11, 8, 50, 22, 8, 14, 14, 7))
   }
 
   progress(0.97, "a gravar")

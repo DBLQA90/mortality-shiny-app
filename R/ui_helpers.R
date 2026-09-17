@@ -880,6 +880,11 @@ planning_tab_ui <- function() {
           tabPanel(
             "Mortalidade proporcional",
             br(),
+            radioButtons(
+              "planning_proportional_ages", "Idades:",
+              choices = c("Todas as idades [I45]" = "all", "Menos de 75 anos [I46]" = "under75"),
+              selected = "all", inline = TRUE
+            ),
             uiOutput("planningProportionalNote"),
             plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
             div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
@@ -904,8 +909,8 @@ planning_tab_ui <- function() {
               downloadButton("downloadPlanningFullXLSX", "Todas as áreas"),
               helpText(
                 "Portugal, NUTS I, II e III, ARS, ULS e os 308 municípios, todos os ",
-                "indicadores e anos, uma folha por indicador. Pode demorar cerca de meio ",
-                "minuto a gerar da primeira vez."
+                "indicadores e anos, uma folha por indicador. Pode demorar cerca de ",
+                "um minuto e meio a gerar da primeira vez."
               )
             )
           ),
@@ -930,7 +935,7 @@ planning_method_notes <- function() {
       tags$li("Índices de dependência: jovens (0-14) ou idosos (65+) por 100 pessoas com 15-64 anos."),
       tags$li("Taxas brutas de natalidade e mortalidade: nados-vivos ou óbitos por 1.000 habitantes (população residente estimada)."),
       tags$li("Taxa de mortalidade infantil: óbitos com menos de 1 ano por 1.000 nados-vivos, somando três anos de cada."),
-      tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio."),
+      tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio. Para todas as idades [I45] lê os totais municipais por causa, completos. Para as idades abaixo de 75 [I46] precisa da repartição por idade: usa a linha regional do INE onde existe (Portugal, Continente, regiões NUTS e as ULS que coincidem com uma NUTS III) e, nas restantes áreas, a soma dos municípios, que reproduz as linhas do INE com um desvio até 0,3 pontos percentuais - excepto nos triénios que incluem 2014, assinalados com \u00a7."),
       tags$li("Esperança de vida à nascença: tábua de mortalidade abreviada (Chiang II) por triénio, com grupos quinquenais até 85 e mais anos, óbitos de todas as causas e população a meio do ano. Os óbitos sem idade publicada num município são distribuídos pelas idades na proporção dos restantes (marca \u2021 quando excedem 2%). Reproduz os valores do Eurostat para Portugal, mas fica cerca de 0,8-0,9 anos acima dos publicados pelo INE, que usa outra metodologia; a ordenação das regiões coincide (correlação 0,97)."),
       tags$li("Mortalidade neonatal, neonatal precoce e pós-neonatal: óbitos com menos de 28 dias, menos de 7 dias e de 28 a 364 dias por 1.000 nados-vivos, no triénio. A neonatal e a pós-neonatal somam a infantil."),
       tags$li("Índice sintético de fecundidade: soma das taxas de fecundidade por grupo quinquenal de idade da mãe (15-49 anos), vezes 5. Os nascimentos de mães com menos de 15 anos contam no grupo 15-19 e os de 50 e mais no grupo 45-49."),

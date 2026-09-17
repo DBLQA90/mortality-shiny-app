@@ -690,3 +690,58 @@ test_that("indicator sheets carry the interval bounds below the values", {
     expect_false(any(grepl("Limite", counts[[1]])))
   })
 })
+
+test_that("proportional mortality under 75 prefers INE's rows and flags 2014", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    causes <- c("Todas as causas de morte", "Tumores (neoplasmas) malignos", "Doenças do aparelho circulatório")
+    bands <- age_levels
+    young <- bands[1:15]
+
+    for (year in 2012:2022) {
+      dir <- file.path(root, "deaths", "0008206", paste0("year_", year))
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      for (cause in causes) {
+        per_band <- switch(cause, "Todas as causas de morte" = 10, "Tumores (neoplasmas) malignos" = 4, 1)
+        frame <- tidyr::expand_grid(area = c("Alfa", "Beta", "Portugal"), sex = "HM", age_band = bands) %>%
+          dplyr::mutate(year = year, cause = cause,
+                        deaths = per_band * ifelse(area == "Portugal", 3, ifelse(area == "Alfa", 2, 1)))
+        saveRDS(frame, file.path(dir, paste0("cause_", planning_cause_file_token(cause), ".rds")))
+      }
+      # The death totals decide which triennia exist.
+      totals <- readRDS(file.path(root, "death_totals", "0008206", "year_2022.rds"))
+      saveRDS(dplyr::mutate(totals, year = year), file.path(root, "death_totals", "0008206", paste0("year_", year, ".rds")))
+    }
+    planning_clear_cache()
+
+    table <- planning_under75_table(c("Alfa", "Norte"), c(2022L, 2014L), lookup = lookup, vintage = "2024")
+    alfa <- table[table$area == "Alfa" & table$end_year == 2022, ]
+    # 15 bands under 75, three years, two per band for Alfa.
+    expect_equal(alfa$deaths[alfa$code == "C00"], 15 * 10 * 2 * 3)
+    expect_equal(alfa$share[alfa$code == "C07"], 4 / 10 * 100)
+    # Municipal sums: the triennium containing 2014 is flagged, 2020-2022 is not.
+    expect_equal(unique(table$flag[table$end_year == 2014]), "§")
+    expect_equal(unique(table$flag[table$end_year == 2022]), "")
+
+    # With an INE regional row for Norte (code 11), that row wins and the flag goes.
+    dir.create(file.path(root, "regional_deaths", "0008206"), recursive = TRUE, showWarnings = FALSE)
+    for (year in 2012:2022) {
+      rows <- tidyr::expand_grid(cause = causes, age_band = bands) %>%
+        dplyr::mutate(year = year, region_code = "11", area = "Norte", sex = "HM",
+                      deaths = ifelse(cause == "Todas as causas de morte", 40, ifelse(cause == "Tumores (neoplasmas) malignos", 20, 4)),
+                      source_indicator = "0008206")
+      saveRDS(rows, file.path(root, "regional_deaths", "0008206", paste0("year_", year, ".rds")))
+    }
+    planning_clear_cache()
+
+    # The 2019-2021 triennium: every year of it reads the same INE edition as
+    # the fixture's rows (a 2022 window would expect the newer one).
+    with_rows <- planning_under75_table("Norte", c(2021L, 2014L), lookup = lookup, vintage = "2024")
+    norte <- with_rows[with_rows$end_year == 2021, ]
+    expect_equal(norte$deaths[norte$code == "C00"], 15 * 40 * 3)
+    expect_equal(norte$share[norte$code == "C07"], 50)
+    expect_equal(unique(with_rows$flag), "")
+    expect_match(planning_under75_note(table), "2014")
+    expect_null(planning_under75_note(with_rows))
+  })
+})

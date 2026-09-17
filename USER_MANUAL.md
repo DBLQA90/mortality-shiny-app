@@ -924,7 +924,7 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Mortalidade neonatal, neonatal precoce e pós-neonatal | I40-I42 | óbitos com menos de 28 dias, menos de 7 dias e 28-364 dias por 1.000 nados-vivos, no triénio |
 | Mortalidade fetal tardia | I43 | fetos-mortos com 28 ou mais semanas por 1.000 nascimentos (nados-vivos + fetos-mortos), no triénio |
 | Mortalidade perinatal | I44 | fetos-mortos com 28 ou mais semanas e óbitos com menos de 7 dias, por 1.000 nascimentos, no triénio |
-| Mortalidade proporcional por grandes grupos de causas | I45 | óbitos de cada grupo sobre o total, no triénio |
+| Mortalidade proporcional por grandes grupos de causas | I45, I46 | óbitos de cada grupo sobre o total, no triénio, para todas as idades e para as idades abaixo de 75 |
 
 Os indicadores aparecem agrupados por tema: Demografia, Natalidade, Contexto
 social, Ambiente e Mortalidade.
@@ -980,9 +980,10 @@ verde e Portugal a violeta.
 - **Pirâmide etária** — a estrutura por idade e sexo do local, em percentagem da
   sua população, com o contorno do primeiro comparador seleccionado (ou de
   Portugal) por cima, para comparar estruturas de áreas de tamanhos diferentes (I3).
-- **Mortalidade proporcional** — os 13 grandes grupos de causas do I45, mais
-  «Restantes causas» para que o total feche em 100%: barras para o local, pontos
-  para os comparadores, e a tabela por baixo.
+- **Mortalidade proporcional** — os 13 grandes grupos de causas, mais «Restantes
+  causas» para que o total feche em 100%: barras para o local, pontos para os
+  comparadores, e a tabela por baixo. Pode escolher todas as idades [I45] ou
+  apenas os óbitos antes dos 75 anos [I46].
 - **Notas** — definições, fontes, mudanças de série e diferenças face ao ficheiro
   de apoio.
 
@@ -1038,6 +1039,31 @@ o que é equivalente à razão das contagens.
 
 Na escolaridade, a série conta apenas quem tem um nível completo; «sem nível
 completo» é a diferença para a população total do censo.
+
+### Mortalidade proporcional abaixo dos 75 anos
+
+A repartição por todas as idades [I45] lê os totais de óbitos por município e
+causa, que estão completos. A repartição abaixo dos 75 anos [I46] precisa da
+idade dos óbitos, e aí cada área usa a melhor fonte disponível:
+
+- **a linha regional do INE**, onde existe: Portugal, Continente, todas as regiões
+  NUTS e as ULS que coincidem com uma NUTS III (Alto Minho, Viseu Dão-Lafões,
+  Algarve e as quatro do Alentejo);
+- **a soma dos municípios**, nas restantes áreas.
+
+A soma dos municípios é fiável: em 2020-2022 reproduz exactamente os óbitos abaixo
+dos 75 anos do Alto Minho e do Algarve publicados pelo INE, e as quotas com um
+desvio máximo de 0,3 pontos percentuais.
+
+A excepção é 2014, ano em que o INE publicou a idade de apenas 80% dos óbitos por
+município (52% no pior grupo de causas). Nos três triénios que incluem 2014
+(2012-2014, 2013-2015 e 2014-2016), as áreas sem linha regional aparecem marcadas
+com `§`: as suas quotas podem estar desviadas em cerca de 2 pontos percentuais.
+
+Os óbitos não são reescalados para os totais completos. Testado contra as linhas
+do INE, reescalar piora as quotas em vez de as melhorar: os óbitos sem idade
+publicada estão sobretudo nas idades mais altas, pelo que distribuí-los na
+proporção dos restantes coloca demasiados abaixo dos 75 anos.
 
 ### Mortalidade fetal tardia e perinatal
 
