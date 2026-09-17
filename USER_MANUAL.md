@@ -910,6 +910,7 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Nascimentos em mães com menos de 20 anos | I32 | % dos nados-vivos, no triénio |
 | Nascimentos em mães com 35 e mais anos | I33 | % dos nados-vivos, no triénio |
 | Nascimentos pré-termo | I35 | menos de 37 semanas, % dos nascimentos com duração conhecida, no triénio |
+| Nascimentos com baixo peso | I36 | menos de 2.500 g, % dos nascimentos com peso conhecido, no triénio |
 | Beneficiários do RSI | I13, I14 | contagem, e por 1.000 habitantes com 15 e mais anos |
 | Pensionistas da segurança social | I15, I16 | contagem, e por 1.000 habitantes com 15 e mais anos |
 | Valor médio das pensões | I17 | valor total das pensões sobre o total de pensionistas (€ por ano) |
@@ -918,6 +919,8 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Esperança de vida à nascença, total e por sexo | I10 | tábua de mortalidade abreviada por triénio (ver abaixo) |
 | Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
 | Mortalidade neonatal, neonatal precoce e pós-neonatal | I40-I42 | óbitos com menos de 28 dias, menos de 7 dias e 28-364 dias por 1.000 nados-vivos, no triénio |
+| Mortalidade fetal tardia | I43 | fetos-mortos com 28 ou mais semanas por 1.000 nascimentos (nados-vivos + fetos-mortos), no triénio |
+| Mortalidade perinatal | I44 | fetos-mortos com 28 ou mais semanas e óbitos com menos de 7 dias, por 1.000 nascimentos, no triénio |
 | Mortalidade proporcional por grandes grupos de causas | I45 | óbitos de cada grupo sobre o total, no triénio |
 
 Os indicadores aparecem agrupados por tema: Demografia, Natalidade, Contexto
@@ -1014,6 +1017,14 @@ proporções) têm intervalo de confiança de 95%. Os índices de estrutura da
 população não têm: as estimativas de população não são uma amostra de
 acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
 1.000 nados-vivos, como no resto da aplicação.
+
+### Mortalidade fetal tardia e perinatal
+
+O INE publica por município os óbitos perinatais (fetos-mortos com 28 ou mais
+semanas de gestação mais óbitos com menos de 7 dias), mas não os fetos-mortos em
+separado. A aplicação obtém-nos subtraindo aos óbitos perinatais os óbitos com
+menos de 7 dias do mesmo município, que conhece desde 2011. Por isso estes dois
+indicadores começam no triénio 2011-2013.
 
 ### Esperança de vida à nascença
 

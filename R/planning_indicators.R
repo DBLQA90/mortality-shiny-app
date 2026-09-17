@@ -59,12 +59,15 @@ PLANNING_INDICATORS <- tibble::tribble(
   "life_expectancy",     "Mortalidade",         "Esperança de vida à nascença (triénio)",                  "I10", "anos",                     3L,      1L, TRUE,
   "life_expectancy_men", "Mortalidade",         "Esperança de vida à nascença, homens (triénio)",          "I10", "anos",                     3L,      1L, TRUE,
   "life_expectancy_women", "Mortalidade",       "Esperança de vida à nascença, mulheres (triénio)",        "I10", "anos",                     3L,      1L, TRUE,
+  "low_birth_weight_pct", "Natalidade",         "Nascimentos com baixo peso, menos de 2.500 g (triénio)", "I36", "%",                       3L,      1L, TRUE,
   "deaths",              "Mortalidade",         "Óbitos",                                                  "I37", "N.º",                      1L,      0L, FALSE,
   "death_rate",          "Mortalidade",         "Taxa bruta de mortalidade",                               "I38", "‰",                        1L,      1L, TRUE,
   "infant_rate",         "Mortalidade",         "Taxa de mortalidade infantil (triénio)",                  "I39", "‰ nados-vivos",            3L,      1L, TRUE,
   "neonatal_rate",       "Mortalidade",         "Taxa de mortalidade neonatal (triénio)",                  "I40", "‰ nados-vivos",            3L,      1L, TRUE,
   "early_neonatal_rate", "Mortalidade",         "Taxa de mortalidade neonatal precoce (triénio)",          "I41", "‰ nados-vivos",            3L,      1L, TRUE,
-  "postneonatal_rate",   "Mortalidade",         "Taxa de mortalidade pós-neonatal (triénio)",              "I42", "‰ nados-vivos",            3L,      1L, TRUE
+  "postneonatal_rate",   "Mortalidade",         "Taxa de mortalidade pós-neonatal (triénio)",              "I42", "‰ nados-vivos",            3L,      1L, TRUE,
+  "late_fetal_rate",     "Mortalidade",         "Taxa de mortalidade fetal tardia (triénio)",              "I43", "‰ nascimentos",            3L,      1L, TRUE,
+  "perinatal_rate",      "Mortalidade",         "Taxa de mortalidade perinatal (triénio)",                 "I44", "‰ nascimentos",            3L,      1L, TRUE
 )
 
 # Where a source changes definition, so the series is not continuous across the
@@ -182,6 +185,8 @@ planning_indicator_years <- function(id) {
     fertility_index = c("extra:births_by_mother_age", "population"),
     teen_births_pct = , older_births_pct = "extra:births_by_mother_age",
     preterm_pct = "extra:births_by_gestation",
+    low_birth_weight_pct = "extra:births_by_weight",
+    late_fetal_rate = , perinatal_rate = c("extra:perinatal_deaths", "extra:infant_deaths_by_age", "births"),
     rsi_beneficiaries = "extra:rsi_beneficiaries",
     rsi_rate = c("extra:rsi_beneficiaries", "population"),
     pensioners = "extra:pensioners",
@@ -233,7 +238,8 @@ planning_component_columns <- c(
   "births_mother_total", "births_mother_lt20", "births_mother_ge35",
   paste0("births_mage_", seq(15, 45, by = 5)),
   "births_gest_total", "births_gest_known", "births_preterm",
-  "neonatal_deaths", "early_neonatal_deaths", "postneonatal_deaths"
+  "births_weight_known", "births_low_weight",
+  "neonatal_deaths", "early_neonatal_deaths", "postneonatal_deaths", "perinatal_deaths"
 )
 
 planning_extra_dir <- function(measure) file.path(infant_snapshot_root(), "planning_extra", measure)
@@ -260,6 +266,19 @@ planning_five_year_lower <- function(label) {
   vapply(m, function(x) {
     if (length(x) == 3 && as.integer(x[3]) - as.integer(x[2]) == 4) as.integer(x[2]) else NA_integer_
   }, integer(1))
+}
+
+# Lower bound in grams of a birth-weight band, NA for "Total" and "Ignorada".
+planning_weight_lower <- function(label) {
+  label <- gsub("[[:space:]\u00a0\u202f]", "", as.character(label))
+  out <- rep(NA_real_, length(label))
+  under <- grepl("^Menosde[0-9]+g", label)
+  out[under] <- 0
+  band <- grepl("^[0-9]+-[0-9]+g$", label)
+  out[band] <- as.numeric(sub("^([0-9]+)-.*$", "\\1", label[band]))
+  open <- grepl("^[0-9]+gemais$", label)
+  out[open] <- as.numeric(sub("^([0-9]+)g.*$", "\\1", label[open]))
+  out
 }
 
 planning_open_lower <- function(label) {
@@ -416,6 +435,30 @@ planning_component_blocks <- function(year) {
       )
   }
 
+  # Birth weight: the bands read "2 000 - 2 499 g" (with non-breaking spaces),
+  # "Menos de 500 g" and "5 000 g e mais". Low birth weight is under 2,500 g,
+  # over the births whose weight is known.
+  weight <- read_planning_extra("births_by_weight", year)
+  if (!is.null(weight)) {
+    lower <- planning_weight_lower(weight$category)
+    blocks$weight <- tibble::tibble(area = weight$area, category = weight$category, value = weight$value, lower = lower) %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(
+        births_weight_known = sum(value[category == "Total"], na.rm = TRUE) -
+          sum(value[grepl("ignorad", category, ignore.case = TRUE)], na.rm = TRUE),
+        births_low_weight = sum(value[!is.na(lower) & lower < 2500], na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+
+  perinatal <- read_planning_extra("perinatal_deaths", year)
+  if (!is.null(perinatal)) {
+    blocks$perinatal <- perinatal %>%
+      dplyr::filter(.data$category == "Total") %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(perinatal_deaths = sum(value, na.rm = TRUE), .groups = "drop")
+  }
+
   infant_age <- read_planning_extra("infant_deaths_by_age", year)
   if (!is.null(infant_age)) {
     blocks$infant_age <- infant_age %>%
@@ -444,6 +487,8 @@ planning_column_block <- function(column) {
     pp_share = , pp_weight = "purchasing_power",
     waste_total = , waste_selective = "waste",
     births_gest_total = , births_gest_known = , births_preterm = "gestation",
+    births_weight_known = , births_low_weight = "weight",
+    perinatal_deaths = "perinatal",
     neonatal_deaths = , early_neonatal_deaths = , postneonatal_deaths = "infant_age",
     stop("Unknown planning component: ", column, call. = FALSE)
   )
@@ -676,6 +721,23 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
         value <- Reduce(`+`, rates) * 5
       },
       teen_births_pct = set_share("births_mother_lt20", "births_mother_total"),
+      low_birth_weight_pct = set_share("births_low_weight", "births_weight_known"),
+      late_fetal_rate = , perinatal_rate = {
+        # Stillbirths of 28 or more weeks are the perinatal deaths less the
+        # deaths under 7 days; both denominators are live births plus those
+        # stillbirths, as INE defines them.
+        perinatal <- total("perinatal_deaths")
+        stillbirths <- pmax(perinatal - total("early_neonatal_deaths"), 0)
+        births_total <- total("births")
+        events <- if (identical(id, "late_fetal_rate")) stillbirths else perinatal
+        rate <- planning_poisson_rate(events, births_total + stillbirths, 1000)
+        numerator <- events
+        denominator <- births_total + stillbirths
+        value <- rate$value
+        lower <- rate$lower
+        upper <- rate$upper
+        flag <- ifelse(unstable(births_total), "*", "")
+      },
       older_births_pct = set_share("births_mother_ge35", "births_mother_total"),
       preterm_pct = set_share("births_preterm", "births_gest_known"),
       rsi_beneficiaries = set_count("rsi", interval = FALSE),

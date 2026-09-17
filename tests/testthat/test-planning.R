@@ -552,3 +552,52 @@ test_that("life expectancy for areas pools three years and spreads unrecorded ag
     expect_gt(hm$upper[hm$area == "Beta"] - hm$lower[hm$area == "Beta"], hm$upper[hm$area == "Alfa"] - hm$lower[hm$area == "Alfa"])
   })
 })
+
+test_that("birth weight, late fetal and perinatal rates follow INE's definitions", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    put <- function(measure, year, frame) {
+      dir.create(file.path(root, "planning_extra", measure), recursive = TRUE, showWarnings = FALSE)
+      saveRDS(dplyr::mutate(frame, year = year, source_indicator = "x"),
+              file.path(root, "planning_extra", measure, paste0("year_", year, ".rds")))
+    }
+    for (year in 2020:2022) {
+      # 300 births: 12 under 2,500 g, 10 of unknown weight.
+      put("births_by_weight", year, tibble::tibble(
+        area = "Alfa",
+        category = c("Total", "Menos de 500 g", "500 - 999 g", "2 000 - 2 499 g", "3 000 - 3 499 g", "5 000 g e mais", "Ignorada"),
+        value = c(300, 1, 3, 8, 275, 3, 10)
+      ))
+      put("perinatal_deaths", year, tibble::tibble(area = "Alfa", category = "Total", value = 5))
+      put("infant_deaths_by_age", year, tibble::tibble(
+        area = "Alfa", category = c("Menos de 28 dias", "Menos de 7 dias", "28 - 364 dias"), value = c(3, 2, 1)
+      ))
+    }
+    planning_clear_cache()
+
+    tab <- planning_indicator_table("Alfa", 2022L,
+                                    ids = c("low_birth_weight_pct", "late_fetal_rate", "perinatal_rate"),
+                                    lookup = lookup)
+    get <- function(id) tab[tab$indicator == id, ]
+
+    # Under 2,500 g over births of known weight, pooled over three years.
+    expect_equal(get("low_birth_weight_pct")$value, 36 / 870 * 100)
+    expect_equal(
+      c(get("low_birth_weight_pct")$lower, get("low_birth_weight_pct")$upper),
+      as.numeric(stats::binom.test(36, 870)$conf.int * 100)
+    )
+
+    # Stillbirths are perinatal deaths less deaths under 7 days: 15 - 6 = 9.
+    # Both rates divide by live births plus stillbirths (Alfa: 900 + 9).
+    expect_equal(get("late_fetal_rate")$value, 9 / 909 * 1000)
+    expect_equal(get("late_fetal_rate")$numerator, 9)
+    expect_equal(get("perinatal_rate")$value, 15 / 909 * 1000)
+    expect_equal(get("perinatal_rate")$denominator, 909)
+    expect_equal(planning_indicator_years("perinatal_rate"), 2022L)
+  })
+})
+
+test_that("birth-weight bands parse, including the open top band", {
+  expect_equal(planning_weight_lower(c("Menos de 500 g", "500 - 999 g", "2 000 - 2 499 g", "5 000 g e mais", "Total", "Ignorada")),
+               c(0, 500, 2000, 5000, NA, NA))
+})

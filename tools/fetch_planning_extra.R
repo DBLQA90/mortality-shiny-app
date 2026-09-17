@@ -85,6 +85,19 @@ MEASURES <- list(
     editions = c("0005950", "0008084", "0012434"),
     target = "semanas|^Ignorad"
   ),
+  births_by_weight = list(
+    # Birth weight bands, for the low-birth-weight share (I36).
+    editions = c("0005611", "0008088", "0012438"),
+    # Bands read "2 000 - 2 499 g", "Menos de 500 g" and "5 000 g e mais".
+    target = "[0-9] g|g e mais|^Ignorad"
+  ),
+  perinatal_deaths = list(
+    # Deaths under 7 days plus stillbirths of 28 or more weeks (I43, I44). The
+    # stillbirths are this minus the under-7-day deaths, which come from
+    # infant_deaths_by_age.
+    editions = c("0003527", "0008173", "0012549"),
+    target = NULL
+  ),
   infant_deaths_by_age = list(
     editions = c("0008181", "0012541"),
     target = "dias|meses|Menos de 1 dia|hora"

@@ -22,14 +22,15 @@ PLANNING_SHEET_NAMES <- c(
   youth_dependency = "I5 Dependência jovens", old_dependency = "I6 Dependência idosos",
   births = "I7 Nados-vivos", birth_rate = "I8 Natalidade", fertility_index = "I9 Fecundidade",
   teen_births_pct = "I32 Mães com menos de 20", older_births_pct = "I33 Mães com 35 e mais",
-  preterm_pct = "I35 Pré-termo", rsi_beneficiaries = "I13 RSI", rsi_rate = "I14 RSI por 1000",
+  preterm_pct = "I35 Pré-termo", low_birth_weight_pct = "I36 Baixo peso", rsi_beneficiaries = "I13 RSI", rsi_rate = "I14 RSI por 1000",
   pensioners = "I15 Pensionistas", pensioners_rate = "I16 Pensionistas por 1000",
   pension_mean = "I17 Pensão média", purchasing_power = "I28 Poder de compra",
   waste_per_capita = "I64 Resíduos", waste_selective_per_capita = "I65 Resíduos selectivos",
   life_expectancy = "I10 Esperança de vida", life_expectancy_men = "I10 EV homens",
   life_expectancy_women = "I10 EV mulheres", deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
   neonatal_rate = "I40 Mortalidade neonatal", early_neonatal_rate = "I41 Neonatal precoce",
-  postneonatal_rate = "I42 Pós-neonatal"
+  postneonatal_rate = "I42 Pós-neonatal", late_fetal_rate = "I43 Fetal tardia",
+  perinatal_rate = "I44 Perinatal"
 )
 
 planning_number_format <- function(digits) {

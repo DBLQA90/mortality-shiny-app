@@ -892,6 +892,7 @@ location. The engine is `R/planning_indicators.R`.
 | Total fertility rate | I9 | sum over mother's age 15-49 of births / women x 5 |
 | Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
 | Preterm births | I35 | under 37 weeks / births of known duration x 100, three years |
+| Low birth weight | I36 | under 2,500 g / births of known weight x 100, three years |
 | RSI beneficiaries | I13, I14 | count; per 1,000 residents aged 15+ |
 | Social security pensioners | I15, I16 | count; per 1,000 residents aged 15+ |
 | Mean pension | I17 | sum(pensioners x mean) / sum(pensioners) |
@@ -899,6 +900,7 @@ location. The engine is `R/planning_indicators.R`.
 | Urban waste per inhabitant | I64, I65 | tonnes x 1,000 / population |
 | Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
 | Neonatal, early neonatal, post-neonatal | I40-I42 | deaths <28 d, <7 d, 28-364 d / live births x 1,000, three years |
+| Late fetal, perinatal mortality | I43, I44 | stillbirths 28+ weeks, and those plus deaths <7 d, / (live births + stillbirths) x 1,000, three years |
 | Proportional mortality | I45 | deaths per large cause group / all deaths x 100, three years |
 | Population pyramid | I3 | share by five-year band and sex |
 
@@ -954,6 +956,8 @@ year the newest edition covering it wins, and rows are mapped by DICO.
 | Births by mother's age | `0005952`, `0008092`, `0012441` | 1995-2025 |
 | Births by gestation | `0005950`, `0008084`, `0012434` | 1995-2025 |
 | Under-1 deaths by age | `0008181`, `0012541` | 2011-2025 |
+| Births by weight | `0005611`, `0008088`, `0012438` | 1995-2025 |
+| Perinatal deaths | `0003527`, `0008173`, `0012549` | 1995-2025 |
 
 Every dimension other than area and the measure's own is pinned to its total
 category; a response whose other dimension has no total is refused rather than
@@ -978,6 +982,12 @@ current one. With that denominator the index reproduces INE's published series
 for Portugal (`0001293`) to two decimals in 2018-2020 and 2022-2025; 2021 reads
 1.32 against 1.30 because its mid-year mean straddles the population revision.
 The end-of-year estimate alone reads up to 0.03 low.
+
+INE publishes perinatal deaths per municipality but not stillbirths on their
+own, so stillbirths of 28 or more weeks are the perinatal deaths less the deaths
+under 7 days of the same municipality, which are known from 2011. I43 and I44
+therefore start with the 2011-2013 triennium, and both divide by live births
+plus those stillbirths, as INE defines the rates.
 
 The workbook's RSI and pensioner rates divide by residents aged 15 and over (its
 2021 denominators match the 15+ population of the superseded estimate to within
