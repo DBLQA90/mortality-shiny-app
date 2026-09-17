@@ -66,6 +66,9 @@ PLANNING_INDICATORS <- tibble::tribble(
   "life_expectancy",     "Mortalidade",         "Esperança de vida à nascença (triénio)",                  "I10", "anos",                     3L,      1L, TRUE,
   "life_expectancy_men", "Mortalidade",         "Esperança de vida à nascença, homens (triénio)",          "I10", "anos",                     3L,      1L, TRUE,
   "life_expectancy_women", "Mortalidade",       "Esperança de vida à nascença, mulheres (triénio)",        "I10", "anos",                     3L,      1L, TRUE,
+  "life_expectancy_65",  "Mortalidade",         "Esperança de vida aos 65 anos (triénio)",                 "I10", "anos",                     3L,      1L, TRUE,
+  "life_expectancy_65_men", "Mortalidade",      "Esperança de vida aos 65 anos, homens (triénio)",         "I10", "anos",                     3L,      1L, TRUE,
+  "life_expectancy_65_women", "Mortalidade",    "Esperança de vida aos 65 anos, mulheres (triénio)",       "I10", "anos",                     3L,      1L, TRUE,
   "low_birth_weight_pct", "Natalidade",         "Nascimentos com baixo peso, menos de 2.500 g (triénio)", "I36", "%",                       3L,      1L, TRUE,
   "deaths",              "Mortalidade",         "Óbitos",                                                  "I37", "N.º",                      1L,      0L, FALSE,
   "death_rate",          "Mortalidade",         "Taxa bruta de mortalidade",                               "I38", "‰",                        1L,      1L, TRUE,
@@ -865,8 +868,7 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
       dplyr::filter(.data$year %in% years)
   }
   if (length(life_ids) > 0) {
-    sexes <- names(life_expectancy_ids)[match(life_ids, life_expectancy_ids)]
-    results$life <- planning_life_expectancy_table(areas, years, sexes = sexes, lookup = lookup) %>%
+    results$life <- planning_life_expectancy_table(areas, years, ids = life_ids, lookup = lookup) %>%
       dplyr::select(-dplyr::any_of("reason"))
   }
   dplyr::bind_rows(results) %>%

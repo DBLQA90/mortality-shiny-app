@@ -400,6 +400,8 @@ figures a year apart. Every data file is written through `R/data_versions.R`:
   writes nothing.
 - **`data/snapshots/REFRESH_STATUS.md`** ends with a table of what the run
   revised.
+- **Exports carry the version**: every CSV ends with a comment line and every
+  PNG a caption naming the import date, the NUTS vintage and the export date.
 - Revisions made before the log existed (the Lisboa repair, the population
   revision, the births fix) were recorded from git by
   `tools/backfill_import_log.R`; their previous versions are restored from git.

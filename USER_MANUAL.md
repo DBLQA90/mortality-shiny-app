@@ -919,7 +919,7 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Valor médio das pensões | I17 | valor total das pensões sobre o total de pensionistas (€ por ano) |
 | Poder de compra per capita | I28 | Portugal = 100; anos ímpares (estudo bienal) |
 | Resíduos urbanos por habitante | I64, I65 | total e recolha selectiva, kg por habitante |
-| Esperança de vida à nascença, total e por sexo | I10 | tábua de mortalidade abreviada por triénio (ver abaixo) |
+| Esperança de vida à nascença e aos 65 anos, total e por sexo | I10 | tábua de mortalidade abreviada por triénio (ver abaixo) |
 | Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
 | Mortalidade neonatal, neonatal precoce e pós-neonatal | I40-I42 | óbitos com menos de 28 dias, menos de 7 dias e 28-364 dias por 1.000 nados-vivos, no triénio |
 | Mortalidade fetal tardia | I43 | fetos-mortos com 28 ou mais semanas por 1.000 nascimentos (nados-vivos + fetos-mortos), no triénio |
@@ -1049,6 +1049,10 @@ indicadores começam no triénio 2011-2013.
 
 ### Esperança de vida à nascença
 
+Apresentada à nascença e aos 65 anos, no total e por sexo, porque os planos usam
+as duas: a primeira resume a mortalidade em todas as idades, a segunda a
+mortalidade depois dos 65.
+
 Calculada com uma tábua de mortalidade abreviada (método de Chiang), por triénio,
 a partir dos óbitos de todas as causas por grupo quinquenal de idade até «85 e mais
 anos» e da população a meio do ano. É o método usado pelo Eurostat e pela Public
@@ -1062,7 +1066,8 @@ mesmo município, e o valor é marcado com `‡` quando representam mais de 2% d
 óbitos do triénio.
 
 **Não compare estes valores com os publicados pelo INE.** Para Portugal a aplicação
-coincide com o Eurostat (2017-2019: 81,9 anos; Eurostat 82,0 em 2019), mas o INE,
+coincide com o Eurostat, à nascença e aos 65 anos (2017-2019: 81,9 e 20,7 anos;
+Eurostat 82,0 e 20,6 em 2019), mas o INE,
 com a sua Metodologia 2007, publica valores cerca de 0,8-0,9 anos mais baixos. A
 diferença é praticamente constante entre regiões: nas 26 NUTS III de 2021-2023 a
 correlação com o INE é 0,97. Os valores da aplicação servem para comparar áreas e
@@ -1165,17 +1170,25 @@ copiados. Os mapas de municípios por região e por ULS são sempre os actuais.
 
 ## 12. Exportação de Resultados
 
-Os separadores têm botões para exportar:
+Todas as tabelas podem ser descarregadas em CSV e os gráficos estáticos em PNG. O
+separador de Indicadores de Planeamento exporta ainda dois ficheiros Excel (ver a
+secção 10-B).
 
-- tabelas em CSV;
-- gráficos em PNG.
+**Todos os ficheiros dizem de que versão dos dados vieram.** No fim de cada CSV há
+uma linha de comentário, e no rodapé de cada PNG uma legenda, com a data de
+importação dos dados do INE, a definição das regiões em uso e a data de
+exportação:
 
-Antes de exportar:
+```text
+# Dados do INE importados até 2026-09-17; regiões NUTS 2024; exportado em 2026-09-18
+```
 
-- confirme a fonte de dados;
-- confirme ano, local, causa, sexo e população;
-- verifique se há avisos;
-- evite exportar previsões com erro detectado ou dados incompletos sem mencionar essa limitação.
+A linha começa por `#` e fica depois dos dados, pelo que o ficheiro continua a
+abrir normalmente no Excel; em R ou Python pode ser ignorada com a opção de
+comentário (`read.csv(..., comment.char = "#")`). Guarde-a junto dos resultados:
+é o que permite explicar, mais tarde, diferenças entre análises feitas em datas
+diferentes (ver a secção sobre o histórico dos dados, no separador Disponibilidade
+de Dados).
 
 ## 13. Fluxos de Trabalho Recomendados
 

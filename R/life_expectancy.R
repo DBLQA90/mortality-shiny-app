@@ -32,23 +32,36 @@
 
 LIFE_OPEN_BAND <- "85 e mais anos"
 LIFE_WIDTHS <- c(rep(5, length(age_levels) - 1), NA)
+LIFE_AGE_STARTS <- as.integer(sub("^(\\d+).*$", "\\1", age_levels))
 LIFE_MIN_POPULATION <- 5000
 LIFE_REDISTRIBUTED_FLAG <- 0.02
 
-life_expectancy_ids <- c(HM = "life_expectancy", H = "life_expectancy_men", M = "life_expectancy_women")
+# The six indicators the life table feeds: expectancy at birth and at 65, each
+# for both sexes and for men and women.
+LIFE_INDICATORS <- tibble::tribble(
+  ~id,                        ~sex, ~age,
+  "life_expectancy",          "HM", 0L,
+  "life_expectancy_men",      "H",  0L,
+  "life_expectancy_women",    "M",  0L,
+  "life_expectancy_65",       "HM", 65L,
+  "life_expectancy_65_men",   "H",  65L,
+  "life_expectancy_65_women", "M",  65L
+)
+
+life_expectancy_ids <- LIFE_INDICATORS$id
 
 # One life table. `deaths` and `population` are per band, youngest first; `a` is
 # the fraction of each closed interval lived by those dying in it; the last band
 # is open. Returns e0 and its interval, or NA with a reason.
-abridged_life_expectancy <- function(deaths, population, widths, a, confidence = 0.95) {
+# The whole table in one pass: life expectancy and its standard error at every
+# age band, or a reason why it cannot be built.
+abridged_life_table <- function(deaths, population, widths, a) {
   k <- length(deaths)
-  out <- function(value, lower = NA_real_, upper = NA_real_, reason = "") {
-    list(value = value, lower = lower, upper = upper, reason = reason)
-  }
-  if (any(is.na(deaths)) || any(is.na(population))) return(out(NA_real_, reason = "sem dados"))
-  if (any(population <= 0)) return(out(NA_real_, reason = "população nula num grupo etário"))
-  if (sum(population) <= LIFE_MIN_POPULATION) return(out(NA_real_, reason = "população igual ou inferior a 5.000"))
-  if (any(deaths > population)) return(out(NA_real_, reason = "mais óbitos do que população"))
+  out <- function(reason) list(e = rep(NA_real_, k), se = rep(NA_real_, k), reason = reason)
+  if (any(is.na(deaths)) || any(is.na(population))) return(out("sem dados"))
+  if (any(population <= 0)) return(out("população nula num grupo etário"))
+  if (sum(population) <= LIFE_MIN_POPULATION) return(out("população igual ou inferior a 5.000"))
+  if (any(deaths > population)) return(out("mais óbitos do que população"))
 
   m <- deaths / population
   n <- widths
@@ -70,12 +83,30 @@ abridged_life_expectancy <- function(deaths, population, widths, a, confidence =
   weighted <- numeric(k)
   weighted[-k] <- variance_q[-k] * l[-k]^2 * ((1 - a[-k]) * n[-k] + e[-1])^2
   weighted[k] <- (l[k] / 2)^2 * variance_q[k]
-  se <- sqrt(sum(weighted) / l[1]^2)
+  # The variance of e(x) accumulates only the bands from x on.
+  se <- sqrt(rev(cumsum(rev(weighted))) / l^2)
+
+  list(e = e, se = se, reason = "")
+}
+
+# Life expectancy at one age, with its interval. Suppressed, like PHE, when the
+# 95% interval spans more than 20 years.
+abridged_life_expectancy <- function(deaths, population, widths, a, confidence = 0.95, at_age = 0) {
+  out <- function(value, lower = NA_real_, upper = NA_real_, reason = "") {
+    list(value = value, lower = lower, upper = upper, reason = reason)
+  }
+  table <- abridged_life_table(deaths, population, widths, a)
+  if (nzchar(table$reason)) return(out(NA_real_, reason = table$reason))
+
+  index <- match(at_age, LIFE_AGE_STARTS)
+  if (is.na(index)) stop("No age band starts at ", at_age, call. = FALSE)
+  value <- table$e[[index]]
+  se <- table$se[[index]]
   z <- stats::qnorm(confidence + (1 - confidence) / 2)
 
-  if (!is.finite(e[1])) return(out(NA_real_, reason = "valor não finito"))
+  if (!is.finite(value)) return(out(NA_real_, reason = "valor não finito"))
   if (stats::qnorm(0.975) * se > 10) return(out(NA_real_, reason = "intervalo de confiança superior a 20 anos"))
-  out(e[1], e[1] - z * se, e[1] + z * se)
+  out(value, value - z * se, value + z * se)
 }
 
 # ---------------------------------------------------------
@@ -174,7 +205,9 @@ life_year_block <- function(year, municipalities) {
 }
 
 # Life expectancy for `areas` over the triennia ending in `end_years`, by sex.
-planning_life_expectancy_table <- function(areas, end_years, sexes = c("HM", "H", "M"), lookup = get_nuts_lookup()) {
+planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup()) {
+  wanted <- LIFE_INDICATORS[LIFE_INDICATORS$id %in% ids, , drop = FALSE]
+  sexes <- unique(wanted$sex)
   membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
@@ -184,9 +217,9 @@ planning_life_expectancy_table <- function(areas, end_years, sexes = c("HM", "H"
   for (end_year in as.integer(end_years)) {
     window <- seq.int(end_year - 2L, end_year)
     if (!end_year %in% available) {
-      for (sex in sexes) {
+      for (id in wanted$id) {
         rows[[length(rows) + 1L]] <- tibble::tibble(
-          area = areas, year = end_year, indicator = life_expectancy_ids[[sex]],
+          area = areas, year = end_year, indicator = id,
           value = NA_real_, lower = NA_real_, upper = NA_real_, numerator = NA_real_, denominator = NA_real_, flag = ""
         )
       }
@@ -224,24 +257,38 @@ planning_life_expectancy_table <- function(areas, end_years, sexes = c("HM", "H"
         infant <- infant + infant_vec
       }
 
-      results <- lapply(seq_along(areas), function(i) {
+      # One table per area, read at each age the caller asked for.
+      tables <- lapply(seq_along(areas), function(i) {
         first <- deaths[i, 1]
         infant_share <- if (first > 0) min(infant[i], first) / first else 1
         a_first <- (infant_share * 0.1 + (1 - infant_share) * 2.5) / 5
         a <- c(a_first, rep(0.5, length(age_levels) - 1))
-        abridged_life_expectancy(deaths[i, ], person_years[i, ], LIFE_WIDTHS, a)
+        abridged_life_table(deaths[i, ], person_years[i, ], LIFE_WIDTHS, a)
       })
       total_deaths <- rowSums(deaths)
-      rows[[length(rows) + 1L]] <- tibble::tibble(
-        area = areas, year = end_year, indicator = life_expectancy_ids[[sex]],
-        value = vapply(results, `[[`, numeric(1), "value"),
-        lower = vapply(results, `[[`, numeric(1), "lower"),
-        upper = vapply(results, `[[`, numeric(1), "upper"),
-        numerator = unname(total_deaths),
-        denominator = unname(rowSums(person_years)),
-        flag = unname(ifelse(total_deaths > 0 & spread / total_deaths > LIFE_REDISTRIBUTED_FLAG, "‡", "")),
-        reason = vapply(results, `[[`, character(1), "reason")
-      )
+      z <- stats::qnorm(0.975)
+
+      for (age in unique(wanted$age[wanted$sex == sex])) {
+        index <- match(age, LIFE_AGE_STARTS)
+        value <- vapply(tables, function(t) t$e[[index]], numeric(1))
+        se <- vapply(tables, function(t) t$se[[index]], numeric(1))
+        reason <- vapply(tables, `[[`, character(1), "reason")
+        too_wide <- !is.na(se) & z * se > 10
+        reason[too_wide] <- "intervalo de confiança superior a 20 anos"
+        value[too_wide | !is.finite(value)] <- NA_real_
+
+        rows[[length(rows) + 1L]] <- tibble::tibble(
+          area = areas, year = end_year,
+          indicator = wanted$id[wanted$sex == sex & wanted$age == age],
+          value = value,
+          lower = ifelse(is.na(value), NA_real_, value - z * se),
+          upper = ifelse(is.na(value), NA_real_, value + z * se),
+          numerator = unname(total_deaths),
+          denominator = unname(rowSums(person_years)),
+          flag = unname(ifelse(total_deaths > 0 & spread / total_deaths > LIFE_REDISTRIBUTED_FLAG, "‡", "")),
+          reason = reason
+        )
+      }
     }
   }
   dplyr::bind_rows(rows)

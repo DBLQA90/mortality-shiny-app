@@ -888,7 +888,7 @@ location. The engine is `R/planning_indicators.R`.
 | Crude birth rate | I8 | births / population x 1,000 |
 | Deaths | I37 | count, all causes and ages |
 | Crude death rate | I38 | deaths / population x 1,000 |
-| Life expectancy at birth, total and by sex | I10 | abridged life table per triennium (below) |
+| Life expectancy at birth and at 65, total and by sex | I10 | abridged life table per triennium (below) |
 | Total fertility rate | I9 | sum over mother's age 15-49 of births / women x 5 |
 | Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
 | Preterm births | I35 | under 37 weeks / births of known duration x 100, three years |
@@ -930,6 +930,10 @@ age structure. Two adaptations to the app's data:
 
 Deaths are pooled over the three years; person-years are the sum of mid-year
 populations, each the mean of consecutive end-of-year estimates.
+
+Both ages come from one pass of the table: `abridged_life_table()` returns life
+expectancy and its standard error for every band, and each indicator reads the
+band it needs, with PHE's suppression rule applied at that age.
 
 **Validation.** For Portugal the tables agree with Eurostat's (`demo_mlexpec`):
 2017-2019 gives 81.9 at birth and 20.7 at 65 (Eurostat 2019: 82.0 and 20.6);
@@ -1258,6 +1262,12 @@ many commits in May 2026 take the last of them), and every change from
 Lisboa/Calheta/Lagoa repair (2,146 death chunks, 2026-08-11), the adoption of
 the revised population series (2026-08-20), the 0013166 refetch (2026-08-20),
 the regional-row refetch (2026-09-16) and the births fix (2026-09-17).
+
+**Exports.** Every CSV ends with a comment line, and every PNG carries a
+caption, naming the data import date, the NUTS vintage in force and the export
+date (`export_stamp()` in `R/helpers.R`). The Excel files state the same on
+their read-me sheet. The comment line sits after the data and starts with `#`,
+so the file still parses.
 
 **Reconstruction.** `data_as_of(date)` (`tools/data_as_of.R`) rebuilds the data
 directory as it stood at the end of a day: files unchanged since are

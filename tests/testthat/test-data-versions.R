@@ -166,3 +166,39 @@ test_that("a log written with fewer columns is upgraded before appending", {
     expect_equal(log$action[[2]], "added")
   })
 })
+
+test_that("exports carry the data version that produced them", {
+  stamp <- export_stamp("2026-09-17", "2024")
+  expect_match(stamp, "Dados do INE importados até 2026-09-17")
+  expect_match(stamp, "regiões NUTS 2024")
+  expect_match(stamp, format(Sys.Date(), "%Y-%m-%d"))
+  expect_match(export_stamp(NA_character_), "desconhecida")
+
+  # The CSV keeps its shape: the stamp is a comment after the data.
+  path <- tempfile(fileext = ".csv")
+  helpers_write_csv_utf8(tibble::tibble(area = c("A", "B"), value = c(1.5, 2.5)), path, stamp = stamp)
+  lines <- readLines(path)
+  expect_equal(length(lines), 4)
+  expect_match(lines[[4]], "^# Dados do INE importados até")
+  back <- utils::read.csv(path, comment.char = "#")
+  expect_equal(nrow(back), 2)
+  expect_equal(back$value, c(1.5, 2.5))
+
+  # Without a stamp the file is unchanged.
+  plain <- tempfile(fileext = ".csv")
+  helpers_write_csv_utf8(tibble::tibble(a = 1), plain)
+  expect_equal(length(readLines(plain)), 2)
+})
+
+test_that("a chart keeps its own caption and gains the stamp", {
+  skip_if_not_installed("ggplot2")
+  p <- ggplot2::ggplot(tibble::tibble(x = 1, y = 1), ggplot2::aes(x, y)) + ggplot2::geom_point()
+  expect_equal(stamp_ggplot(p, "Dados de 2026-09-17")$labels$caption, "Dados de 2026-09-17")
+
+  with_caption <- p + ggplot2::labs(caption = "Fonte: INE")
+  stamped <- stamp_ggplot(with_caption, "Dados de 2026-09-17")
+  expect_equal(stamped$labels$caption, "Fonte: INE\nDados de 2026-09-17")
+
+  # Not a ggplot, or no stamp: returned untouched.
+  expect_equal(stamp_ggplot(p, NULL)$labels$caption, NULL)
+})

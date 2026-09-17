@@ -312,25 +312,24 @@ server <- function(input, output, session) {
     }
   }
 
-  write_csv_utf8 <- function(x, file) {
-    utils::write.csv(
-      x,
-      file,
-      row.names = FALSE,
-      fileEncoding = "UTF-8"
-    )
+  # Every CSV and PNG this session writes says which data version produced it;
+  # the helpers themselves are in R/helpers.R.
+  current_export_stamp <- function() {
+    date <- tryCatch(latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))), error = function(e) NA_character_)
+    vintage <- tryCatch(active_nuts_vintage(), error = function(e) NULL)
+    export_stamp(date, vintage)
   }
 
-  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150) {
-    grDevices::png(file, width = width, height = height, res = res)
-    on.exit(grDevices::dev.off(), add = TRUE)
-    print(plot_obj)
+  write_csv_utf8 <- function(x, file, stamp = current_export_stamp()) {
+    helpers_write_csv_utf8(x, file, stamp = stamp)
   }
 
-  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150) {
-    grDevices::png(file, width = width, height = height, res = res)
-    on.exit(grDevices::dev.off(), add = TRUE)
-    force(plot_expr)
+  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
+    helpers_save_ggplot_png(file, plot_obj, width = width, height = height, res = res, stamp = stamp)
+  }
+
+  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
+    helpers_save_base_plot_png(file, plot_expr, width = width, height = height, res = res, stamp = stamp)
   }
 
   # Shared historical-series pipeline:
@@ -531,25 +530,24 @@ server <- function(input, output, session) {
     }
   }
 
-  write_csv_utf8 <- function(x, file) {
-    utils::write.csv(
-      x,
-      file,
-      row.names = FALSE,
-      fileEncoding = "UTF-8"
-    )
+  # Every CSV and PNG this session writes says which data version produced it;
+  # the helpers themselves are in R/helpers.R.
+  current_export_stamp <- function() {
+    date <- tryCatch(latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))), error = function(e) NA_character_)
+    vintage <- tryCatch(active_nuts_vintage(), error = function(e) NULL)
+    export_stamp(date, vintage)
   }
 
-  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150) {
-    grDevices::png(file, width = width, height = height, res = res)
-    on.exit(grDevices::dev.off(), add = TRUE)
-    print(plot_obj)
+  write_csv_utf8 <- function(x, file, stamp = current_export_stamp()) {
+    helpers_write_csv_utf8(x, file, stamp = stamp)
   }
 
-  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150) {
-    grDevices::png(file, width = width, height = height, res = res)
-    on.exit(grDevices::dev.off(), add = TRUE)
-    force(plot_expr)
+  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
+    helpers_save_ggplot_png(file, plot_obj, width = width, height = height, res = res, stamp = stamp)
+  }
+
+  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
+    helpers_save_base_plot_png(file, plot_expr, width = width, height = height, res = res, stamp = stamp)
   }
 
   # Shared historical-series pipeline:

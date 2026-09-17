@@ -539,7 +539,7 @@ test_that("life expectancy for areas pools three years and spreads unrecorded ag
 
     expect_equal(life_expectancy_years(), 2022L)
     table <- planning_indicator_table(c("Alfa", "Beta", "Norte"), 2022L, ids = life_expectancy_ids, lookup = lookup)
-    expect_equal(nrow(table), 9)
+    expect_equal(nrow(table), 3 * nrow(LIFE_INDICATORS))
     expect_true(all(is.finite(table$value)))
     # Same age-specific rates everywhere, so the same life expectancy.
     hm <- table[table$indicator == "life_expectancy", ]
@@ -548,6 +548,11 @@ test_that("life expectancy for areas pools three years and spreads unrecorded ag
     expect_equal(hm$value[hm$area == "Beta"], hm$value[hm$area == "Alfa"], tolerance = 1e-6)
     expect_equal(hm$flag[hm$area == "Beta"], "‡")
     expect_equal(hm$flag[hm$area == "Alfa"], "")
+    # Life expectancy at 65 is shorter than at birth, and shares the flag.
+    at65 <- table[table$indicator == "life_expectancy_65", ]
+    expect_true(all(at65$value < hm$value))
+    expect_equal(at65$flag[at65$area == "Beta"], "\u2021")
+
     # The smaller area has the wider interval.
     expect_gt(hm$upper[hm$area == "Beta"] - hm$lower[hm$area == "Beta"], hm$upper[hm$area == "Alfa"] - hm$lower[hm$area == "Alfa"])
   })
@@ -642,5 +647,46 @@ test_that("census indicators use the census years and their own denominators", {
     # The rate is weighted by each municipality's population aged 10 and over.
     expect_equal(get("illiteracy_rate", 2011), (0.05 * 800 + 0.10 * 400) / 1200 * 100)
     expect_equal(planning_indicator_years("illiteracy_rate"), c(2011L, 2021L))
+  })
+})
+
+test_that("the life table gives every age, and e65 matches a table read at 65", {
+  skip_if_not_installed("PHEindicatormethods")
+  ages <- c(0L, 1L, seq(5L, 90L, 5L))
+  population <- c(5000, 21000, rep(26000, 8), rep(30000, 6), 22000, 15000, 9000, 6000)
+  rates <- c(0.003, 0.0002, 0.0001, 0.0001, 0.0003, 0.0005, 0.0006, 0.0008, 0.001, 0.0015,
+             0.0025, 0.004, 0.006, 0.009, 0.014, 0.022, 0.035, 0.06, 0.1, 0.2)
+  deaths <- round(population * rates)
+  phe <- PHEindicatormethods::phe_life_expectancy(
+    tibble::tibble(age = ages, pop = population, deaths = deaths),
+    deaths, pop, age, age_contents = ages, le_age = 65
+  )
+  table <- abridged_life_table(deaths, population, c(1, 4, rep(5, 17), NA), c(0.1, rep(0.5, 19)))
+  index <- match(65L, ages)
+  expect_equal(table$e[[index]], phe$value, tolerance = 1e-10)
+  z <- stats::qnorm(0.975)
+  expect_equal(table$e[[index]] - z * table$se[[index]], phe$lowercl, tolerance = 1e-10)
+  expect_equal(nchar(table$reason), 0L)
+})
+
+test_that("indicator sheets carry the interval bounds below the values", {
+  skip_if_not_installed("openxlsx")
+  with_planning_fixture(function(lookup) {
+    path <- tempfile(fileext = ".xlsx")
+    areas <- tibble::tibble(area = c("Alfa", "Norte"), level = c("Local", "NUTS II"))
+    write_planning_workbook(path, areas, lookup = lookup, include_long = FALSE)
+
+    sheet <- openxlsx::read.xlsx(path, "I38 Mortalidade", startRow = 4, colNames = TRUE)
+    labels <- sheet[[1]]
+    expect_true(any(grepl("Limite inferior", labels)))
+    expect_true(any(grepl("Limite superior", labels)))
+
+    values <- openxlsx::read.xlsx(path, "I38 Mortalidade", startRow = 4, rows = 4:6, colNames = TRUE)
+    rate <- planning_indicator_table("Alfa", 2022L, ids = "death_rate", lookup = lookup)
+    expect_equal(values[["2022"]][values$Local == "Alfa"], round(rate$value, 6), tolerance = 1e-5)
+
+    # A count has no interval, so no bound blocks.
+    counts <- openxlsx::read.xlsx(path, "I1 População", startRow = 4, colNames = TRUE)
+    expect_false(any(grepl("Limite", counts[[1]])))
   })
 })

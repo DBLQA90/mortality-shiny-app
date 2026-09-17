@@ -11,7 +11,8 @@
 #              automated counterpart of the PLS support workbook
 #
 # Each indicator gets its own sheet, areas as rows and years (or triennia) as
-# columns, like the workbook. Values carrying a caveat (* thin denominator,
+# columns, like the workbook, with the bounds of the 95% interval in two blocks
+# below the values. Values carrying a caveat (* thin denominator,
 # † incomplete municipal source) are written in grey italics, and the read-me
 # sheet states the import date of the data, so two files for the same area can
 # be told apart.
@@ -30,7 +31,8 @@ PLANNING_SHEET_NAMES <- c(
   pension_mean = "I17 Pensão média", purchasing_power = "I28 Poder de compra",
   waste_per_capita = "I64 Resíduos", waste_selective_per_capita = "I65 Resíduos selectivos",
   life_expectancy = "I10 Esperança de vida", life_expectancy_men = "I10 EV homens",
-  life_expectancy_women = "I10 EV mulheres", deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
+  life_expectancy_women = "I10 EV mulheres", life_expectancy_65 = "I10 EV aos 65 anos",
+  life_expectancy_65_men = "I10 EV aos 65, homens", life_expectancy_65_women = "I10 EV aos 65, mulheres", deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
   neonatal_rate = "I40 Mortalidade neonatal", early_neonatal_rate = "I41 Neonatal precoce",
   postneonatal_rate = "I42 Pós-neonatal", late_fetal_rate = "I43 Fetal tardia",
   perinatal_rate = "I44 Perinatal"
@@ -106,7 +108,7 @@ write_planning_workbook <- function(path,
     "",
     "Folhas",
     if (!is.null(focus)) "Resumo: todos os indicadores no último ano disponível, para o local e os comparadores.",
-    "Uma folha por indicador: áreas em linhas, anos (ou triénios) em colunas.",
+    "Uma folha por indicador: áreas em linhas, anos (ou triénios) em colunas, com os limites do intervalo de confiança de 95% em dois blocos por baixo, quando o indicador tem intervalo.",
     if (include_long) "Dados: formato longo, com intervalos de confiança de 95%, numerador e denominador.",
     "Pirâmide etária: população por grupo etário e sexo.",
     "Mortalidade proporcional: óbitos por grande grupo de causas, por triénio.",
@@ -172,6 +174,27 @@ write_planning_workbook <- function(path,
       openxlsx::addStyle(wb, sheet, openxlsx::createStyle(numFmt = planning_number_format(spec$digits), fontColour = "#898781", textDecoration = "italic"),
                          rows = 4 + flagged[, 1], cols = 2 + flagged[, 2], gridExpand = FALSE, stack = FALSE)
     }
+    # Below the values, the two bounds of the 95% interval, so every sheet
+    # carries its uncertainty even in the file that has no long data sheet.
+    bounds <- list(lower = "Limite inferior do intervalo de confiança de 95%",
+                   upper = "Limite superior do intervalo de confiança de 95%")
+    next_row <- 5 + nrow(wide_values)
+    for (bound in names(bounds)) {
+      if (all(is.na(rows[[bound]]))) next
+      wide_bound <- tidyr::pivot_wider(
+        rows[rows$year %in% available, c("level", "area", "year", bound)],
+        names_from = year, values_from = dplyr::all_of(bound)
+      )
+      wide_bound <- wide_bound[match(wide_values$Local, wide_bound$area), c("level", "area", as.character(available)), drop = FALSE]
+      names(wide_bound) <- c("Nível", "Local", periods)
+      openxlsx::writeData(wb, sheet, bounds[[bound]], startRow = next_row + 1)
+      openxlsx::addStyle(wb, sheet, note_style, rows = next_row + 1, cols = 1)
+      openxlsx::writeData(wb, sheet, wide_bound, startRow = next_row + 2, headerStyle = header_style)
+      openxlsx::addStyle(wb, sheet, openxlsx::createStyle(numFmt = planning_number_format(spec$digits)),
+                         rows = next_row + 2 + seq_len(nrow(wide_bound)), cols = 2 + seq_along(available), gridExpand = TRUE)
+      next_row <- next_row + 2 + nrow(wide_bound)
+    }
+
     openxlsx::setColWidths(wb, sheet, cols = 1:2, widths = c(11, 42))
     openxlsx::setColWidths(wb, sheet, cols = 2 + seq_along(available), widths = if (spec$window > 1) 11 else 9)
     openxlsx::freezePane(wb, sheet, firstActiveRow = 5, firstActiveCol = 3)
