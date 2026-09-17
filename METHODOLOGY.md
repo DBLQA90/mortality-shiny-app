@@ -1122,6 +1122,58 @@ The app uses both in-memory and persistent RDS caching. Metadata and data have s
 
 Data requests are intentionally granular. If a long request is interrupted or an INE call fails, completed slices remain cached and can be reused in later runs. If a stale cached slice exists and a live request fails, the app may use the stale slice and show a warning.
 
+## Data Versions
+
+INE revises published figures - provisional years become final, population
+series are re-estimated, indicators are replaced by new editions - so an
+analysis repeated later can legitimately give different numbers. The app keeps
+the history needed to tell a revision from an error (`R/data_versions.R`).
+
+**Writing.** Every tool writes data through `versioned_save_rds()`:
+
+- content identical to the stored file (compared independently of row order) is
+  not rewritten and leaves no log entry;
+- a new file is written and logged as `added`;
+- a different file is first copied to `data/archive/<run id>/<relative path>`,
+  then replaced, and logged as `replaced`.
+
+**The log** (`data/import_log.csv`) has one row per write: run id, import
+timestamp, relative path, dataset, year, action, row counts, value column, the
+comparable total before and after, the number of rows whose value changed, the
+archived location, the tool and a note. The comparable total is Portugal, both
+sexes, all causes and the `Total` category, whichever of these the file carries;
+summing every row would count regional and sex rows, which differ between INE
+editions even when no value does (the population revision reads +1.7%, +3.9%
+and +5.3% for 2021-2023 on this total, and over +100% on a sum of all rows).
+Death chunks are one file per cause and causes nest, so a year's death total is
+taken from its all-cause file. A correction between
+municipalities leaves Portugal's total unchanged, so the log also counts
+changed rows, matched on every column except the value and the source
+indicator.
+
+**Runs.** `tools/refresh_snapshots.R` sets one run id (`DATA_RUN_ID`) for every
+tool it launches, re-fetches the last `recent` calendar years (default 2) as
+well as missing ones, and appends to `REFRESH_STATUS.md` a table of what the run
+revised.
+
+**Before the log.** `tools/backfill_import_log.R` built the log from git: each
+file's import date is the commit that gave it its form (files assembled over
+many commits in May 2026 take the last of them), and every change from
+2026-08-01 is a `replaced` entry whose previous version is referenced as
+`git:<parent commit>:<path>` rather than copied. That covers the
+Lisboa/Calheta/Lagoa repair (2,146 death chunks, 2026-08-11), the adoption of
+the revised population series (2026-08-20), the 0013166 refetch (2026-08-20),
+the regional-row refetch (2026-09-16) and the births fix (2026-09-17).
+
+**Reconstruction.** `data_as_of(date)` (`tools/data_as_of.R`) rebuilds the data
+directory as it stood at the end of a day: files unchanged since are
+hard-linked, files replaced later are restored from the version their first
+later replacement archived (from `data/archive` or git), and files first added
+later are omitted. Checked against the history: on 2026-09-01 Lisboa has 37,208
+births in 2001 (before the fix) and Portugal's 2022 population is 10,929,704
+(revised); on 2026-08-15 births are absent and the 2022 population is 10,516,621
+(before the revision).
+
 ## RDS Snapshot Source
 
 The app can use prebuilt RDS files as an alternative to live INE requests. This is intended for faster app use when the relevant INE data have already been downloaded and normalised.

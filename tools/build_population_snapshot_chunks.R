@@ -76,15 +76,11 @@ find_default_app_file <- function() {
   found[[1]]
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- tempfile(tmpdir = dirname(path), fileext = ".rds")
-  on.exit(unlink(tmp), add = TRUE)
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) {
-    stop(paste0("Could not move temporary file into ", path, "."), call. = FALSE)
-  }
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "build_population_snapshot_chunks.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 missing_areas_for_path <- function(path, required_areas) {
   required_areas <- unique(as.character(required_areas))

@@ -2,7 +2,7 @@
 # Fetch complete counts of deaths under 1 year by municipality and sex into
 # data/snapshots/infant_totals.
 #
-#   Rscript tools/fetch_infant_totals.R [years=ALL] [overwrite=false]
+#   Rscript tools/fetch_infant_totals.R [years=ALL] [overwrite=false] [recent=0]
 #
 # Why: data/snapshots/infant_deaths takes the "Menos de 1 ano" age band of the
 # by-cause death indicators, and INE's municipal age breakdown of those is
@@ -36,6 +36,11 @@ setwd(normalizePath(file.path(script_dir, "..")))
 
 years_arg <- get_arg("years", "ALL")
 overwrite <- tolower(get_arg("overwrite", "false")) %in% c("true", "1", "yes")
+# recent=N re-fetches the last N calendar years even when present, so a refresh
+# picks up INE's revisions of provisional years; unchanged files stay untouched.
+recent_years <- suppressWarnings(as.integer(get_arg("recent", "0")))
+if (is.na(recent_years) || recent_years < 0) recent_years <- 0L
+recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 dico_lookup <- readRDS("data/nuts_lookup_2024.rds") %>%
   transmute(dico = substr(as.character(municipality_code), 4, 7), municipality)
@@ -94,12 +99,11 @@ parse_years <- function(value, default) {
   as.integer(strsplit(value, ",", fixed = TRUE)[[1]])
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp")
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not write ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_infant_totals.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 meta <- list("0008181" = indicator_years("0008181"), "0012541" = indicator_years("0012541"))
 plan <- c(
@@ -113,7 +117,7 @@ written <- 0L
 failed <- character(0)
 for (year in sort(years)) {
   path <- file.path("data/snapshots/infant_totals", paste0("year_", year, ".rds"))
-  if (file.exists(path) && !overwrite) next
+  if (file.exists(path) && !overwrite && year < recheck_from) next
 
   indicator <- plan[[as.character(year)]]
   dv <- meta[[indicator]]$dims

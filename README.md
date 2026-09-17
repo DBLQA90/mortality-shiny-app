@@ -361,17 +361,52 @@ on INE, and the driver is resumable: each run makes what progress fits in its
 time budget, commits it, and the next run continues.
 
 ```sh
-Rscript tools/refresh_snapshots.R task=all minutes=300
+Rscript tools/refresh_snapshots.R task=all minutes=300 recent=2 note="INE 2026 release"
 ```
+
+Tasks run one at a time: INE answers parallel requests with `429 Too Many
+Requests` and then refuses connections for hours.
 
 | Task | What it does |
 |---|---|
-| `fixareas` | Repairs geographies stored under an ambiguous INE label (`Lisboa`, `Calheta`, `Lagoa`) by refetching them by category code |
-| `deaths2024` | Asks INE which death years exist and fetches those the archive lacks |
-| `nuts2` | Backfills INE's own regional rows. **Do not run**: five region names denote two or three NUTS levels at once, so those rows are double- or triple-counted. The app does not read them; see [METHODOLOGY.md](METHODOLOGY.md) |
+| `deaths` | Deaths by cause and age (`0013166`): missing years, and the last `recent` years re-checked |
+| `population` | Resident population (`0012918`): missing years and re-check |
+| `deathtotals` | Municipal death totals by cause, all ages |
+| `regional` | INE's regional death rows used for regions and some ULS |
+| `infant` | Live births, under-1 deaths by cause, and complete under-1 counts |
+| `planning` | RSI, pensions, purchasing power, waste, births by mother's age and gestation, under-1 deaths by age |
 | `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
-| `infant` | Fetches live births and under-1 deaths for infant mortality |
 | `inventory` | Rebuilds the snapshot manifest |
+| `fixareas` | Explicit only: re-runs the completed Lisboa/Calheta/Lagoa repair of old death chunks |
+| `nuts2` | Explicit only. **Do not run**: five region names denote two or three NUTS levels at once, so those rows are double- or triple-counted; see [METHODOLOGY.md](METHODOLOGY.md) |
+
+### Data versions
+
+INE revises what it has published, so the same analysis can give different
+figures a year apart. Every data file is written through `R/data_versions.R`:
+
+- **`data/import_log.csv`** records each file written, with its import date, the
+  tool and run that wrote it, whether it was new or replaced a different
+  version, how many rows changed value, and Portugal's total before and after.
+- **`data/archive/<run id>/`** keeps the previous version of every file a run
+  replaced, under its original path. Re-fetching a year INE has not revised
+  writes nothing.
+- **`data/snapshots/REFRESH_STATUS.md`** ends with a table of what the run
+  revised.
+- Revisions made before the log existed (the Lisboa repair, the population
+  revision, the births fix) were recorded from git by
+  `tools/backfill_import_log.R`; their previous versions are restored from git.
+
+To repeat an analysis on the data as it stood on a date:
+
+```sh
+Rscript tools/data_as_of.R date=2026-09-01
+MORTALITY_SNAPSHOT_DIR=.mortality-shiny-cache/data_as_of/2026-09-01/snapshots Rscript -e 'shiny::runApp()'
+```
+
+The app shows the latest import date in its header, and the import history -
+per dataset, per run, and the values each run revised - in the Data
+Availability tab.
 
 Note that population now runs *ahead* of deaths: `0012918` publishes 2025 while
 cause-specific deaths stop at 2024. 2025 is therefore selectable for infant

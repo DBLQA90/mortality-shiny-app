@@ -55,12 +55,11 @@ for (f in c("R/config.R", "R/helpers.R", "R/cache.R", "R/snapshots.R", "R/ine_cl
   sys.source(file.path(repo_root, f), envir = app_env)
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp")
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not move temporary file into ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_death_year.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 # Reuse the app's own tokeniser rather than reimplementing it. A second copy
 # has to agree with snapshot_file_token() exactly or the reader will not find

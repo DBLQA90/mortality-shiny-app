@@ -95,6 +95,21 @@ region_aggregation_note <- function() {
   )
 }
 
+# When the data in use was last imported, on every page: two exports of the same
+# analysis with different figures can then be told apart by this date.
+data_version_badge <- function() {
+  date <- tryCatch(
+    latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))),
+    error = function(e) NA_character_
+  )
+  if (is.na(date)) return(NULL)
+  tags$span(
+    style = "font-size:0.85em; opacity:0.75; margin-left:auto; white-space:nowrap;",
+    title = "Data da importação mais recente dos dados em uso. O histórico está no separador Disponibilidade de Dados.",
+    paste0("Dados importados até ", date)
+  )
+}
+
 # A single app-wide control, in the navbar header rather than in each tab: the
 # vintage is a definition, not a per-analysis parameter, and six region names
 # mean different things under the two vintages, so it must be on screen
@@ -142,7 +157,8 @@ nuts_vintage_control <- function() {
         selected = default_region_source(),
         width = "100%"
       )
-    )
+    ),
+    data_version_badge()
   )
 }
 bias_adjust_help <- function() {
@@ -379,7 +395,31 @@ data_availability_tab_ui <- function() {
         br(), br(),
         h4("Cobertura Seleccionada"),
         tableOutput("snapshotAvailabilityTable"),
-        downloadButton("downloadSnapshotAvailabilityCSV", "Descarregar cobertura (CSV)")
+        downloadButton("downloadSnapshotAvailabilityCSV", "Descarregar cobertura (CSV)"),
+        br(), br(),
+        h4("Histórico dos dados"),
+        helpText(
+          "O INE revê dados já publicados: anos provisórios passam a definitivos, e ",
+          "séries de população são re-estimadas. Cada importação fica registada com a ",
+          "sua data, e a versão anterior de qualquer ficheiro que mude é guardada. Se ",
+          "uma análise der hoje valores diferentes dos de uma análise anterior, veja ",
+          "aqui se os dados foram revistos entretanto."
+        ),
+        h5("Conjuntos de dados"),
+        tableOutput("dataImportDatasets"),
+        h5("Importações"),
+        tableOutput("dataImportRuns"),
+        selectInput("data_import_run", "Ver os valores revistos numa importação:", choices = NULL, width = "100%"),
+        tableOutput("dataImportChanges"),
+        downloadButton("downloadImportLogCSV", "Descarregar registo completo (CSV)"),
+        br(), br(),
+        helpText(
+          "Para repetir uma análise com os dados tal como estavam numa data: ",
+          tags$code("Rscript tools/data_as_of.R date=AAAA-MM-DD"),
+          " e depois abrir a aplicação com ",
+          tags$code("MORTALITY_SNAPSHOT_DIR=<pasta indicada>/snapshots"),
+          ". Ver o manual, secção sobre o histórico dos dados."
+        )
       )
     )
   )

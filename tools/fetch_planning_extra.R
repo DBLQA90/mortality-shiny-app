@@ -2,7 +2,7 @@
 # Fetch the municipal components of the socio-economic, birth and infant
 # indicators of the planning tab into data/snapshots/planning_extra.
 #
-#   Rscript tools/fetch_planning_extra.R [measures=all] [years=ALL] [overwrite=false]
+#   Rscript tools/fetch_planning_extra.R [measures=all] [years=ALL] [overwrite=false] [recent=0]
 #
 # Every measure here is stored as additive municipal components - counts,
 # tonnages, value totals - so that any ULS, ARS or region is an exact sum.
@@ -38,6 +38,11 @@ setwd(normalizePath(file.path(script_dir, "..")))
 measures_arg <- get_arg("measures", "all")
 years_arg <- get_arg("years", "ALL")
 overwrite <- tolower(get_arg("overwrite", "false")) %in% c("true", "1", "yes")
+# recent=N re-fetches the last N calendar years even when present, so a refresh
+# picks up INE's revisions of provisional years; unchanged files stay untouched.
+recent_years <- suppressWarnings(as.integer(get_arg("recent", "0")))
+if (is.na(recent_years) || recent_years < 0) recent_years <- 0L
+recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 # ---------------------------------------------------------------------------
 # Measures
@@ -202,12 +207,11 @@ total_pins <- function(dv, target) {
   pins
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp")
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not write ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_planning_extra.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 # ---------------------------------------------------------------------------
 # Fetch
@@ -231,7 +235,7 @@ for (measure in names(MEASURES)) {
 
   for (year in sort(years)) {
     path <- file.path("data/snapshots/planning_extra", measure, paste0("year_", year, ".rds"))
-    if (file.exists(path) && !overwrite) next
+    if (file.exists(path) && !overwrite && year < recheck_from) next
     indicator <- plan[[as.character(year)]]
 
     # Ask only for the total of every dimension that is not the measure's own:

@@ -195,7 +195,8 @@ attr(lookup, "indicator") <- indicator
 attr(lookup, "built_at") <- Sys.time()
 
 dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
-saveRDS(lookup, out_path)
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+versioned_save_rds(lookup, out_path, tool = "build_nuts_lookup.R")
 
 message("Wrote ", out_path, " (", nrow(lookup), " municipalities).")
 message("NUTS I regions: ", paste(sort(unique(stats::na.omit(lookup$nuts1))), collapse = ", "))

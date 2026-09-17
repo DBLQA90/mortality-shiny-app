@@ -1015,6 +1015,48 @@ Quando usar:
 
 Esta verificação é feita ao nível do inventário. A análise final ainda pode falhar se os ficheiros existirem mas não tiverem as linhas esperadas.
 
+### Histórico dos dados
+
+O INE revê dados que já publicou: os anos mais recentes começam por ser
+provisórios, as estimativas de população são re-estimadas (como em 2021), e
+indicadores são substituídos por novas edições. Por isso a mesma análise, feita
+hoje e daqui a um ano, pode dar valores diferentes, sem que nada na análise tenha
+mudado.
+
+A aplicação guarda o que é preciso para o explicar:
+
+- **A data de importação dos dados** aparece no topo de todas as páginas («Dados
+  importados até …»). Ao guardar ou partilhar um resultado, anote essa data.
+- **Cada importação fica registada**: que ficheiros acrescentou, quais reviu, e
+  em quanto mudaram (linhas com valor alterado e o total de Portugal antes e
+  depois).
+- **A versão anterior de qualquer ficheiro revisto é guardada**, e não
+  substituída. Voltar a importar um ano que o INE não reviu não altera nada.
+
+No fim deste separador, a secção «Histórico dos dados» mostra:
+
+| Quadro | O que diz |
+|---|---|
+| Conjuntos de dados | para cada conjunto, os anos, a primeira e a última importação, e a última vez que valores já existentes mudaram |
+| Importações | cada importação, com os ficheiros novos e revistos |
+| Valores revistos | para a importação escolhida, por conjunto e ano: linhas alteradas e o total de Portugal antes e depois |
+
+O total de Portugal pode não mudar quando a correcção é entre municípios. Foi o
+caso da correcção dos nados-vivos de Lisboa em Setembro de 2026: Portugal manteve
+o total, mas as linhas alteradas mostram a revisão.
+
+**Repetir uma análise com os dados de uma data anterior.** Quem tenha a cópia do
+repositório pode reconstruir os dados tal como estavam num dia e abrir a
+aplicação sobre eles:
+
+```sh
+Rscript tools/data_as_of.R date=2026-09-01
+MORTALITY_SNAPSHOT_DIR=.mortality-shiny-cache/data_as_of/2026-09-01/snapshots Rscript -e 'shiny::runApp()'
+```
+
+A reconstrução ocupa pouco espaço: os ficheiros que não mudaram não são
+copiados. Os mapas de municípios por região e por ULS são sempre os actuais.
+
 ## 12. Exportação de Resultados
 
 Os separadores têm botões para exportar:

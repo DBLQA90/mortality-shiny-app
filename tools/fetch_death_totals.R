@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Fetch municipal death totals (all ages) by cause into data/snapshots/death_totals.
 #
-#   Rscript tools/fetch_death_totals.R [indicator=all] [years=ALL] [overwrite=false]
+#   Rscript tools/fetch_death_totals.R [indicator=all] [years=ALL] [overwrite=false] [recent=0]
 #
 # Why: INE publishes each municipality's cause-specific deaths with a complete
 # total but an incomplete breakdown by age, and the main death archive keeps only
@@ -34,11 +34,16 @@ setwd(normalizePath(file.path(script_dir, "..")))
 indicator_arg <- get_arg("indicator", "all")
 years_arg <- get_arg("years", "ALL")
 overwrite <- tolower(get_arg("overwrite", "false")) %in% c("true", "1", "yes")
+# recent=N re-fetches the last N calendar years even when present, so a refresh
+# picks up INE's revisions of provisional years; unchanged files stay untouched.
+recent_years <- suppressWarnings(as.integer(get_arg("recent", "0")))
+if (is.na(recent_years) || recent_years < 0) recent_years <- 0L
+recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 # Same precedence as the main death archive: 0013166 from 2022.
 sources <- list(
   "0008206" = list(years = 1991:2021, lookup = "data/nuts_lookup_2013.rds"),
-  "0013166" = list(years = 2022:2024, lookup = "data/nuts_lookup_2024.rds")
+  "0013166" = list(years = 2022:2100, lookup = "data/nuts_lookup_2024.rds")
 )
 if (!identical(indicator_arg, "all")) sources <- sources[intersect(names(sources), strsplit(indicator_arg, ",")[[1]])]
 
@@ -70,19 +75,26 @@ find_dim <- function(raw, pattern) {
   hit
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp"); saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not write ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_death_totals.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 written <- 0L; failed <- character(0)
 for (indicator in names(sources)) {
   spec <- sources[[indicator]]
   lookup <- readRDS(spec$lookup) %>% transmute(code = as.character(municipality_code), municipality)
+  # Only years INE actually publishes: the ranges above are open-ended so a new
+  # year is picked up without editing this file.
+  published <- tryCatch({
+    dv <- client$get_dim_values(indicator)
+    sort(unique(suppressWarnings(as.integer(as.character(dv$categ_dsg[as.integer(dv$dim_num) == 1])))))
+  }, error = function(e) spec$years)
+  spec$years <- intersect(spec$years, published)
   for (year in intersect(parse_years(years_arg, spec$years), spec$years)) {
     path <- file.path("data/snapshots/death_totals", indicator, paste0("year_", year, ".rds"))
-    if (file.exists(path) && !overwrite) next
+    if (file.exists(path) && !overwrite && year < recheck_from) next
 
     raw <- fetch(indicator, year)
     if (is.null(raw)) { message("  ", year, ": FAILED"); failed <- c(failed, paste(indicator, year)); next }

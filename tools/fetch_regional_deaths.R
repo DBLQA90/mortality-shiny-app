@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Fetch INE's own regional death rows into data/snapshots/regional_deaths.
 #
-#   Rscript tools/fetch_regional_deaths.R [indicator=all] [years=ALL] [overwrite=false]
+#   Rscript tools/fetch_regional_deaths.R [indicator=all] [years=ALL] [overwrite=false] [recent=0]
 #
 # Why these rows are needed
 # -------------------------
@@ -51,6 +51,11 @@ indicator_arg <- get_arg("indicator", "all")
 years_arg <- get_arg("years", "ALL")
 out_dir <- get_arg("out", "data/snapshots")
 overwrite <- tolower(get_arg("overwrite", "false")) %in% c("true", "1", "yes")
+# recent=N re-fetches the last N calendar years even when present, so a refresh
+# picks up INE's revisions of provisional years; unchanged files stay untouched.
+recent_years <- suppressWarnings(as.integer(get_arg("recent", "0")))
+if (is.na(recent_years) || recent_years < 0) recent_years <- 0L
+recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 # One code per territory. Continente is NUTS I; the islands are taken at NUTS II,
 # which is the same territory as their NUTS I row.
@@ -76,7 +81,7 @@ sources <- list(
     )
   ),
   "0013166" = list(
-    years = 2022:2024,
+    years = 2022:2100,
     codes = c(
       "1", "11", "19", "1A", "1B", "1C", "1D", "15", "20", "30",
       # Oeste e Vale do Tejo subregions
@@ -114,12 +119,11 @@ fetch <- function(indicator, year, codes) {
   NULL
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp")
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not move temporary file into ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_regional_deaths.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 # The response names dimensions by position, and the positions are not assumed:
 # each role is found by the labels it carries.
@@ -135,12 +139,18 @@ written <- 0L
 
 for (indicator in names(sources)) {
   spec <- sources[[indicator]]
+  # Only years INE actually publishes; the range above is open-ended.
+  published <- tryCatch({
+    dv <- client$get_dim_values(indicator)
+    sort(unique(suppressWarnings(as.integer(as.character(dv$categ_dsg[as.integer(dv$dim_num) == 1])))))
+  }, error = function(e) spec$years)
+  spec$years <- intersect(spec$years, published)
   years <- intersect(parse_years(years_arg, spec$years), spec$years)
   message("== ", indicator, ": ", length(years), " years, ", length(spec$codes), " territories ==")
 
   for (year in years) {
     path <- file.path(out_dir, "regional_deaths", indicator, paste0("year_", year, ".rds"))
-    if (file.exists(path) && !overwrite) {
+    if (file.exists(path) && !overwrite && year < recheck_from) {
       next
     }
 

@@ -131,7 +131,8 @@ attr(units, "split_groups") <- vapply(groups, group_label, character(1))
 attr(units, "source") <- basename(workbook)
 attr(units, "built_at") <- Sys.time()
 
-saveRDS(units, out_path)
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+versioned_save_rds(units, out_path, tool = "build_uls_lookup.R")
 
 message("Wrote ", out_path)
 message("  ULS (exact): ", n_distinct(units$unit[units$kind == "ULS"]))

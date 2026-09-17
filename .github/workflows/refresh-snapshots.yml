@@ -14,10 +14,16 @@ on:
         description: "Which task to run"
         type: choice
         default: all
-        options: [all, fixareas, deaths2024, infant, nuts2, ambiguous, inventory]
+        options: [all, deaths, population, deathtotals, regional, infant, planning, ambiguous, inventory, fixareas, nuts2]
       minutes:
         description: "Time budget in minutes (job hard-stops at 350)"
         default: "300"
+      recent:
+        description: "Re-check the last N calendar years for INE revisions (0 = missing years only)"
+        default: "2"
+      note:
+        description: "Note recorded with this import in data/import_log.csv"
+        default: ""
   # No schedule.
   #
   # INE refuses connections from GitHub's hosted runners - every request from an
@@ -95,7 +101,9 @@ jobs:
         env:
           TASK: ${{ inputs.task || 'all' }}
           MINUTES: ${{ inputs.minutes || '300' }}
-        run: Rscript tools/refresh_snapshots.R "task=$TASK" "minutes=$MINUTES"
+          RECENT: ${{ inputs.recent || '2' }}
+          NOTE: ${{ inputs.note }}
+        run: Rscript tools/refresh_snapshots.R "task=$TASK" "minutes=$MINUTES" "recent=$RECENT" ${NOTE:+"note=$NOTE"}
 
       - name: Commit changes
         run: |
@@ -109,7 +117,8 @@ jobs:
           git commit -m "Refresh INE snapshots (${{ inputs.task || 'scheduled' }})
 
           Automated run of tools/refresh_snapshots.R.
-          See data/snapshots/REFRESH_STATUS.md for the run log."
+          See data/snapshots/REFRESH_STATUS.md for the run log and what changed;
+          previous versions of revised files are in data/archive/."
           git push
 
       - name: Upload run log

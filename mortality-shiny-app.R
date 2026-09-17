@@ -43,6 +43,7 @@ for (app_file in c(
   "R/standardisation.R",
   "R/avoidable.R",
   "R/planning_indicators.R",
+  "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -680,6 +681,84 @@ server <- function(input, output, session) {
   output$snapshotAvailabilityTable <- renderTable({
     snapshot_availability_data()
   })
+
+  # -------------------------
+  # Data history
+  # -------------------------
+  # Read once per session: the log changes only when data is refreshed, which
+  # happens outside the app.
+  import_log_data <- reactive({
+    tryCatch(read_import_log(app_data_root(get_snapshot_dir())), error = function(e) read_import_log(tempdir()))
+  })
+
+  output$dataImportDatasets <- renderTable({
+    summary <- dataset_import_summary(import_log_data())
+    validate(need(nrow(summary) > 0, "Sem registo de importações (data/import_log.csv)."))
+    summary %>%
+      dplyr::transmute(
+        `Conjunto de dados` = dataset_label(.data$dataset),
+        Anos = .data$years,
+        Ficheiros = .data$files,
+        `Primeira importação` = .data$first_import,
+        `Última importação` = .data$last_import,
+        `Última revisão de valores` = dplyr::coalesce(.data$last_change, "—")
+      )
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  import_runs_data <- reactive({
+    import_runs_summary(import_log_data())
+  })
+
+  observe({
+    runs <- import_runs_data()
+    if (nrow(runs) == 0) return()
+    with_changes <- runs[runs$replaced > 0, , drop = FALSE]
+    choices <- stats::setNames(runs$run_id, paste0(runs$date, " - ", runs$added, " novos, ", runs$replaced, " revistos"))
+    updateSelectInput(
+      session, "data_import_run",
+      choices = choices,
+      selected = if (nrow(with_changes) > 0) with_changes$run_id[[1]] else runs$run_id[[1]]
+    )
+  })
+
+  output$dataImportRuns <- renderTable({
+    runs <- import_runs_data()
+    validate(need(nrow(runs) > 0, "Sem registo de importações."))
+    runs %>%
+      dplyr::transmute(
+        Data = .data$date,
+        `Ficheiros novos` = .data$added,
+        `Ficheiros revistos` = .data$replaced,
+        `Conjuntos de dados` = vapply(strsplit(.data$datasets, ", ", fixed = TRUE), function(x) paste(dataset_label(x), collapse = "; "), character(1)),
+        Nota = .data$note,
+        Identificador = .data$run_id
+      )
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  import_run_changes <- reactive({
+    req(input$data_import_run)
+    run_changes(import_log_data(), input$data_import_run)
+  })
+
+  output$dataImportChanges <- renderTable({
+    changes <- import_run_changes()
+    validate(need(nrow(changes) > 0, "Esta importação não reviu valores já existentes: só acrescentou ficheiros, ou nenhum mudou."))
+    changes %>%
+      dplyr::transmute(
+        `Conjunto de dados` = dataset_label(.data$dataset),
+        Ano = .data$year,
+        Ficheiros = .data$files,
+        `Linhas com valor alterado` = format(.data$rows_changed, big.mark = ".", decimal.mark = ",", scientific = FALSE),
+        `Total Portugal anterior` = format(.data$total_old, big.mark = ".", decimal.mark = ",", scientific = FALSE),
+        `Total Portugal novo` = format(.data$total_new, big.mark = ".", decimal.mark = ",", scientific = FALSE),
+        `Variação` = ifelse(is.na(.data$change_pct), "", sprintf("%+.2f%%", .data$change_pct))
+      )
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$downloadImportLogCSV <- downloadHandler(
+    filename = function() paste0("registo_importacoes_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(import_log_data(), file)
+  )
 
   output$downloadSnapshotAvailabilityCSV <- downloadHandler(
     filename = function() paste0("cobertura_rds_", Sys.Date(), ".csv"),

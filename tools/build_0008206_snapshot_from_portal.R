@@ -631,15 +631,11 @@ parse_portal_csv <- function(csv_path) {
     summarise(deaths = sum(.data$deaths, na.rm = TRUE), .groups = "drop")
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- tempfile(tmpdir = dirname(path), fileext = ".rds")
-  on.exit(unlink(tmp), add = TRUE)
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) {
-    stop(glue("Could not move temporary file into {path}."), call. = FALSE)
-  }
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "build_0008206_snapshot_from_portal.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 death_path <- function(out_dir, year, cause, app) {
   file.path(

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Fetch live births by municipality into chunked RDS files.
 #
-#   Rscript tools/fetch_births.R [years=ALL] [minutes=60] [overwrite=false]
+#   Rscript tools/fetch_births.R [years=ALL] [minutes=60] [overwrite=false] [recent=0]
 #
 # Live births are the denominator of the infant mortality rate. The population
 # indicators cannot serve: neither carries an under-1 age band, so infant deaths
@@ -60,6 +60,11 @@ out_dir <- get_arg("out", "data/snapshots")
 budget_minutes <- suppressWarnings(as.numeric(get_arg("minutes", "60")))
 if (!is.finite(budget_minutes) || budget_minutes <= 0) budget_minutes <- 60
 overwrite <- tolower(get_arg("overwrite", "false")) %in% c("true", "1", "yes")
+# recent=N re-fetches the last N calendar years even when present, so a refresh
+# picks up INE's revisions of provisional years; unchanged files stay untouched.
+recent_years <- suppressWarnings(as.integer(get_arg("recent", "0")))
+if (is.na(recent_years) || recent_years < 0) recent_years <- 0L
+recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 deadline <- Sys.time() + budget_minutes * 60
 minutes_left <- function() as.numeric(difftime(deadline, Sys.time(), units = "mins"))
@@ -71,12 +76,11 @@ for (f in c("R/config.R", "R/helpers.R", "R/cache.R", "R/snapshots.R", "R/ine_cl
   sys.source(file.path(repo_root, f), envir = app_env)
 }
 
-save_rds_atomic <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  tmp <- paste0(path, ".tmp")
-  saveRDS(x, tmp, version = 2)
-  if (!file.rename(tmp, path)) stop("Could not move temporary file into ", path, call. = FALSE)
-}
+# Writes go through R/data_versions.R: identical content is left alone, a
+# revised file is archived under data/archive before being replaced, and
+# every write is recorded in data/import_log.csv with its date.
+sys.source(file.path(dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]]))), "..", "R", "data_versions.R"), envir = environment())
+save_rds_atomic <- function(x, path) versioned_save_rds(x, path, tool = "fetch_births.R", note = Sys.getenv("DATA_RUN_NOTE", unset = NA))
 
 # `pins` must cover EVERY dimension except period and area, so the response
 # collapses to one value per area and can simply be summed.
@@ -203,7 +207,7 @@ for (source in birth_sources) {
     }
 
     path <- births_path(year)
-    if (file.exists(path) && !overwrite) {
+    if (file.exists(path) && !overwrite && year < recheck_from) {
       skipped <- skipped + 1L
       next
     }
