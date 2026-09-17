@@ -269,6 +269,23 @@ control chooses which NUTS vintage groups them.
 
 Annual tables show point estimates with 95% intervals where the interval can be estimated. A separate source table reports the population and death indicators used for each location/cause.
 
+### Planning Indicators
+
+Demographic and mortality indicators in the form the local health plans (PLS)
+report them, one column per selected area (Portugal, Continente, NUTS regions,
+ARS, ULS, municipalities): population structure, ageing and dependency indices,
+births and crude birth rate, deaths and crude death rate, triennial infant
+mortality, and proportional mortality by the 13 large cause groups. Each carries
+its reference in the DRS/PNS2030 support workbook (I1, I3-I8, I37-I39, I45).
+
+Sub-tabs: a profile table, the evolution of one indicator over all years, a
+ranking of every ULS for one indicator and year, population pyramids, and
+proportional mortality. Areas are ratios of sums over their municipalities;
+Portugal and Continente use INE's published rows. Deaths come from the
+municipal all-ages totals (`data/snapshots/death_totals`), which are complete,
+rather than from the age breakdown, which is not. The engine is
+`R/planning_indicators.R`.
+
 ### Data Availability
 
 Inspect the local RDS snapshot inventory before loading an analysis. The tab summarises available population and death chunks, then checks selected years, areas, and causes against `data/snapshots/snapshot_inventory.rds`.

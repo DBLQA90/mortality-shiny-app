@@ -789,6 +789,38 @@ describes the ordinary case rather than singling out a few outliers. The value
 is still shown, still exact, and its interval already states the uncertainty;
 the mark only stops a reader skimming the table from treating it as comparable.
 
+### Infant Mortality: Sources Keyed By Code
+
+Two defects in the infant datasets were corrected in September 2026.
+
+**Births were matched by label.** In `0000003` (NUTS-2002, 1995-2013) the label
+`Lisboa` names both the NUTS II region and the municipality, and the fetcher
+summed by label: the municipality received 37,208 births in 2001 against a true
+5,604, deflating the infant rate of Lisboa and of every region or ULS containing
+it. The same summing merged the two `Calheta` and the two `Lagoa`
+municipalities. `tools/fetch_births.R` now maps every row by geography code: the
+last four digits of a municipal code are its DICO, identical in every NUTS
+vintage. A year is rejected unless all 308 municipalities map. After the fix the
+municipal sum equals Portugal to within 20 births in every year.
+
+**Under-1 deaths were incomplete at municipal level.** `data/snapshots/infant_deaths`
+takes the `Menos de 1 ano` band of the cause-of-death indicators, whose municipal
+age breakdown is incomplete: in 2014 the municipalities add up to 112 against a
+national 236. INE also publishes under-1 deaths as a subject of their own
+(`0008181`, NUTS-2013, from 2011; `0012541`, NUTS-2024, from 2022), by
+municipality, sex and age in days and months, and those close exactly against
+the national total in every year. `tools/fetch_infant_totals.R` writes them to
+`data/snapshots/infant_totals`, keyed by code; all-cause requests read them
+wherever a year has them. Cause-specific requests, which they cannot answer,
+still read the band-derived dataset, and so does the AVPP correction, which
+splits the `0 - 4 anos` band of that same breakdown.
+
+Before 2011 no complete municipal count exists. The band-derived municipal sum
+reaches 99-100% of Portugal in 2002-2010 but only about 85% in 1995-2001.
+`infant_undercount_years()` identifies years below 97%, the annual tab warns
+when a non-national selection touches them, and the planning tab marks the
+value with `†`. Portugal reads its own published row and is unaffected.
+
 ### Proportional Mortality
 
 Proportional mortality is calculated for a selected cause as:
@@ -837,6 +869,89 @@ The annual metrics tab compares one selected metric for one selected year across
 - the selected local area or aggregate of local areas
 
 Users can select multiple causes of death. The table and plot are ordered from highest to lowest according to the value in the selected local area or aggregate. This ordering is intended to help identify which causes contribute most in the local geography, while keeping national and regional comparators visible.
+
+## Planning Indicators Tab
+
+The `Indicadores de Planeamento` tab reproduces the demographic and mortality
+indicators of the DRS/PNS2030 support workbook for local health plans
+(`Indicadores_Apoio_PLS`), computed from the app's own snapshots for any
+location. The engine is `R/planning_indicators.R`.
+
+| Indicator | Workbook | Definition |
+|---|---|---|
+| Resident population | I1 | INE annual estimate |
+| Share aged 0-14, 65+, 75+ | I1 | group / total x 100 |
+| Ageing index | I4 | pop 65+ / pop 0-14 x 100 |
+| Youth dependency | I5 | pop 0-14 / pop 15-64 x 100 |
+| Old-age dependency | I6 | pop 65+ / pop 15-64 x 100 |
+| Live births | I7 | count |
+| Crude birth rate | I8 | births / population x 1,000 |
+| Deaths | I37 | count, all causes and ages |
+| Crude death rate | I38 | deaths / population x 1,000 |
+| Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
+| Proportional mortality | I45 | deaths per large cause group / all deaths x 100, three years |
+| Population pyramid | I3 | share by five-year band and sex |
+
+### Aggregation
+
+Every area is a ratio of sums. The components (population by broad age group,
+births, deaths, infant deaths) are summed over the area's municipalities, and
+the indicator is computed from those sums, never as an average of municipal
+indicators. Portugal and Continente use INE's published rows where the dataset
+has them, because those include events whose municipality of residence is
+unknown; any other area is its municipal sum and so excludes them (0.3-0.9% of
+deaths). ULS and ARS use the membership in `data/uls_lookup.rds`, applied to
+every year.
+
+For each year the engine builds one compact table of components per area label
+present in the files (about 310 rows) and caches it for the session, so a
+ranking of all ULS or a 35-year series is a sum over that table.
+
+### Why deaths come from the all-ages totals
+
+INE's municipal breakdown of cause-specific deaths by age is incomplete, worst
+in 2014. The all-ages total per municipality and cause is complete. Counts,
+crude rates and all-ages proportions need no age, so this tab reads
+`data/snapshots/death_totals` (`tools/fetch_death_totals.R`): the age `Total`
+row of `0008206` (1991-2021) and `0013166` (2022-2024), mapped to municipalities
+by geography code. Municipal sums close against the national row to within the
+deaths of unknown residence in every year.
+
+### Uncertainty
+
+Counts and event rates carry exact Poisson intervals on the count, the
+denominator treated as fixed; proportional mortality carries exact binomial
+intervals. Population-structure indices carry none: population estimates are
+not a sample of events and INE publishes no error for them. A triennial infant
+rate on fewer than 1,000 births is marked `*`, as elsewhere in the app.
+
+### Proportional mortality groups
+
+The 13 groups of the workbook's I45, in INE's shortlist wording: infectious and
+parasitic diseases, malignant neoplasms, blood, endocrine, nervous system,
+circulatory, respiratory, digestive, musculoskeletal, genitourinary, perinatal,
+ill-defined, external causes. Each is a chapter-level rubric, so none contains
+another. What they leave out (mental disorders, skin, pregnancy, congenital
+malformations) is shown as `Restantes causas`, so the column sums to 100%.
+
+### Differences from the workbook
+
+- **Population revision.** From 2021 the app uses the revised series
+  `0012918`. Indicators built on the superseded estimate are out of date: the
+  ageing index of Alto Minho in 2024 is 270.3 on the old estimate and 240.2 on
+  the revised one.
+- **ULS sharing a municipality.** Lisboa, Loures and Porto are split between ULS
+  at parish level. The workbook assigns each whole municipality to every ULS
+  that serves part of it, so the ULS of ARS Norte add up to about 3,000 more
+  deaths than ARS Norte itself. The app offers the two exact groups instead.
+- **Edition of 2022.** The app reads 2022 from `0013166` (NUTS-2024). For
+  Continente 2020-2022 it gets 356,355 deaths against the workbook's 356,333
+  (+22, 0.006%); circulatory (95,307), genitourinary (11,855) and perinatal
+  (342) agree exactly. The residual is consistent with a revision between the
+  two INE tables for 2022.
+- **Naming.** The workbook spells some units inconsistently between sheets
+  (`Loures-Odivelas` / `Loures/Odivelas`, `Almada-Seixal` / `Almada/Seixal`),
+  which breaks lookups by name. The app keys every unit by municipality code.
 
 ## Forecasting
 

@@ -503,6 +503,9 @@ glossary_tab_ui <- function() {
     list("Mortalidade infantil", "Óbitos antes do primeiro ano de vida por 1.000 nados-vivos."),
     list("Nados-vivos", "Nascimentos com vida. São o denominador da mortalidade infantil, em vez da população, porque nenhum indicador de população tem uma banda 'menos de 1 ano' e porque correspondem melhor ao grupo em risco."),
     list("Asterisco (*)", "Marca uma taxa de mortalidade infantil calculada sobre menos de 1.000 nados-vivos, em que um único óbito desloca o valor em mais de uma unidade por 1.000. O valor é exacto; a marca avisa que não é comparável."),
+    list("Índice de envelhecimento", "Pessoas com 65 e mais anos por cada 100 com 0-14 anos. Acima de 100 há mais idosos do que jovens."),
+    list("Índices de dependência", "Jovens (0-14) ou idosos (65+) por cada 100 pessoas em idade activa (15-64 anos). Medem o peso das idades dependentes sobre as activas."),
+    list("Taxa bruta de natalidade / mortalidade", "Nados-vivos ou óbitos por 1.000 habitantes. No separador Indicadores de Planeamento usa-se ‰, como nos Planos Locais de Saúde; nos separadores de mortalidade as taxas são por 100.000."),
     list("Intervalo de confiança", "A margem de incerteza à volta de um valor estimado. Um intervalo de 95% indica uma gama de valores plausíveis; é a zona sombreada nos gráficos. Um intervalo largo não é um defeito: é o que há a dizer quando os acontecimentos são poucos.")
   )
 
@@ -763,6 +766,141 @@ avoidable_tab_ui <- function() {
         tableOutput("avoidableCausesTable"),
         downloadButton("downloadAvoidableCausesCSV", "Descarregar lista de causas (CSV)")
       )
+    )
+  )
+}
+
+# Planning indicators: one profile per area, read side by side, in the form the
+# local health plans report them. Each selected area is its own column rather
+# than being pooled with the others as in the mortality tabs.
+planning_tab_ui <- function() {
+  years <- tryCatch(planning_indicator_years("pop_total"), error = function(e) integer(0))
+  death_years <- tryCatch(planning_indicator_years("deaths"), error = function(e) integer(0))
+  default_year <- if (length(death_years) > 0) max(death_years) else if (length(years) > 0) max(years) else NULL
+
+  tabPanel(
+    "Indicadores de Planeamento",
+    sidebarLayout(
+      sidebarPanel(
+        selectInput(
+          "planning_area",
+          "Locais (um por coluna):",
+          choices = local_area,
+          multiple = TRUE,
+          selected = c("Portugal", "Continente")
+        ),
+        selectInput(
+          "planning_year",
+          "Ano:",
+          choices = sort(years, decreasing = TRUE),
+          selected = default_year
+        ),
+        selectInput(
+          "planning_indicator",
+          "Indicador para a evolução e a comparação:",
+          choices = planning_indicator_choices(),
+          selected = "ageing_index"
+        ),
+        helpText(
+          "Cada local é calculado somando os seus municípios e dividindo as ",
+          "somas. Portugal e Continente usam as linhas publicadas pelo INE, que ",
+          "incluem os acontecimentos de residência desconhecida."
+        ),
+        actionButton("go_planning", "Carregar"),
+        br(), br(),
+        downloadButton("downloadPlanningCSV", "Descarregar indicadores (CSV)")
+      ),
+      mainPanel(
+        tabsetPanel(
+          tabPanel(
+            "Perfil",
+            br(),
+            tableOutput("planningProfile"),
+            helpText(planning_profile_note())
+          ),
+          tabPanel(
+            "Evolução",
+            br(),
+            plotOutput("planningTrend", height = "420px"),
+            downloadButton("downloadPlanningTrend", "Descarregar gráfico (PNG)")
+          ),
+          tabPanel(
+            "Comparação entre ULS",
+            br(),
+            helpText(
+              "Todas as ULS do Continente para o indicador e o ano escolhidos. ",
+              "As cinco ULS que partilham municípios ao nível da freguesia ",
+              "aparecem nos dois agrupamentos exactos. A linha tracejada é Portugal."
+            ),
+            plotOutput("planningRanking", height = "760px"),
+            downloadButton("downloadPlanningRanking", "Descarregar gráfico (PNG)"),
+            downloadButton("downloadPlanningRankingCSV", "Descarregar tabela (CSV)")
+          ),
+          tabPanel(
+            "Pirâmide etária",
+            br(),
+            plotOutput("planningPyramid", height = "520px"),
+            helpText("Percentagem da população de cada local em cada grupo etário e sexo, para comparar estruturas de tamanhos diferentes."),
+            downloadButton("downloadPlanningPyramid", "Descarregar gráfico (PNG)")
+          ),
+          tabPanel(
+            "Mortalidade proporcional",
+            br(),
+            helpText(
+              "Todas as idades, ambos os sexos, triénio terminado no ano escolhido ",
+              "[I45]. Lidos dos totais municipais de óbitos, que estão completos. ",
+              "«Restantes causas» reúne o que os 13 grandes grupos não cobrem ",
+              "(perturbações mentais, pele, gravidez, malformações congénitas), ",
+              "para que a coluna some 100%."
+            ),
+            tableOutput("planningProportional"),
+            downloadButton("downloadPlanningProportionalCSV", "Descarregar tabela (CSV)")
+          ),
+          tabPanel(
+            "Notas",
+            br(),
+            planning_method_notes()
+          )
+        )
+      )
+    )
+  )
+}
+
+planning_profile_note <- function() {
+  paste(
+    "Entre parênteses, o intervalo de confiança de 95% (Poisson exacto) para",
+    "contagens e taxas de acontecimentos. Os índices de estrutura da população",
+    "não têm intervalo: as estimativas de população não são uma amostra de",
+    "acontecimentos. * taxa de mortalidade infantil sobre menos de 1.000",
+    "nados-vivos no triénio - exacta, mas instável. \u2020 triénio com anos",
+    "(1995-2001) em que os óbitos com menos de 1 ano por município estão",
+    "incompletos no INE: o valor está subestimado."
+  )
+}
+
+planning_method_notes <- function() {
+  tagList(
+    h4("Como são calculados"),
+    tags$ul(
+      tags$li("Índice de envelhecimento: população com 65 e mais anos por 100 com 0-14 anos."),
+      tags$li("Índices de dependência: jovens (0-14) ou idosos (65+) por 100 pessoas com 15-64 anos."),
+      tags$li("Taxas brutas de natalidade e mortalidade: nados-vivos ou óbitos por 1.000 habitantes (população residente estimada)."),
+      tags$li("Taxa de mortalidade infantil: óbitos com menos de 1 ano por 1.000 nados-vivos, somando três anos de cada."),
+      tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio.")
+    ),
+    h4("De onde vêm os dados"),
+    tags$ul(
+      tags$li("População: estimativas anuais do INE; a série revista (0012918) a partir de 2021."),
+      tags$li("Óbitos: o total de todas as idades por município e causa (0008206 até 2021, 0013166 desde 2022). Não se usa a repartição por idade, que o INE publica incompleta ao nível municipal."),
+      tags$li("Nados-vivos e óbitos com menos de 1 ano: os mesmos ficheiros da métrica de mortalidade infantil."),
+      tags$li("ULS e ARS: somadas a partir dos municípios que as compõem, com a composição actual aplicada a todos os anos.")
+    ),
+    h4("Porque podem diferir do ficheiro de apoio aos PLS"),
+    tags$ul(
+      tags$li("A população de 2021 em diante é a série revista pelo INE; valores calculados com a estimativa anterior ficam desactualizados (por exemplo, índices de envelhecimento mais altos)."),
+      tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
+      tags$li("As regiões são somadas a partir dos municípios, pelo que excluem os acontecimentos de residência desconhecida, que só entram nos totais de Portugal e do Continente.")
     )
   )
 }

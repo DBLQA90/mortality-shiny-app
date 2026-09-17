@@ -108,7 +108,48 @@ birth_sources <- list(
   )
 )
 
-pseudo_areas <- c("Total", "Ignorado", "Estrangeiro")
+# ---------------------------------------------------------------------------
+# Areas are matched by geography code, never by label
+# ---------------------------------------------------------------------------
+# Labels collide. In 0000003 (NUTS-2002) "Lisboa" is both the region and the
+# municipality, and summing by label gave the municipality 37,208 births in 2001
+# against a true figure near 5,500 - which inflated the infant-rate denominator
+# of Lisboa and of every region containing it. "Calheta" and "Lagoa" each name a
+# municipality in two different regions. The last four digits of a municipal
+# code are its DICO, which is identical in every NUTS vintage, so it maps any
+# edition's rows onto the app's canonical municipality names.
+dico_lookup <- readRDS(file.path(repo_root, "data", "nuts_lookup_2024.rds")) %>%
+  dplyr::transmute(dico = substr(as.character(municipality_code), 4, 7), municipality)
+stopifnot(!anyDuplicated(dico_lookup$dico))
+
+area_for_code <- function(code) {
+  code <- as.character(code)
+  out <- rep(NA_character_, length(code))
+  out[code == "PT"] <- "Portugal"
+  out[code == "1"] <- "Continente"
+  municipal <- nchar(code) == 7
+  out[municipal] <- dico_lookup$municipality[match(substr(code[municipal], 4, 7), dico_lookup$dico)]
+  out
+}
+
+# The shared downloader keeps only labels, so resolve the pinned categories with
+# it and then call INE directly, keeping the geography code.
+ine_raw_client <- ineptr2::INEClient$new(lang = "PT", timeout = 900)
+
+fetch_births_by_code <- function(indicator, dims) {
+  dv <- app_env$get_dim_values_cached(indicator)
+  cats <- purrr::imap(dims, ~ app_env$get_cat_code(.x, dv, dim_name = .y))
+  for (attempt in 1:5) {
+    raw <- tryCatch(do.call(ine_raw_client$get_data, c(list(indicator), cats)), error = function(e) NULL)
+    if (!is.null(raw) && nrow(raw) > 0) {
+      Sys.sleep(3)
+      return(tibble::tibble(code = as.character(raw$geocod), value = suppressWarnings(as.numeric(raw$valor))))
+    }
+    Sys.sleep(60 * attempt)
+  }
+  stop("INE returned no data after 5 attempts", call. = FALSE)
+}
+
 
 indicator_years <- function(indicator) {
   tryCatch(
@@ -169,7 +210,7 @@ for (source in birth_sources) {
 
     dims <- c(list(dim1 = as.character(year)), source$pins)
     fetched <- tryCatch(
-      app_env$download_data(source$indicator, dims = dims, has_cause = FALSE),
+      fetch_births_by_code(source$indicator, dims),
       error = function(e) {
         message("  ", year, ": FAILED (", conditionMessage(e), ")")
         failed <<- c(failed, paste0(source$indicator, "/", year))
@@ -180,12 +221,21 @@ for (source in birth_sources) {
     if (is.null(fetched) || nrow(fetched) == 0) next
 
     chunk <- fetched %>%
-      dplyr::filter(!area %in% pseudo_areas) %>%
+      dplyr::mutate(area = area_for_code(code)) %>%
+      dplyr::filter(!is.na(area)) %>%
       dplyr::group_by(area) %>%
       dplyr::summarise(births = sum(value, na.rm = TRUE), .groups = "drop") %>%
       dplyr::mutate(year = as.integer(year), source_indicator = source$indicator) %>%
       dplyr::select(year, area, births, source_indicator) %>%
       dplyr::arrange(area)
+
+    municipalities <- setdiff(chunk$area, c("Portugal", "Continente"))
+    if (length(municipalities) != nrow(dico_lookup)) {
+      message("  ", year, ": REJECTED - ", length(municipalities), " municipalities matched, expected ",
+              nrow(dico_lookup), ".")
+      failed <- c(failed, paste0(source$indicator, "/", year))
+      next
+    }
 
     # A pinning mistake shows up as an implausible national total rather than as
     # an error, so check it before writing: Portugal has recorded between about

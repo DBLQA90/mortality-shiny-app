@@ -42,6 +42,7 @@ for (app_file in c(
   "R/metrics.R",
   "R/standardisation.R",
   "R/avoidable.R",
+  "R/planning_indicators.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -63,6 +64,7 @@ ui <- navbarPage(
   advanced_forecasting_tab_ui(),
   annual_metrics_tab_ui(),
   avoidable_tab_ui(),
+  planning_tab_ui(),
   data_availability_tab_ui(),
   glossary_tab_ui()
 )
@@ -147,7 +149,7 @@ server <- function(input, output, session) {
       return()
     }
 
-    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area", "avoidable_area")
+    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area", "avoidable_area", "planning_area")
     dropped <- character(0)
 
     for (input_id in area_inputs) {
@@ -3181,7 +3183,7 @@ server <- function(input, output, session) {
           # whole cutoff rather than the 67.5 years the band midpoint implies.
           # Returns the frame unchanged when the under-1 counts do not cover the
           # window, so AVPP is never half-corrected.
-          under_one <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex)
+          under_one <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex, complete = FALSE)
           ypll_bands <- split_infant_age_band(pooled_bands, under_one)
 
           ci <- compute_ypll_interval(ypll_bands, cutoff = 70)
@@ -3808,6 +3810,17 @@ server <- function(input, output, session) {
         ))
         showNotification(detail_gap, type = "warning", duration = 20)
       }
+
+      undercount <- infant_undercount_message(
+        pooled_years,
+        areas = c("Norte", as.character(input$annual_area)),
+        cause = detail_cause,
+        sex = input$annual_sex,
+        municipalities = active_nuts_lookup()$municipality
+      )
+      if (!is.null(undercount)) {
+        showNotification(undercount, type = "warning", duration = 20)
+      }
     }
 
     notify_snapshot_request_warnings(
@@ -4098,6 +4111,244 @@ server <- function(input, output, session) {
   output$downloadAvoidablePlot <- downloadHandler(
     filename = function() paste0("evitavel_", input$avoidable_year, "_", Sys.Date(), ".png"),
     content = function(file) save_ggplot_png(file, avoidable_plot())
+  )
+
+  # -------------------------
+  # Planning indicators
+  # -------------------------
+  # Every selected area is computed on its own and shown as a column. The
+  # components are read from year files cached for the session, so switching the
+  # indicator or rereading a year does not touch the disk again.
+  planning_request <- eventReactive(input$go_planning, {
+    areas <- unique(as.character(input$planning_area))
+    validate(need(length(areas) > 0, "Seleccione pelo menos um local."))
+    validate(need(length(areas) <= 8, "Seleccione no máximo 8 locais: cada um é uma coluna."))
+
+    mismatch <- vintage_mismatch_message(areas, active_nuts_vintage(), active_nuts_lookup())
+    validate(need(is.null(mismatch), mismatch))
+
+    list(
+      areas = areas,
+      year = as.integer(input$planning_year),
+      indicator = input$planning_indicator,
+      lookup = active_nuts_lookup(),
+      vintage = active_nuts_vintage()
+    )
+  }, ignoreNULL = TRUE)
+
+  planning_profile <- reactive({
+    request <- planning_request()
+    shiny::withProgress(message = "A calcular indicadores...", value = 0.3, {
+      planning_indicator_table(request$areas, request$year, lookup = request$lookup)
+    })
+  })
+
+  output$planningProfile <- renderTable({
+    planning_profile_wide(planning_profile())
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  planning_long_table <- reactive({
+    planning_profile() %>%
+      dplyr::left_join(PLANNING_INDICATORS, by = c("indicator" = "id")) %>%
+      dplyr::transmute(
+        Local = .data$area,
+        Indicador = .data$label,
+        Referência = .data$ref,
+        Período = purrr::map2_chr(.data$indicator, .data$year, planning_period_label),
+        Unidade = .data$unit,
+        Valor = .data$value,
+        `IC 95% inferior` = .data$lower,
+        `IC 95% superior` = .data$upper,
+        Numerador = .data$numerator,
+        Denominador = .data$denominator,
+        Nota = .data$flag
+      )
+  })
+
+  output$downloadPlanningCSV <- downloadHandler(
+    filename = function() paste0("indicadores_planeamento_", input$planning_year, "_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(planning_long_table(), file)
+  )
+
+  planning_trend_plot <- reactive({
+    request <- planning_request()
+    spec <- planning_indicator_spec(request$indicator)
+    years <- planning_indicator_years(request$indicator)
+    validate(need(length(years) > 0, "Sem anos disponíveis para este indicador."))
+
+    series <- shiny::withProgress(message = "A calcular a série...", value = 0.3, {
+      planning_indicator_table(request$areas, years, ids = request$indicator, lookup = request$lookup)
+    }) %>%
+      dplyr::filter(!is.na(.data$value))
+    validate(need(nrow(series) > 0, "Sem valores para a selecção."))
+
+    x_label <- if (spec$window > 1) "Último ano do triénio" else "Ano"
+    plot <- ggplot(series, aes(x = year, y = value, colour = area, fill = area)) +
+      geom_line(linewidth = 0.9) +
+      geom_point(size = 1.4)
+    if (any(!is.na(series$lower))) {
+      plot <- plot + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA)
+    }
+    plot +
+      labs(
+        title = paste0(spec$label, " [", spec$ref, "]"),
+        subtitle = paste0("Unidade: ", spec$unit, if (any(!is.na(series$lower))) " · sombreado: IC 95%" else ""),
+        x = x_label, y = NULL, colour = NULL, fill = NULL
+      ) +
+      theme_minimal() +
+      theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+  })
+
+  output$planningTrend <- renderPlot({
+    planning_trend_plot()
+  })
+
+  output$downloadPlanningTrend <- downloadHandler(
+    filename = function() paste0("planeamento_evolucao_", input$planning_indicator, "_", Sys.Date(), ".png"),
+    content = function(file) save_ggplot_png(file, planning_trend_plot())
+  )
+
+  planning_ranking <- reactive({
+    request <- planning_request()
+    units <- planning_uls_units()
+    validate(need(length(units) > 0, "A tabela de ULS não está disponível."))
+
+    shiny::withProgress(message = "A calcular todas as ULS...", value = 0.3, {
+      planning_indicator_table(c("Portugal", units), request$year, ids = request$indicator, lookup = request$lookup)
+    })
+  })
+
+  planning_ranking_plot <- reactive({
+    request <- planning_request()
+    spec <- planning_indicator_spec(request$indicator)
+    ranking <- planning_ranking()
+    reference <- ranking$value[ranking$area == "Portugal"]
+    units <- ranking %>%
+      dplyr::filter(.data$area != "Portugal", !is.na(.data$value)) %>%
+      dplyr::mutate(
+        selected = .data$area %in% request$areas,
+        label = paste0(.data$area, .data$flag),
+        label = stats::reorder(.data$label, .data$value)
+      )
+    validate(need(nrow(units) > 0, "Sem valores para este indicador e ano."))
+
+    plot <- ggplot(units, aes(x = label, y = value, fill = selected)) +
+      geom_col(width = 0.75)
+    if (any(!is.na(units$lower))) {
+      plot <- plot + geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.3, colour = "grey35")
+    }
+    if (length(reference) == 1 && is.finite(reference)) {
+      plot <- plot + geom_hline(yintercept = reference, linetype = "dashed", colour = "grey20")
+    }
+    plot +
+      coord_flip() +
+      scale_fill_manual(values = c(`FALSE` = "#8fb3d9", `TRUE` = "#d9534f"), guide = "none") +
+      labs(
+        title = paste0(spec$label, " - ", planning_period_label(request$indicator, request$year)),
+        subtitle = paste0("Unidade: ", spec$unit, ". A vermelho, as ULS seleccionadas."),
+        x = NULL, y = NULL
+      ) +
+      theme_minimal() +
+      theme(plot.title = element_text(hjust = 0.5))
+  })
+
+  output$planningRanking <- renderPlot({
+    planning_ranking_plot()
+  })
+
+  output$downloadPlanningRanking <- downloadHandler(
+    filename = function() paste0("planeamento_uls_", input$planning_indicator, "_", input$planning_year, "_", Sys.Date(), ".png"),
+    content = function(file) save_ggplot_png(file, planning_ranking_plot(), height = 1400)
+  )
+
+  output$downloadPlanningRankingCSV <- downloadHandler(
+    filename = function() paste0("planeamento_uls_", input$planning_indicator, "_", input$planning_year, "_", Sys.Date(), ".csv"),
+    content = function(file) {
+      write_csv_utf8(
+        planning_ranking() %>%
+          dplyr::arrange(dplyr::desc(.data$value)) %>%
+          dplyr::transmute(Local = .data$area, Valor = .data$value, `IC 95% inferior` = .data$lower,
+                           `IC 95% superior` = .data$upper, Nota = .data$flag),
+        file
+      )
+    }
+  )
+
+  planning_pyramid_plot <- reactive({
+    request <- planning_request()
+    pyramid <- dplyr::bind_rows(lapply(utils::head(request$areas, 4), planning_pyramid, year = request$year, lookup = request$lookup))
+    validate(need(nrow(pyramid) > 0, "Sem população para o ano escolhido."))
+
+    pyramid <- pyramid %>%
+      dplyr::mutate(
+        age_band = factor(.data$age_band, levels = unique(.data$age_band[order(.data$lower)])),
+        signed = ifelse(.data$sex == "H", -.data$share, .data$share),
+        sex = ifelse(.data$sex == "H", "Homens", "Mulheres"),
+        area = factor(.data$area, levels = utils::head(request$areas, 4))
+      )
+    limit <- max(abs(pyramid$signed))
+
+    ggplot(pyramid, aes(x = age_band, y = signed, fill = sex)) +
+      geom_col(width = 0.9) +
+      coord_flip() +
+      facet_wrap(~area) +
+      scale_y_continuous(limits = c(-limit, limit), labels = function(x) paste0(format(abs(x), decimal.mark = ","), "%")) +
+      scale_fill_manual(values = c(Homens = "#4a7fb5", Mulheres = "#c0506b")) +
+      labs(
+        title = paste0("Pirâmide etária - ", request$year),
+        subtitle = if (length(request$areas) > 4) "Mostram-se os primeiros 4 locais seleccionados." else NULL,
+        x = NULL, y = NULL, fill = NULL
+      ) +
+      theme_minimal() +
+      theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+  })
+
+  output$planningPyramid <- renderPlot({
+    planning_pyramid_plot()
+  })
+
+  output$downloadPlanningPyramid <- downloadHandler(
+    filename = function() paste0("planeamento_piramide_", input$planning_year, "_", Sys.Date(), ".png"),
+    content = function(file) save_ggplot_png(file, planning_pyramid_plot())
+  )
+
+  planning_proportional_table <- reactive({
+    request <- planning_request()
+    validate(need(
+      request$year %in% planning_proportional_years(),
+      "A mortalidade proporcional precisa dos três anos do triénio terminado no ano escolhido."
+    ))
+    dplyr::bind_rows(lapply(request$areas, planning_proportional, end_year = request$year, lookup = request$lookup))
+  })
+
+  output$planningProportional <- renderTable({
+    prop <- planning_proportional_table()
+    validate(need(nrow(prop) > 0, "Sem dados."))
+    prop %>%
+      dplyr::mutate(
+        cell = paste0(
+          planning_format_value(.data$share, 1), "% (",
+          formatC(.data$deaths, format = "d", big.mark = ".", decimal.mark = ","), ")"
+        ),
+        order = match(.data$code, unique(.data$code))
+      ) %>%
+      dplyr::select(order, `Grupo de causas` = group, Período = period, area, cell) %>%
+      tidyr::pivot_wider(names_from = area, values_from = cell) %>%
+      dplyr::arrange(order) %>%
+      dplyr::select(-order)
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$downloadPlanningProportionalCSV <- downloadHandler(
+    filename = function() paste0("planeamento_mortalidade_proporcional_", input$planning_year, "_", Sys.Date(), ".csv"),
+    content = function(file) {
+      write_csv_utf8(
+        planning_proportional_table() %>%
+          dplyr::transmute(Local = .data$area, Período = .data$period, Código = .data$code,
+                           `Grupo de causas` = .data$group, Óbitos = .data$deaths, `%` = .data$share,
+                           `IC 95% inferior` = .data$lower, `IC 95% superior` = .data$upper),
+        file
+      )
+    }
   )
 
   # -------------------------

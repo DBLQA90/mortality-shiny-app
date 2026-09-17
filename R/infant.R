@@ -111,14 +111,85 @@ get_births_data <- function(years, areas) {
   dplyr::bind_rows(rows)
 }
 
-get_infant_death_data <- function(years, areas, cause = "Todas as causas de morte", sex = "HM") {
+# All-cause requests read data/snapshots/infant_totals where a year has it: INE's
+# own under-1 death counts (0008181/0012541), complete at municipal level. The
+# by-cause dataset takes the "Menos de 1 ano" band of the cause-of-death
+# indicators, whose municipal age breakdown is incomplete - in 2014 its
+# municipalities add up to 112 infant deaths against a national 236 - so it is
+# used only for a specific cause, or where no complete count exists.
+#
+# `complete = FALSE` keeps the band-derived count. The AVPP correction needs it:
+# it splits the `0 - 4 anos` band of the same age breakdown, and a complete count
+# larger than that band would be capped rather than split.
+infant_totals_years <- function() snapshot_years_for("infant_totals")
+
+get_infant_death_data <- function(years, areas, cause = "Todas as causas de morte", sex = "HM", complete = TRUE) {
+  use_totals <- isTRUE(complete) && identical(cause, "Todas as causas de morte")
+
   rows <- lapply(years, function(year) {
+    if (use_totals) {
+      totals <- read_year_file("infant_totals", year)
+      if (!is.null(totals)) {
+        return(
+          totals %>%
+            dplyr::filter(area %in% areas, sex == .env$sex) %>%
+            dplyr::mutate(cause = .env$cause) %>%
+            dplyr::select(year, area, sex, cause, deaths, source_indicator)
+        )
+      }
+    }
     chunk <- read_year_file("infant_deaths", year)
     if (is.null(chunk)) return(NULL)
     chunk %>% dplyr::filter(area %in% areas, cause == .env$cause, sex == .env$sex)
   })
 
   dplyr::bind_rows(rows)
+}
+
+# Share of the national under-1 count that the municipalities account for, in a
+# year read from the band-derived dataset. INE's complete municipal counts start
+# in 2011; before that the "Menos de 1 ano" band of the cause-of-death
+# indicators is all there is, and in 1995-2001 its municipalities add up to about
+# 85% of Portugal. A year with complete counts returns 1.
+infant_municipal_coverage <- function(year,
+                                      cause = "Todas as causas de morte",
+                                      sex = "HM",
+                                      municipalities = get_nuts_lookup()$municipality) {
+  if (identical(cause, "Todas as causas de morte") && !is.null(read_year_file("infant_totals", year))) {
+    return(1)
+  }
+  chunk <- read_year_file("infant_deaths", year)
+  if (is.null(chunk)) return(NA_real_)
+  rows <- chunk[chunk$cause == cause & chunk$sex == sex, , drop = FALSE]
+  national <- sum(rows$deaths[rows$area == "Portugal"])
+  if (!is.finite(national) || national <= 0) return(NA_real_)
+  sum(rows$deaths[rows$area %in% municipalities]) / national
+}
+
+infant_undercount_threshold <- 0.97
+
+infant_undercount_years <- function(years, cause = "Todas as causas de morte", sex = "HM",
+                                    municipalities = get_nuts_lookup()$municipality) {
+  years <- intersect(as.integer(years), infant_death_years())
+  coverage <- vapply(years, infant_municipal_coverage, numeric(1),
+                     cause = cause, sex = sex, municipalities = municipalities)
+  sort(years[!is.na(coverage) & coverage < infant_undercount_threshold])
+}
+
+# Warning for a selection that reads municipal under-1 counts in such a year.
+# Portugal is read from its own published row and is unaffected.
+infant_undercount_message <- function(years, areas, cause = "Todas as causas de morte", sex = "HM",
+                                      municipalities = get_nuts_lookup()$municipality) {
+  if (length(setdiff(as.character(areas), "Portugal")) == 0) return(NULL)
+  short <- infant_undercount_years(years, cause, sex, municipalities)
+  if (length(short) == 0) return(NULL)
+  as.character(glue::glue(
+    "Em {paste(short, collapse = ', ')}, os óbitos com menos de 1 ano por ",
+    "município estão incompletos no INE (a soma dos municípios fica abaixo de ",
+    "{round(infant_undercount_threshold * 100)}% do total nacional). As taxas e ",
+    "contagens de regiões, ULS e municípios nesses anos estão subestimadas; ",
+    "Portugal não é afectado. Contagens completas por município existem desde 2011."
+  ))
 }
 
 # Total under-1 deaths for a selection, or NA when the window is not fully
@@ -131,14 +202,15 @@ get_infant_death_data <- function(years, areas, cause = "Todas as causas de mort
 infant_deaths_total <- function(years,
                                 areas,
                                 cause = "Todas as causas de morte",
-                                sex = "HM") {
+                                sex = "HM",
+                                complete = TRUE) {
   years <- as.integer(years)
 
   if (length(years) == 0 || !all(years %in% infant_death_years())) {
     return(NA_real_)
   }
 
-  rows <- get_infant_death_data(years, areas, cause = cause, sex = sex)
+  rows <- get_infant_death_data(years, areas, cause = cause, sex = sex, complete = complete)
 
   if (nrow(rows) == 0) {
     return(NA_real_)

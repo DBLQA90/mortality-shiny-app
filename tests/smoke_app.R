@@ -115,4 +115,32 @@ testServer(app, {
                 y, co$value[3], ac$value[3], ma$value[3], total, co$value[1],
                 if (isTRUE(all.equal(total, co$value[1]))) "EXACT" else "MISMATCH"))
   }
+
+  # The planning tab. Its figures must agree with INE's own rows: municipal
+  # death totals are complete, so Continente built from its municipalities
+  # closes against the published Continente row to within the deaths of unknown
+  # residence, and the workbook's 2020-2022 Continente total is 356,333.
+  cat("\n=== Planning indicators ===\n")
+  session$setInputs(
+    nuts_vintage = "2024",
+    planning_area = c("Portugal", "Continente", "ARS Norte", "ULS Matosinhos", "Lisboa"),
+    planning_year = 2022, planning_indicator = "ageing_index", go_planning = 1
+  )
+  profile <- tryCatch(planning_profile(), error = function(e) e)
+  if (inherits(profile, "error")) {
+    cat("   ERROR:", conditionMessage(profile), "\n")
+  } else {
+    wanted <- c("pop_total", "ageing_index", "birth_rate", "death_rate", "infant_rate")
+    print(as.data.frame(profile[profile$indicator %in% wanted, c("area", "indicator", "value", "flag")]))
+  }
+  prop <- tryCatch(planning_proportional_table(), error = function(e) e)
+  if (!inherits(prop, "error")) {
+    total <- prop$deaths[prop$area == "Continente" & prop$code == "C00"]
+    # 356,355 on the current files: 22 above the workbook (0.006%) - the gap
+    # the precedence rule leaves: 2022 is read from 0013166, not 0008206.
+    cat(sprintf("   Continente 2020-2022 all-cause deaths = %.0f (workbook I45: 356333, diff %+.0f) %s\n",
+                total, total - 356333, if (abs(total - 356333) <= 100) "OK" else "MISMATCH"))
+  }
+  ranking <- tryCatch(planning_ranking(), error = function(e) e)
+  if (!inherits(ranking, "error")) cat("   ULS ranked:", sum(ranking$area != "Portugal"), "\n")
 }, session = MockShinySession$new())

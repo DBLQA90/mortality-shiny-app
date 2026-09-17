@@ -403,7 +403,24 @@ Limitações:
 
 - **à escala municipal é extremamente esparso.** Barrancos teve 9 nados-vivos em 2024. Sem óbitos infantis, a taxa é 0,0 — mas o limite superior do intervalo é 409,9 por 1.000. Um único óbito teria dado mais de 100;
 - por isso os valores calculados sobre menos de 1.000 nados-vivos são assinalados com `*` (ver a secção seguinte);
-- agregar vários anos ajuda, mas não cria acontecimentos que não houve.
+- agregar vários anos ajuda, mas não cria acontecimentos que não houve;
+- **em 1995-2001 as regiões, ULS e municípios estão subestimados.** Antes de 2011 o
+  INE não publica contagens completas de óbitos com menos de 1 ano por município;
+  a aplicação usa então a idade «menos de 1 ano» das estatísticas de causas de
+  morte, cujos municípios somam cerca de 85% do total nacional nesses anos (e
+  praticamente 100% em 2002-2010). A aplicação avisa quando a selecção inclui
+  esses anos, e o separador de Indicadores de Planeamento marca o valor com `†`.
+  Portugal lê a sua própria linha e não é afectado.
+
+**Correcção de Setembro de 2026.** Até esta versão, os nados-vivos de 1995-2013
+estavam errados para Lisboa: a linha «Lisboa» do INE nesses anos é a região, não o
+município, e a aplicação registava cerca de 37.000 nascimentos em vez de cerca de
+5.600. A taxa de Lisboa, e de qualquer região ou ULS que a incluísse, ficava muito
+abaixo da real. Os nados-vivos e os óbitos com menos de 1 ano são agora
+identificados pelo código do município e não pelo nome, o que também separa as duas
+Calhetas e as duas Lagoas. Desde 2011, os óbitos com menos de 1 ano vêm das
+contagens completas do INE, e já não da repartição por idade das causas de morte
+(que em 2014 perdia metade dos óbitos municipais).
 
 ### Que Métrica Escolher
 
@@ -865,6 +882,83 @@ Cuidados:
 - a definição NUTS activa, no topo da página, muda o que uma região significa;
 - as taxas exigem denominador, pelo que os anos sem população publicada não
   estão disponíveis neste separador.
+
+## 10-B. Separador Indicadores de Planeamento
+
+Os indicadores demográficos e de mortalidade que os Planos Locais de Saúde
+apresentam para cada ULS, calculados para qualquer local da aplicação: Portugal,
+Continente, regiões NUTS, ARS, ULS e municípios. Seguem os indicadores do
+ficheiro de apoio aos PLS (a referência `[I…]` de cada linha), recalculados a
+partir dos dados actuais do INE.
+
+Ao contrário dos separadores de mortalidade, **cada local seleccionado é uma
+coluna própria**, lida lado a lado, e não é somado aos outros. Pode escolher até
+8 locais.
+
+| Indicador | Ref. | Cálculo |
+|---|---|---|
+| População residente | I1 | estimativa anual do INE |
+| Proporção de jovens, de idosos e de 75+ | I1 | grupo etário sobre a população total, em % |
+| Índice de envelhecimento | I4 | 65 e mais anos por 100 com 0-14 anos |
+| Índice de dependência de jovens | I5 | 0-14 anos por 100 com 15-64 anos |
+| Índice de dependência de idosos | I6 | 65 e mais anos por 100 com 15-64 anos |
+| Nados-vivos | I7 | contagem |
+| Taxa bruta de natalidade | I8 | nados-vivos por 1.000 habitantes |
+| Óbitos | I37 | contagem, todas as causas e idades |
+| Taxa bruta de mortalidade | I38 | óbitos por 1.000 habitantes |
+| Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
+| Mortalidade proporcional por grandes grupos de causas | I45 | óbitos de cada grupo sobre o total, no triénio |
+
+### Os subseparadores
+
+- **Perfil** — todos os indicadores para o ano escolhido, um local por coluna.
+- **Evolução** — o indicador escolhido ao longo de todos os anos disponíveis,
+  com o intervalo de confiança sombreado quando existe.
+- **Comparação entre ULS** — as 34 ULS do Continente e os dois agrupamentos
+  exactos, ordenados, com Portugal como linha tracejada. As ULS que tiver
+  seleccionado aparecem a vermelho.
+- **Pirâmide etária** — a estrutura por idade e sexo, em percentagem, para os
+  primeiros quatro locais (I3).
+- **Mortalidade proporcional** — os 13 grandes grupos de causas do I45, mais uma
+  linha «Restantes causas» para que a coluna feche em 100%.
+
+### Como são construídos os valores
+
+Cada local é a soma dos seus municípios, e cada indicador é uma razão dessas
+somas, nunca uma média de taxas municipais. Portugal e o Continente usam as
+linhas publicadas pelo INE, que incluem os acontecimentos cujo município de
+residência é desconhecido. Por isso a soma das regiões fica ligeiramente abaixo
+de Portugal, cerca de 0,3% a 0,9% dos óbitos.
+
+Os óbitos deste separador vêm do **total de todas as idades** que o INE publica
+por município, e não da repartição por idade usada nos outros separadores. Essa
+repartição está incompleta ao nível municipal, sobretudo em 2014. Contagens,
+taxas brutas e proporções de todas as idades não precisam da idade, pelo que
+aqui são exactas em qualquer nível.
+
+### Intervalos e asterisco
+
+Contagens e taxas de acontecimentos (nascimentos, óbitos, mortalidade infantil,
+proporções) têm intervalo de confiança de 95%. Os índices de estrutura da
+população não têm: as estimativas de população não são uma amostra de
+acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
+1.000 nados-vivos, como no resto da aplicação.
+
+### Porque podem diferir do ficheiro de apoio aos PLS
+
+- **População revista.** Desde 2021 a aplicação usa a série revista do INE.
+  Valores calculados com a estimativa anterior ficam desactualizados: o índice
+  de envelhecimento do Alto Minho em 2024 era 270,3 com a estimativa antiga e é
+  240,2 com a revista.
+- **ULS que partilham um município.** Lisboa, Loures e Porto estão divididos
+  entre ULS ao nível da freguesia. Atribuir o município inteiro a cada ULS conta
+  a mesma população duas vezes: no ficheiro, a soma das ULS do Norte
+  ultrapassa a ARS Norte em cerca de 3.000 óbitos. A aplicação mostra antes os
+  dois agrupamentos exactos.
+- **Edição dos dados de 2022.** A aplicação lê 2022 da tabela NUTS 2024 do
+  INE. Para o Continente em 2020-2022 obtém 356.355 óbitos, contra 356.333 no
+  ficheiro: uma diferença de 22 (0,006%), e nula em vários grupos de causas
+  (circulatório, geniturinário, perinatal).
 
 ## 11. Separador Disponibilidade de Dados
 
