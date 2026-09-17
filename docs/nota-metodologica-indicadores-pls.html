@@ -1,0 +1,448 @@
+<title>Nota Metodológica dos Indicadores PLS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+  :root {
+    --ground: #f7f8f7;
+    --surface: #ffffff;
+    --ink: #1b2226;
+    --ink-2: #56616a;
+    --ink-3: #7c868d;
+    --rule: #dde2e5;
+    --accent: #1d5b70;
+    --accent-soft: #e3eef1;
+    --panel: #eef2f3;
+    --warn: #8a5a12;
+    --warn-soft: #f7eedd;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #13181b;
+      --surface: #192024;
+      --ink: #e6eaec;
+      --ink-2: #a8b3ba;
+      --ink-3: #85919a;
+      --rule: #2a3337;
+      --accent: #86bfd2;
+      --accent-soft: #1c2d33;
+      --panel: #1c2428;
+      --warn: #e2b46a;
+      --warn-soft: #2a2317;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #13181b;
+    --surface: #192024;
+    --ink: #e6eaec;
+    --ink-2: #a8b3ba;
+    --ink-3: #85919a;
+    --rule: #2a3337;
+    --accent: #86bfd2;
+    --accent-soft: #1c2d33;
+    --panel: #1c2428;
+    --warn: #e2b46a;
+    --warn-soft: #2a2317;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 40px 80px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 56px;
+  }
+  @media (max-width: 880px) {
+    .page { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 56px; }
+    nav.toc { position: static !important; max-height: none !important; }
+  }
+
+  nav.toc {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 24px);
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    font-size: 13.5px;
+    border-left: 1px solid var(--rule);
+    padding-left: 16px;
+  }
+  nav.toc p { margin: 0 0 10px; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: toc; }
+  nav.toc li { counter-increment: toc; }
+  nav.toc a { color: var(--ink-2); text-decoration: none; display: grid; grid-template-columns: 22px 1fr; }
+  nav.toc a::before { content: counter(toc); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+
+  main { min-width: 0; }
+  article { max-width: 880px; }
+  article p, article ul, article h1, article h2, article h3, .lede, .note, .formula, header.doc .meta { max-width: 70ch; }
+
+  header.doc {
+    padding-bottom: 28px;
+    margin-bottom: 36px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow { font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; font-weight: 600; }
+  h1, h2, h3 { font-family: var(--serif); text-wrap: balance; color: var(--ink); }
+  h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; margin: 0 0 16px; font-weight: 600; }
+  h2 { font-size: 24px; line-height: 1.25; margin: 56px 0 14px; font-weight: 600; scroll-margin-top: 24px; display: flex; gap: 12px; align-items: baseline; }
+  h2 .n { font-family: var(--mono); font-size: 14px; color: var(--accent); font-weight: 500; min-width: 1.6em; }
+  h3 { font-size: 18px; margin: 32px 0 8px; font-weight: 600; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 17.5px; color: var(--ink-2); margin-bottom: 20px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13.5px; color: var(--ink-2); margin: 0; padding: 0; list-style: none; }
+  .meta b { color: var(--ink); font-weight: 500; }
+  ul, ol { padding-left: 1.3em; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  code, .code { font-family: var(--mono); font-size: 0.88em; background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  strong { font-weight: 600; }
+
+  .formula {
+    font-family: var(--mono);
+    font-size: 14px;
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    margin: 12px 0 18px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.7;
+  }
+  .note {
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    padding: 12px 16px;
+    margin: 16px 0 20px;
+    font-size: 15px;
+  }
+  .note strong { color: var(--warn); }
+
+  .table-wrap { overflow-x: auto; margin: 14px 0 22px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  caption { text-align: left; font-size: 13px; color: var(--ink-2); padding: 10px 0 8px; caption-side: top; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; font-size: 12.5px; color: var(--ink-2); letter-spacing: 0.02em; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td .code { white-space: nowrap; }
+  .wide table { min-width: 720px; }
+
+  footer.doc { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-2); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <nav class="toc" aria-label="Índice">
+    <p>Índice</p>
+    <ol>
+      <li><a href="#ambito">Âmbito</a></li>
+      <li><a href="#fontes">Fontes de dados</a></li>
+      <li><a href="#geografia">Geografia</a></li>
+      <li><a href="#agregacao">Valores para áreas agregadas</a></li>
+      <li><a href="#populacao">População residente</a></li>
+      <li><a href="#formulas">Indicadores e fórmulas</a></li>
+      <li><a href="#isf">Índice sintético de fecundidade</a></li>
+      <li><a href="#ev">Esperança de vida à nascença</a></li>
+      <li><a href="#incerteza">Intervalos e marcas</a></li>
+      <li><a href="#qualidade">Qualidade dos dados de base</a></li>
+      <li><a href="#ficheiro">Diferenças face ao ficheiro v26</a></li>
+      <li><a href="#versoes">Versões dos dados</a></li>
+      <li><a href="#limitacoes">Limitações</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <article>
+      <header class="doc">
+        <p class="eyebrow">Nota metodológica</p>
+        <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
+        <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
+        <ul class="meta">
+          <li><b>Versão</b> 1.0</li>
+          <li><b>Data</b> 17 de Setembro de 2026</li>
+          <li><b>Dados do INE importados até</b> 2026-09-17</li>
+          <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
+        </ul>
+      </header>
+
+      <section>
+        <h2 id="ambito"><span class="n">1</span>Âmbito</h2>
+        <p>A nota descreve o cálculo de 30 indicadores do ficheiro de apoio aos PLS (I1, I3–I10, I13–I17, I28, I32, I33, I35, I37–I42, I45 e I64–I65), obtidos de forma automática a partir das bases de dados do INE, para qualquer área que se possa compor a partir de municípios: Portugal, NUTS I, II e III, as 5 ARS, as 36 ULS e agrupamentos de ULS, e os 308 municípios.</p>
+        <p>Destina-se às equipas das DRS e, se necessário, a validação junto do INE. Todos os valores referidos foram verificados sobre os dados importados na data indicada no cabeçalho.</p>
+        <p>Ficam fora do âmbito, nesta versão: os indicadores exclusivamente censitários (I2, I12, I24, I26), os que não vêm do INE (I11 IEFP, I18–I19 PORDATA, I34 e I49 SIM@SNS), o ganho médio mensal (I27), a mortalidade proporcional abaixo dos 75 anos (I46), o baixo peso à nascença (I36) e as mortalidades fetal tardia e perinatal (I43, I44).</p>
+      </section>
+
+      <section>
+        <h2 id="fontes"><span class="n">2</span>Fontes de dados</h2>
+        <p>Todas as séries vêm do INE, ao nível do município de residência. Cada medida é publicada em até três edições, uma por versão da NUTS; para cada ano usa-se a edição mais recente que o cobre.</p>
+        <div class="table-wrap wide">
+          <table>
+            <caption>Indicadores do INE usados, por edição (da mais antiga para a mais recente)</caption>
+            <thead><tr><th>Medida</th><th>Indicadores INE</th><th>Anos</th></tr></thead>
+            <tbody>
+              <tr><td>População residente por sexo e grupo etário</td><td><span class="code">0003182</span> <span class="code">0008273</span> <span class="code">0012918</span></td><td class="num">1991–2025</td></tr>
+              <tr><td>Óbitos por causa, sexo e grupo etário</td><td><span class="code">0008206</span> <span class="code">0013166</span></td><td class="num">1991–2024</td></tr>
+              <tr><td>Óbitos por causa, todas as idades (linha «Total»)</td><td><span class="code">0008206</span> <span class="code">0013166</span></td><td class="num">1991–2024</td></tr>
+              <tr><td>Nados-vivos</td><td><span class="code">0000003</span> <span class="code">0008084</span> <span class="code">0012434</span></td><td class="num">1995–2025</td></tr>
+              <tr><td>Nados-vivos por idade da mãe</td><td><span class="code">0005952</span> <span class="code">0008092</span> <span class="code">0012441</span></td><td class="num">1995–2025</td></tr>
+              <tr><td>Nados-vivos por duração da gestação</td><td><span class="code">0005950</span> <span class="code">0008084</span> <span class="code">0012434</span></td><td class="num">1995–2025</td></tr>
+              <tr><td>Óbitos com menos de 1 ano, por sexo e idade</td><td><span class="code">0008181</span> <span class="code">0012541</span></td><td class="num">2011–2025</td></tr>
+              <tr><td>Óbitos com menos de 1 ano, por causa (anteriores a 2011)</td><td><span class="code">0008206</span> <span class="code">0013166</span> <span class="code">0012540</span></td><td class="num">1980–2025</td></tr>
+              <tr><td>Beneficiários do rendimento social de inserção</td><td><span class="code">0004299</span> <span class="code">0008251</span> <span class="code">0013417</span></td><td class="num">2007–2025</td></tr>
+              <tr><td>Pensionistas da segurança social</td><td><span class="code">0004294</span> <span class="code">0010271</span> <span class="code">0013395</span> <span class="code">0014534</span></td><td class="num">2004–2025</td></tr>
+              <tr><td>Valor médio das pensões</td><td><span class="code">0004149</span> <span class="code">0010266</span> <span class="code">0013398</span> <span class="code">0014532</span></td><td class="num">2004–2025</td></tr>
+              <tr><td>Poder de compra per capita e proporção nacional</td><td><span class="code">0001354</span>/<span class="code">0001355</span> <span class="code">0008614</span>/<span class="code">0008615</span> <span class="code">0014580</span>/<span class="code">0014581</span></td><td class="num">1993–2023<br>bienal</td></tr>
+              <tr><td>Resíduos urbanos recolhidos, por tipo de recolha</td><td><span class="code">0000482</span> <span class="code">0009612</span> <span class="code">0012769</span></td><td class="num">1995–2024</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Para validação usaram-se ainda os valores publicados pelo INE do índice sintético de fecundidade (<span class="code">0001293</span>) e da esperança de vida (<span class="code">0001724</span>, <span class="code">0001723</span>, <span class="code">0013473</span>, <span class="code">0008459</span>), e as tábuas de mortalidade do Eurostat (<span class="code">demo_mlexpec</span>).</p>
+      </section>
+
+      <section>
+        <h2 id="geografia"><span class="n">3</span>Geografia</h2>
+        <p>A unidade de base é o município (308). Todas as outras áreas são conjuntos de municípios, com a mesma composição aplicada a todos os anos, o que mantém as séries contínuas apesar da revisão das NUTS de 2024.</p>
+        <ul>
+          <li><strong>Identificação por código.</strong> Os municípios são identificados pelos quatro últimos dígitos do código geográfico do INE (o DICO), que se mantêm iguais em todas as versões da NUTS, e nunca pelo nome. O nome falha: «Lisboa» designa também a região NUTS II de 2002, e «Calheta» e «Lagoa» designam dois municípios cada.</li>
+          <li><strong>NUTS 2013 e 2024.</strong> As duas versões agrupam os mesmos 308 municípios de forma diferente; seis nomes existem nas duas com significado diferente.</li>
+          <li><strong>ARS e ULS.</strong> A composição em municípios foi obtida da folha «Var» do ficheiro de apoio aos PLS e ligada ao código INE de cada município. As regiões autónomas não têm ULS nem ARS.</li>
+        </ul>
+        <h3>ULS que partilham municípios</h3>
+        <p>Os municípios de Lisboa, Loures e Porto estão divididos entre ULS ao nível da freguesia. Sem dados por freguesia, essas cinco ULS não podem ser calculadas individualmente; a aplicação apresenta os dois agrupamentos exactos que as contêm: «ULS Santo António + São João» (Gondomar, Maia, Porto, Valongo) e «ULS Loures/Odivelas + Santa Maria + São José» (Lisboa, Loures, Mafra, Odivelas).</p>
+        <p>O INE publica por freguesia apenas os nados-vivos e os óbitos totais por sexo (<span class="code">0012450</span>, <span class="code">0012542</span>) e a população do Censos 2021 (<span class="code">0012380</span>). Não publica por freguesia a população anual, os óbitos por causa ou idade, os óbitos com menos de 1 ano, nem os dados socioeconómicos. Uma repartição das restantes medidas por ponderadores de população atribuiria a cada ULS a taxa do município inteiro: quando numerador e denominador são multiplicados pela mesma proporção, a taxa não muda, e só as contagens seriam divididas, com base em pressupostos.</p>
+      </section>
+
+      <section>
+        <h2 id="agregacao"><span class="n">4</span>Valores para áreas agregadas</h2>
+        <p>Nenhum indicador de uma área agregada é obtido pela média dos valores dos seus municípios. Para cada área e ano somam-se primeiro as <em>componentes</em> dos municípios que a compõem — contagens de população por grupo etário, nados-vivos, óbitos, beneficiários, toneladas de resíduos — e o indicador é a razão dessas somas.</p>
+        <div class="formula">indicador(área) = Σ numerador(município) / Σ denominador(município) × multiplicador</div>
+        <p>Portugal e o Continente usam as linhas publicadas pelo INE sempre que o ficheiro as tem, porque incluem os acontecimentos de residência desconhecida (0,3%–0,9% dos óbitos). As restantes áreas são sempre a soma dos seus municípios e excluem esses acontecimentos.</p>
+        <p>Três indicadores não são aditivos no INE e são reconstruídos a partir de partes aditivas:</p>
+        <ul>
+          <li><strong>Valor médio das pensões</strong>: soma do valor das pensões (pensionistas × valor médio de cada município) dividida pela soma dos pensionistas.</li>
+          <li><strong>Poder de compra per capita</strong> (índice, Portugal = 100): a proporção de cada município no poder de compra nacional dividida pelo seu índice é a sua proporção implícita de população. Para uma área:
+            <div class="formula">IpC(área) = Σ proporção_PC / Σ (proporção_PC / IpC) × 100</div>
+            Reproduz exactamente os valores publicados para o Continente (100,63) e o Norte (92,90) em 2021.</li>
+          <li><strong>Índice sintético de fecundidade</strong> e <strong>esperança de vida</strong>: calculados de raiz para cada área a partir das componentes por idade (secções <a href="#isf">7</a> e <a href="#ev">8</a>).</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 id="populacao"><span class="n">5</span>População residente</h2>
+        <p>A população usada em todos os denominadores é, de 2021 a 2025, a série <span class="code">0012918</span>, com última actualização pelo INE a 22 de Junho de 2026, a data da divulgação da nova metodologia de estimativas de base administrativa. De 1991 a 2020 usam-se as séries <span class="code">0003182</span> (até 2013) e <span class="code">0008273</span> (2014–2020).</p>
+        <div class="note"><strong>Degrau em 2020/2021.</strong> O INE reviu a população apenas de 2021 em diante. Face à série anterior, a população de Portugal é 1,71% maior em 2021, 3,93% em 2022 e 5,31% em 2023. Todos os indicadores com a população no denominador mudam a partir de 2021, e as séries que atravessam 2020/2021 têm uma descontinuidade que não corresponde a uma mudança real. A aplicação assinala-a. Há ainda um degrau menor (cerca de 3% nas taxas padronizadas) em 2013/2014, na passagem de <span class="code">0003182</span> para <span class="code">0008273</span>.</div>
+        <p>Os indicadores anuais usam a estimativa a 31 de Dezembro do próprio ano. O índice sintético de fecundidade e a esperança de vida usam a população a meio do ano, calculada como a média das estimativas a 31 de Dezembro do ano anterior e do próprio ano.</p>
+      </section>
+
+      <section>
+        <h2 id="formulas"><span class="n">6</span>Indicadores e fórmulas</h2>
+        <p>Os indicadores de triénio somam os numeradores e os denominadores dos três anos e são identificados pelo último ano. Os índices por 1.000 habitantes com 15 e mais anos seguem o ficheiro de apoio; os indicadores equivalentes do INE usam 15–64 anos.</p>
+        <div class="table-wrap wide">
+          <table>
+            <caption>Definição por indicador</caption>
+            <thead><tr><th>Ref.</th><th>Indicador</th><th>Numerador</th><th>Denominador</th><th>Escala</th><th>Período</th></tr></thead>
+            <tbody>
+              <tr><td>I1</td><td>População residente</td><td>população</td><td>—</td><td>N.º</td><td>anual</td></tr>
+              <tr><td>I1</td><td>Proporção 0–14, 65+, 75+</td><td>população do grupo</td><td>população total</td><td>%</td><td>anual</td></tr>
+              <tr><td>I4</td><td>Índice de envelhecimento</td><td>população 65+</td><td>população 0–14</td><td>× 100</td><td>anual</td></tr>
+              <tr><td>I5</td><td>Dependência de jovens</td><td>população 0–14</td><td>população 15–64</td><td>× 100</td><td>anual</td></tr>
+              <tr><td>I6</td><td>Dependência de idosos</td><td>população 65+</td><td>população 15–64</td><td>× 100</td><td>anual</td></tr>
+              <tr><td>I7</td><td>Nados-vivos</td><td>nados-vivos</td><td>—</td><td>N.º</td><td>anual</td></tr>
+              <tr><td>I8</td><td>Taxa bruta de natalidade</td><td>nados-vivos</td><td>população total</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I9</td><td>Índice sintético de fecundidade</td><td colspan="2">secção 7</td><td>filhos por mulher</td><td>anual</td></tr>
+              <tr><td>I10</td><td>Esperança de vida à nascença, total e por sexo</td><td colspan="2">secção 8</td><td>anos</td><td>triénio</td></tr>
+              <tr><td>I13</td><td>Beneficiários do RSI</td><td>beneficiários</td><td>—</td><td>N.º</td><td>anual</td></tr>
+              <tr><td>I14</td><td>Beneficiários do RSI por 1.000</td><td>beneficiários</td><td>população 15+</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I15</td><td>Pensionistas</td><td>pensionistas</td><td>—</td><td>N.º</td><td>anual</td></tr>
+              <tr><td>I16</td><td>Pensionistas por 1.000</td><td>pensionistas</td><td>população 15+</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I17</td><td>Valor médio das pensões</td><td>Σ pensionistas × valor médio</td><td>Σ pensionistas</td><td>€ / ano</td><td>anual</td></tr>
+              <tr><td>I28</td><td>Poder de compra per capita</td><td>Σ proporção</td><td>Σ proporção / índice</td><td>Portugal = 100</td><td>bienal</td></tr>
+              <tr><td>I32</td><td>Nascimentos em mães &lt; 20 anos</td><td>nados-vivos, mães 10–19</td><td>nados-vivos</td><td>%</td><td>triénio</td></tr>
+              <tr><td>I33</td><td>Nascimentos em mães 35+ anos</td><td>nados-vivos, mães 35+</td><td>nados-vivos</td><td>%</td><td>triénio</td></tr>
+              <tr><td>I35</td><td>Nascimentos pré-termo</td><td>nados-vivos &lt; 37 semanas</td><td>nados-vivos com duração conhecida</td><td>%</td><td>triénio</td></tr>
+              <tr><td>I37</td><td>Óbitos</td><td>óbitos, todas as idades</td><td>—</td><td>N.º</td><td>anual</td></tr>
+              <tr><td>I38</td><td>Taxa bruta de mortalidade</td><td>óbitos</td><td>população total</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I39</td><td>Mortalidade infantil</td><td>óbitos &lt; 1 ano</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I40</td><td>Mortalidade neonatal</td><td>óbitos &lt; 28 dias</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I41</td><td>Mortalidade neonatal precoce</td><td>óbitos &lt; 7 dias</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I42</td><td>Mortalidade pós-neonatal</td><td>óbitos 28–364 dias</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I45</td><td>Mortalidade proporcional</td><td>óbitos do grande grupo de causas</td><td>óbitos, todas as causas</td><td>%</td><td>triénio</td></tr>
+              <tr><td>I64</td><td>Resíduos urbanos por habitante</td><td>toneladas × 1.000</td><td>população total</td><td>kg/hab.</td><td>anual</td></tr>
+              <tr><td>I65</td><td>Resíduos de recolha selectiva por habitante</td><td>toneladas × 1.000</td><td>população total</td><td>kg/hab.</td><td>anual</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Os óbitos (I37, I38, I45) vêm da linha «Total» de todas as idades por município e causa, e não da repartição por idade, que o INE publica incompleta ao nível municipal (secção <a href="#qualidade">10</a>). Os 13 grandes grupos de causas do I45 são rubricas de capítulo da lista sucinta europeia; o que não cobrem (perturbações mentais, pele, gravidez, malformações congénitas) é apresentado como «Restantes causas», para que o total feche em 100%.</p>
+      </section>
+
+      <section>
+        <h2 id="isf"><span class="n">7</span>Índice sintético de fecundidade</h2>
+        <p>Soma das taxas de fecundidade por grupo quinquenal de idade da mãe, dos 15 aos 49 anos, multiplicada por 5:</p>
+        <div class="formula">ISF = 5 × Σ(g = 15-19 … 45-49)  nados-vivos(mães do grupo g) / mulheres do grupo g a meio do ano
+
+mulheres a meio do ano = (mulheres a 31/12 do ano anterior + mulheres a 31/12 do ano) / 2</div>
+        <ul>
+          <li>Os nados-vivos de mães com menos de 15 anos contam no grupo 15–19 e os de mães com 50 ou mais anos no grupo 45–49. Os de idade da mãe ignorada não entram.</li>
+          <li>O indicador do INE publica, lado a lado, categorias sobrepostas (idades simples, grupos quinquenais, «15–49 anos», e ainda «50–54», «50 e mais» e «55 e mais»). Lêem-se apenas os grupos quinquenais abaixo do grupo aberto mais baixo e esse grupo aberto, para que nenhum nascimento seja contado duas vezes.</li>
+          <li>Para uma área agregada somam-se, por grupo etário, os nados-vivos e as mulheres dos municípios, e só depois se calculam as taxas.</li>
+        </ul>
+        <h3>Validação</h3>
+        <p>Para Portugal, o valor calculado coincide com o publicado pelo INE (<span class="code">0001293</span>) até à segunda casa decimal em todos os anos de 2018 a 2025, excepto em 2021:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ano</th><th class="num">2018</th><th class="num">2019</th><th class="num">2020</th><th class="num">2021</th><th class="num">2022</th><th class="num">2023</th><th class="num">2024</th><th class="num">2025</th></tr></thead>
+            <tbody>
+              <tr><td>Aplicação</td><td class="num">1,42</td><td class="num">1,43</td><td class="num">1,41</td><td class="num">1,32</td><td class="num">1,34</td><td class="num">1,32</td><td class="num">1,27</td><td class="num">1,30</td></tr>
+              <tr><td>INE</td><td class="num">1,42</td><td class="num">1,43</td><td class="num">1,41</td><td class="num">1,30</td><td class="num">1,34</td><td class="num">1,32</td><td class="num">1,27</td><td class="num">1,30</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Em 2021 a população a meio do ano mistura a estimativa de 31/12/2020 da série anterior com a de 31/12/2021 da série revista. Usar só a estimativa de fim de ano dá valores até 0,03 abaixo do INE.</p>
+      </section>
+
+      <section>
+        <h2 id="ev"><span class="n">8</span>Esperança de vida à nascença</h2>
+        <p>Tábua de mortalidade abreviada de período, por triénio e sexo, pelo método de Chiang II, com as fórmulas, a variância e as regras de supressão da função <span class="code">phe_life_expectancy</span> do pacote R <em>PHEindicatormethods</em> (Public Health England / UKHSA). A implementação reproduz essa função exactamente quando aplicada à mesma estrutura etária.</p>
+        <h3>Dados de entrada, somados nos três anos</h3>
+        <ul>
+          <li><strong>Óbitos</strong> de todas as causas por grupo quinquenal, de «0–4» a «85 e mais anos».</li>
+          <li><strong>Pessoas-ano</strong>: soma, nos três anos, da população a meio do ano de cada grupo.</li>
+          <li><strong>Óbitos com menos de 1 ano</strong>, para o primeiro grupo etário.</li>
+        </ul>
+        <h3>Cálculo</h3>
+        <div class="formula">m(x)  = óbitos(x) / pessoas-ano(x)
+q(x)  = n·m(x) / (1 + n·m(x)·(1 − a(x)))          grupos fechados, n = 5
+l(0)  = 100 000;   l(x+n) = l(x)·(1 − q(x))
+L(x)  = n·(l(x+n) + a(x)·d(x));   L(85+) = l(85) / m(85+)
+e(0)  = Σ L(x) / l(0)</div>
+        <p>Com <span class="code">a = 0,5</span> nos grupos 5–9 a 80–84. Duas adaptações aos dados municipais:</p>
+        <ul>
+          <li><strong>Primeiro grupo 0–4 anos.</strong> Os ficheiros de óbitos por idade não têm um grupo «menos de 1 ano» com população correspondente. O intervalo 0–4 é tratado como um só, e a fracção do intervalo vivida pelos que morrem nele combina 0,1 anos para os óbitos com menos de 1 ano e 2,5 anos para os de 1–4 anos, ponderados pelas contagens completas de óbitos com menos de 1 ano.</li>
+          <li><strong>Óbitos sem idade publicada.</strong> Em alguns municípios o INE não reparte todos os óbitos por idade (secção <a href="#qualidade">10</a>). Os óbitos em falta — a diferença para o total completo do município — são distribuídos pelas idades na proporção dos óbitos registados nesse município. O valor é marcado com ‡ quando esta distribuição excede 2% dos óbitos do triénio, o que só acontece ao nível municipal, sobretudo nos triénios que incluem 2014.</li>
+        </ul>
+        <p>O intervalo de confiança de 95% usa a variância de Chiang, com o ajustamento de Silcocks para o intervalo aberto. O valor não é apresentado quando as pessoas-ano do triénio são 5.000 ou menos, ou quando o intervalo de confiança excede 20 anos.</p>
+
+        <h3>Validação</h3>
+        <p>Para Portugal, os valores coincidem com as tábuas do Eurostat, que usam o método internacional corrente:</p>
+        <div class="table-wrap">
+          <table>
+            <caption>Portugal: aplicação (triénio 2017–2019) face ao Eurostat (2019)</caption>
+            <thead><tr><th></th><th class="num">e(0) aplicação</th><th class="num">e(0) Eurostat</th><th class="num">e(65) aplicação</th><th class="num">e(65) Eurostat</th></tr></thead>
+            <tbody>
+              <tr><td>Total</td><td class="num">81,9</td><td class="num">82,0</td><td class="num">20,7</td><td class="num">20,6</td></tr>
+              <tr><td>Homens</td><td class="num">78,8</td><td class="num">79,0</td><td class="num">18,6</td><td class="num">18,7</td></tr>
+              <tr><td>Mulheres</td><td class="num">84,9</td><td class="num">84,8</td><td class="num">22,4</td><td class="num">22,3</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Os valores publicados pelo INE (Metodologia 2007) são sistematicamente mais baixos. Para excluir o efeito da revisão da população, a comparação com as NUTS III foi repetida com a população anterior à revisão de Junho de 2026, a que o INE usou nessas tábuas:</p>
+        <div class="table-wrap">
+          <table>
+            <caption>NUTS III (NUTS 2024): aplicação face ao INE <span class="code">0013473</span></caption>
+            <thead><tr><th>Triénio</th><th class="num">Regiões</th><th class="num">Diferença média</th><th class="num">Desvio-padrão</th><th class="num">Correlação</th><th class="num">Correlação de ordens</th></tr></thead>
+            <tbody>
+              <tr><td>2020–2022</td><td class="num">26</td><td class="num">+0,80 anos</td><td class="num">0,29</td><td class="num">0,97</td><td class="num">0,94</td></tr>
+              <tr><td>2021–2023</td><td class="num">26</td><td class="num">+0,87 anos</td><td class="num">0,33</td><td class="num">0,97</td><td class="num">0,95</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A diferença não resulta do grupo aberto 85+: prolongar a mortalidade para além dos 85 anos com um modelo de Gompertz aumentaria os valores, em vez de os reduzir. Também não resulta da revisão da população, que foi excluída. Resulta das diferenças entre a Metodologia 2007 do INE e a tábua abreviada corrente. A diferença é quase constante entre regiões, pelo que a ordenação coincide com a do INE.</p>
+        <div class="note"><strong>Leitura.</strong> Os valores de esperança de vida da aplicação são comparáveis entre si — entre ULS, regiões, municípios e anos — mas não devem ser comparados com os valores publicados pelo INE, que ficam cerca de 0,8–0,9 anos abaixo. Se for necessário alinhar com o INE, seria preciso conhecer os detalhes da Metodologia 2007 aplicada às NUTS III, para a estender às ULS.</div>
+      </section>
+
+      <section>
+        <h2 id="incerteza"><span class="n">9</span>Intervalos de confiança e marcas</h2>
+        <ul>
+          <li><strong>Contagens e taxas de acontecimentos</strong> (nados-vivos, óbitos, taxas brutas, mortalidade infantil e neonatal): intervalo de Poisson exacto sobre a contagem, com o denominador tratado como fixo.</li>
+          <li><strong>Proporções</strong> (I32, I33, I35, I45): intervalo binomial exacto de Clopper-Pearson.</li>
+          <li><strong>Índices de estrutura da população</strong> (I1, I4–I6) e indicadores socioeconómicos: sem intervalo — as estimativas de população não são uma amostra de acontecimentos e o INE não publica o seu erro.</li>
+          <li><strong>Esperança de vida</strong>: secção 8.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <caption>Marcas junto aos valores</caption>
+            <thead><tr><th>Marca</th><th>Significado</th></tr></thead>
+            <tbody>
+              <tr><td>*</td><td>Taxa de mortalidade infantil ou neonatal calculada sobre menos de 1.000 nados-vivos no triénio: exacta, mas um único óbito desloca-a em mais de uma unidade por 1.000.</td></tr>
+              <tr><td>†</td><td>Triénio que inclui anos de 1995 a 2001, em que os óbitos com menos de 1 ano por município somam cerca de 85% do total nacional: o valor está subestimado. Não se aplica a Portugal.</td></tr>
+              <tr><td>‡</td><td>Esperança de vida em que mais de 2% dos óbitos do triénio não tinham idade publicada por município.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 id="qualidade"><span class="n">10</span>Qualidade dos dados de base</h2>
+        <p>A construção a partir de municípios expôs quatro problemas nos dados do INE, tratados como se descreve.</p>
+        <h3>Repartição por idade incompleta ao nível municipal</h3>
+        <p>Nos óbitos por causa e idade, a soma dos grupos etários de um município nem sempre iguala o seu total. Para todas as causas, faltam 4.130 óbitos em 2014 (100.702 com idade face a 104.832 no total, em 252 municípios) e cerca de 0,5% em 2013, 2015 e 2024. Nas causas específicas a perda é maior. Por isso, contagens, taxas brutas e mortalidade proporcional usam os totais por município, que estão completos; só a esperança de vida precisa da idade, com o tratamento descrito na secção 8.</p>
+        <h3>Óbitos com menos de 1 ano</h3>
+        <p>Retirados da idade «menos de 1 ano» dos óbitos por causa, estavam incompletos por município: em 2014, 112 face a 236 nacionais. Desde 2011 usam-se as contagens próprias do INE de óbitos com menos de 1 ano (<span class="code">0008181</span>, <span class="code">0012541</span>), que fecham exactamente no total nacional. Antes de 2011 não existe série municipal completa: entre 2002 e 2010 a soma municipal atinge 99%–100% do total nacional, mas entre 1995 e 2001 fica em cerca de 85% (marca †).</p>
+        <h3>Nomes ambíguos</h3>
+        <p>No indicador de nados-vivos de 1995–2013 (<span class="code">0000003</span>), a linha «Lisboa» é a região NUTS II de 2002: identificar municípios pelo nome atribuía ao município de Lisboa 37.208 nados-vivos em 2001, em vez de 5.604. A identificação por código (secção 3) resolve este caso e o das duas Calhetas e duas Lagoas.</p>
+        <h3>Mudança de série das pensões</h3>
+        <p>Em 2017 a Série 2017 da segurança social substitui a Série 1990–2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois de 2017 não são directamente comparáveis.</p>
+      </section>
+
+      <section>
+        <h2 id="ficheiro"><span class="n">11</span>Diferenças face ao ficheiro de apoio aos PLS (v26)</h2>
+        <p>Os valores coincidem com o ficheiro onde as definições e os dados de base são os mesmos: pensionistas e beneficiários do RSI (Continente 2021: 2.736.917 e 237.164), valor médio das pensões (Continente 2024: 7.697 € face a 7.696,62 €), nascimentos em mães com 35 e mais anos, nascimentos pré-termo e mortalidade infantil. Os óbitos de 2020–2022 do Continente diferem em 22 (356.355 face a 356.333). As diferenças restantes têm causas identificadas:</p>
+        <div class="table-wrap wide">
+          <table>
+            <thead><tr><th>Diferença</th><th>Exemplo</th><th>Causa</th></tr></thead>
+            <tbody>
+              <tr><td>Indicadores com população no denominador, 2021+</td><td>Índice de envelhecimento, ULS Alto Minho 2024: 240,2 (aplicação) face a 270,3</td><td>O ficheiro usa a estimativa de população anterior à revisão de Junho de 2026. A diferença é um factor constante por área (Continente 1,067; Algarve 1,18).</td></tr>
+              <tr><td>ULS que partilham municípios</td><td>A soma das ULS da ARS Norte excede a ARS em cerca de 3.000 óbitos</td><td>O ficheiro atribui o município inteiro a cada ULS que o serve em parte.</td></tr>
+              <tr><td>Índice sintético de fecundidade</td><td>Continente 2024: 1,41 no ficheiro; Portugal 1,27 no INE e na aplicação</td><td>População anterior à revisão.</td></tr>
+              <tr><td>Nascimentos em mães com menos de 20 anos</td><td>Continente 2022–2024: 1,8% face a 1,87%</td><td>O ficheiro conta só mães de 15–19 anos; a aplicação inclui as de 10–14.</td></tr>
+              <tr><td>Poder de compra de algumas ULS</td><td>Matosinhos 2021: 130,6 no ficheiro, 118,1 no INE e na aplicação</td><td>O valor do ficheiro não corresponde ao publicado para o município; em agrupamentos, deve usar-se a fórmula da secção 4 e não a média.</td></tr>
+              <tr><td>Mortalidade neonatal e pós-neonatal de algumas ULS</td><td>Alto Minho 2022–2024: 1,1 + 0,9 no ficheiro, face a 2,4 de mortalidade infantil</td><td>No ficheiro as duas não somam a infantil, o que sugere linhas desalinhadas; na aplicação somam sempre.</td></tr>
+              <tr><td>Designações</td><td>«Loures-Odivelas» / «Loures/Odivelas»; «Almada-Seixal» / «Almada/Seixal»</td><td>Grafias diferentes entre folhas impedem cruzamentos por nome; a aplicação usa os códigos dos municípios.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 id="versoes"><span class="n">12</span>Versões dos dados e reprodutibilidade</h2>
+        <p>O INE revê valores já publicados. Para que diferenças entre análises feitas em datas diferentes possam ser explicadas:</p>
+        <ul>
+          <li>cada importação de dados fica registada com a data, os ficheiros acrescentados e revistos, as linhas com valor alterado e o total de Portugal antes e depois;</li>
+          <li>a versão anterior de qualquer ficheiro revisto é guardada, e os dados podem ser reconstruídos tal como estavam em qualquer data;</li>
+          <li>a actualização revê os dois últimos anos em cada importação; um ano que o INE não reviu não é alterado;</li>
+          <li>os ficheiros Excel exportados e a aplicação indicam a data de importação dos dados.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 id="limitacoes"><span class="n">13</span>Limitações</h2>
+        <ul>
+          <li>As cinco ULS que partilham os municípios de Lisboa, Loures e Porto só são apresentadas em agrupamentos.</li>
+          <li>As composições de ULS e ARS actuais são aplicadas a todos os anos, incluindo os anteriores à sua criação.</li>
+          <li>As áreas agregadas, com excepção de Portugal e do Continente, não incluem acontecimentos de residência desconhecida.</li>
+          <li>Os valores municipais de mortalidade infantil e de esperança de vida têm intervalos de confiança largos; a mediana da amplitude do intervalo da esperança de vida municipal em 2022–2024 é de 2,5 anos.</li>
+          <li>A esperança de vida não é directamente comparável com os valores publicados pelo INE (secção 8).</li>
+          <li>Os indicadores socioeconómicos seguem as edições do INE e as suas mudanças de série; não são harmonizados entre séries.</li>
+        </ul>
+      </section>
+
+      <footer class="doc">
+        Nota elaborada a partir do código e dos dados da aplicação de monitorização da mortalidade (repositório <span class="code">mortality-shiny-app</span>). As fórmulas estão implementadas em <span class="code">R/planning_indicators.R</span> e <span class="code">R/life_expectancy.R</span>, com testes automáticos; a documentação técnica completa está em <span class="code">METHODOLOGY.md</span>.
+      </footer>
+    </article>
+  </main>
+</div>

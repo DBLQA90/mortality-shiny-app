@@ -286,7 +286,11 @@ with the areas containing the location (its ULS, ARS, NUTS III/II/I, Portugal)
 as comparators for rates, shares and indices but not for counts; a summary of
 every indicator; the ULS ranking; the pyramid; and proportional mortality. Two
 Excel downloads close the tab: the location and its comparators, and every area
-the app can build (the automated counterpart of the PLS workbook). Areas are ratios of sums over their municipalities;
+the app can build (the automated counterpart of the PLS workbook).
+A method note in Portuguese for the DRS teams and INE, covering sources,
+aggregation, formulas, the fertility index and life expectancy, validation and
+the differences from workbook v26, is in
+[docs/nota-metodologica-indicadores-pls.html](docs/nota-metodologica-indicadores-pls.html). Areas are ratios of sums over their municipalities;
 Portugal and Continente use INE's published rows. Deaths come from the
 municipal all-ages totals (`data/snapshots/death_totals`), which are complete,
 rather than from the age breakdown, which is not. The engine is
