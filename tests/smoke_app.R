@@ -141,6 +141,13 @@ testServer(app, {
     cat(sprintf("   Continente 2020-2022 all-cause deaths = %.0f (workbook I45: 356333, diff %+.0f) %s\n",
                 total, total - 356333, if (abs(total - 356333) <= 100) "OK" else "MISMATCH"))
   }
+  # The fertility index reproduces INE's published national series.
+  session$setInputs(planning_area = "Portugal", planning_year = 2023, planning_indicator = "fertility_index", go_planning = 2)
+  isf <- tryCatch(planning_profile(), error = function(e) e)
+  if (!inherits(isf, "error")) {
+    value <- isf$value[isf$indicator == "fertility_index"]
+    cat(sprintf("   Portugal 2023 fertility index = %.2f (INE 0001293: 1.32) %s\n", value, if (round(value, 2) == 1.32) "EXACT" else "MISMATCH"))
+  }
   ranking <- tryCatch(planning_ranking(), error = function(e) e)
   if (!inherits(ranking, "error")) cat("   ULS ranked:", sum(ranking$area != "Portugal"), "\n")
 }, session = MockShinySession$new())

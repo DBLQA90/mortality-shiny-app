@@ -887,7 +887,20 @@ planning_method_notes <- function() {
       tags$li("Índices de dependência: jovens (0-14) ou idosos (65+) por 100 pessoas com 15-64 anos."),
       tags$li("Taxas brutas de natalidade e mortalidade: nados-vivos ou óbitos por 1.000 habitantes (população residente estimada)."),
       tags$li("Taxa de mortalidade infantil: óbitos com menos de 1 ano por 1.000 nados-vivos, somando três anos de cada."),
-      tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio.")
+      tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio."),
+      tags$li("Mortalidade neonatal, neonatal precoce e pós-neonatal: óbitos com menos de 28 dias, menos de 7 dias e de 28 a 364 dias por 1.000 nados-vivos, no triénio. A neonatal e a pós-neonatal somam a infantil."),
+      tags$li("Índice sintético de fecundidade: soma das taxas de fecundidade por grupo quinquenal de idade da mãe (15-49 anos), vezes 5. Os nascimentos de mães com menos de 15 anos contam no grupo 15-19 e os de 50 e mais no grupo 45-49."),
+      tags$li("Nascimentos em mães com menos de 20 anos, ou com 35 e mais: proporção do total de nados-vivos no triénio. Pré-termo: menos de 37 semanas de gestação, sobre os nascimentos com duração conhecida."),
+      tags$li("Beneficiários do RSI e pensionistas por 1.000 habitantes com 15 e mais anos, como no ficheiro de apoio. Os indicadores equivalentes do INE usam 15-64 anos e dão valores mais altos."),
+      tags$li("Valor médio das pensões: soma do valor das pensões (pensionistas vezes o valor médio de cada município) sobre o total de pensionistas."),
+      tags$li("Poder de compra per capita (Portugal = 100): a quota de cada município no poder de compra nacional, dividida pela sua quota implícita de população. Para um agrupamento é a soma das quotas sobre a soma das quotas de população, e não a média dos índices municipais."),
+      tags$li("Resíduos urbanos por habitante: toneladas recolhidas vezes 1.000, sobre a população residente.")
+    ),
+    h4("Mudanças de série"),
+    tags$ul(
+      tags$li("Pensões: em 2017 a Série 2017 da segurança social substitui a Série 1990-2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois não são directamente comparáveis; o gráfico de evolução marca a mudança."),
+      tags$li("População: a série revista do INE a partir de 2021 (ver o separador Métricas Anuais e o manual)."),
+      tags$li("Óbitos com menos de 1 ano por município: completos desde 2011; em 1995-2001 a soma municipal fica abaixo do total nacional e o valor é marcado com \u2020.")
     ),
     h4("De onde vêm os dados"),
     tags$ul(
@@ -900,7 +913,8 @@ planning_method_notes <- function() {
     tags$ul(
       tags$li("A população de 2021 em diante é a série revista pelo INE; valores calculados com a estimativa anterior ficam desactualizados (por exemplo, índices de envelhecimento mais altos)."),
       tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
-      tags$li("As regiões são somadas a partir dos municípios, pelo que excluem os acontecimentos de residência desconhecida, que só entram nos totais de Portugal e do Continente.")
+      tags$li("As regiões são somadas a partir dos municípios, pelo que excluem os acontecimentos de residência desconhecida, que só entram nos totais de Portugal e do Continente."),
+      tags$li("Poder de compra e mortalidade neonatal: nalgumas ULS os valores do ficheiro não coincidem com os publicados pelo INE para os seus municípios (por exemplo, o poder de compra de Matosinhos em 2021 é 118,1 no INE e 130,6 no ficheiro), e a mortalidade neonatal e pós-neonatal do ficheiro não soma a infantil. A aplicação calcula a partir dos valores municipais do INE.")
     )
   )
 }

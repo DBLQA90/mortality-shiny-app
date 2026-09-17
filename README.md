@@ -276,7 +276,10 @@ report them, one column per selected area (Portugal, Continente, NUTS regions,
 ARS, ULS, municipalities): population structure, ageing and dependency indices,
 births and crude birth rate, deaths and crude death rate, triennial infant
 mortality, and proportional mortality by the 13 large cause groups. Each carries
-its reference in the DRS/PNS2030 support workbook (I1, I3-I8, I37-I39, I45).
+its reference in the DRS/PNS2030 support workbook (I1, I3-I9, I13-I17, I28,
+I32, I33, I35, I37-I42, I45, I64, I65). Socio-economic, birth and neonatal
+components are fetched by `tools/fetch_planning_extra.R` into
+`data/snapshots/planning_extra`.
 
 Sub-tabs: a profile table, the evolution of one indicator over all years, a
 ranking of every ULS for one indicator and year, population pyramids, and

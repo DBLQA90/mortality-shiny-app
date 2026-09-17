@@ -906,8 +906,26 @@ coluna própria**, lida lado a lado, e não é somado aos outros. Pode escolher 
 | Taxa bruta de natalidade | I8 | nados-vivos por 1.000 habitantes |
 | Óbitos | I37 | contagem, todas as causas e idades |
 | Taxa bruta de mortalidade | I38 | óbitos por 1.000 habitantes |
+| Índice sintético de fecundidade | I9 | soma das taxas de fecundidade por idade da mãe (15-49), vezes 5 |
+| Nascimentos em mães com menos de 20 anos | I32 | % dos nados-vivos, no triénio |
+| Nascimentos em mães com 35 e mais anos | I33 | % dos nados-vivos, no triénio |
+| Nascimentos pré-termo | I35 | menos de 37 semanas, % dos nascimentos com duração conhecida, no triénio |
+| Beneficiários do RSI | I13, I14 | contagem, e por 1.000 habitantes com 15 e mais anos |
+| Pensionistas da segurança social | I15, I16 | contagem, e por 1.000 habitantes com 15 e mais anos |
+| Valor médio das pensões | I17 | valor total das pensões sobre o total de pensionistas (€ por ano) |
+| Poder de compra per capita | I28 | Portugal = 100; anos ímpares (estudo bienal) |
+| Resíduos urbanos por habitante | I64, I65 | total e recolha selectiva, kg por habitante |
 | Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
+| Mortalidade neonatal, neonatal precoce e pós-neonatal | I40-I42 | óbitos com menos de 28 dias, menos de 7 dias e 28-364 dias por 1.000 nados-vivos, no triénio |
 | Mortalidade proporcional por grandes grupos de causas | I45 | óbitos de cada grupo sobre o total, no triénio |
+
+Os indicadores aparecem agrupados por tema: Demografia, Natalidade, Contexto
+social, Ambiente e Mortalidade.
+
+Ficam de fora, por agora, os indicadores do ficheiro que não se podem somar entre
+municípios sem dados que o INE não publica a esse nível (esperança de vida,
+ganho médio mensal), os dos Censos (I2, I12, I24, I26) e os que não vêm do INE
+(IEFP, PORDATA, SIM@SNS).
 
 ### Os subseparadores
 
@@ -955,6 +973,22 @@ acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
   a mesma população duas vezes: no ficheiro, a soma das ULS do Norte
   ultrapassa a ARS Norte em cerca de 3.000 óbitos. A aplicação mostra antes os
   dois agrupamentos exactos.
+- **Poder de compra de uma ULS.** É a soma das quotas dos municípios no poder de
+  compra nacional sobre a soma das suas quotas de população, e não a média dos
+  índices municipais. Nalgumas ULS o ficheiro tem valores que não coincidem com os
+  do INE: Matosinhos em 2021 tem 118,1 no INE e 130,6 no ficheiro.
+- **Mortalidade neonatal das ULS.** Na aplicação, a neonatal e a pós-neonatal somam
+  sempre a infantil. No ficheiro isso não acontece em várias ULS (Alto Minho,
+  2022-2024: 1,1 + 0,9 contra 2,4), o que sugere linhas desalinhadas.
+- **Índice sintético de fecundidade.** O do ficheiro para 2024 (Continente 1,41)
+  é anterior à revisão da população; o INE publica agora 1,27 para Portugal, valor
+  que a aplicação reproduz.
+- **Mães com menos de 20 anos.** O ficheiro conta só as mães de 15-19 anos; a
+  aplicação inclui também as de 10-14, como diz o nome do indicador (Continente
+  2022-2024: 1,87% contra 1,8%).
+- **Pensões.** Os valores coincidem com o ficheiro (Série 2017 da segurança
+  social). Em 2017 há uma mudança de série, com cerca de 5,5% menos
+  pensionistas; o gráfico de evolução marca-a.
 - **Edição dos dados de 2022.** A aplicação lê 2022 da tabela NUTS 2024 do
   INE. Para o Continente em 2020-2022 obtém 356.355 óbitos, contra 356.333 no
   ficheiro: uma diferença de 22 (0,006%), e nula em vários grupos de causas

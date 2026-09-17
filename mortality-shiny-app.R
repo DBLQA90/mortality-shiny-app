@@ -4183,16 +4183,25 @@ server <- function(input, output, session) {
     validate(need(nrow(series) > 0, "Sem valores para a selecção."))
 
     x_label <- if (spec$window > 1) "Último ano do triénio" else "Ano"
+    breaks <- PLANNING_SERIES_BREAKS[PLANNING_SERIES_BREAKS$indicator == request$indicator, , drop = FALSE]
     plot <- ggplot(series, aes(x = year, y = value, colour = area, fill = area)) +
       geom_line(linewidth = 0.9) +
       geom_point(size = 1.4)
+    if (nrow(breaks) > 0) {
+      # Drawn between the last year of the old series and the first of the new.
+      plot <- plot + geom_vline(xintercept = breaks$year - 0.5, linetype = "dotted", colour = "grey30")
+    }
     if (any(!is.na(series$lower))) {
       plot <- plot + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, colour = NA)
     }
     plot +
       labs(
         title = paste0(spec$label, " [", spec$ref, "]"),
-        subtitle = paste0("Unidade: ", spec$unit, if (any(!is.na(series$lower))) " · sombreado: IC 95%" else ""),
+        subtitle = paste0(
+          "Unidade: ", spec$unit,
+          if (any(!is.na(series$lower))) " · sombreado: IC 95%" else "",
+          if (nrow(breaks) > 0) paste0("\nLinha pontilhada: mudança de série. ", paste(unique(breaks$note), collapse = " ")) else ""
+        ),
         x = x_label, y = NULL, colour = NULL, fill = NULL
       ) +
       theme_minimal() +

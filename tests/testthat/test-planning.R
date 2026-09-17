@@ -245,3 +245,142 @@ test_that("years whose municipal under-1 counts fall short of Portugal are flagg
     expect_length(infant_undercount_years(2020:2022, municipalities = lookup$municipality), 0)
   })
 })
+
+test_that("socio-economic, birth and neonatal indicators aggregate exactly", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    put <- function(measure, frame) {
+      dir.create(file.path(root, "planning_extra", measure), recursive = TRUE, showWarnings = FALSE)
+      saveRDS(dplyr::mutate(frame, year = 2022L, source_indicator = "x"),
+              file.path(root, "planning_extra", measure, "year_2022.rds"))
+    }
+    total <- function(values) tibble::tibble(area = c("Alfa", "Beta"), category = "Total", value = values)
+
+    put("rsi_beneficiaries", total(c(30, 12)))
+    put("pensioners", total(c(100, 300)))
+    put("pension_mean", total(c(9000, 5000)))
+    # Alfa holds 3% of national purchasing power at index 150, Beta 1% at 50.
+    put("purchasing_power_share", total(c(3, 1)))
+    put("purchasing_power_per_capita", total(c(150, 50)))
+    put("waste_collected", dplyr::bind_rows(
+      total(c(2000, 700)),
+      tibble::tibble(area = c("Alfa", "Beta"), category = "Recolha selectiva", value = c(500, 100))
+    ))
+    # Mother's age: single years and a 15-49 group sit beside the five-year
+    # groups and must not be counted.
+    put("births_by_mother_age", tibble::tibble(
+      area = "Alfa",
+      # INE publishes "50 - 54", "50 e mais" and "55 e mais" together: only
+      # "50 e mais" may be read.
+      category = c("Total", "10 - 14 anos", "15 - 19 anos", "17 anos", "15 - 49 anos", "20 - 24 anos",
+                   "25 - 29 anos", "30 - 34 anos", "35 - 39 anos", "40 - 44 anos", "45 - 49 anos", "50 e mais anos",
+                   "50 - 54 anos", "55 e mais anos"),
+      value = c(100, 1, 9, 4, 99, 20, 30, 20, 12, 6, 1, 1, 1, 1)
+    ))
+    put("births_by_gestation", tibble::tibble(
+      area = "Alfa",
+      category = c("Total", "Menos de 22 semanas", "22 - 27 semanas", "28 - 31 semanas", "32 - 36 semanas", "37 - 41 semanas", "Ignorada"),
+      value = c(100, 0, 1, 2, 5, 82, 10)
+    ))
+    put("infant_deaths_by_age", tibble::tibble(
+      area = "Alfa",
+      category = c("Total", "Menos de 28 dias", "Menos de 7 dias", "28 - 364 dias", "1 - 6 dias"),
+      value = c(2, 1, 1, 1, 1)
+    ))
+    planning_clear_cache()
+
+    ids <- c("rsi_rate", "pensioners_rate", "pension_mean", "purchasing_power", "waste_per_capita",
+             "waste_selective_per_capita", "fertility_index", "rsi_beneficiaries", "pensioners")
+    tab <- planning_indicator_table(c("Norte", "Alfa"), 2022L, ids = ids, lookup = lookup)
+    get <- function(area, id) tab$value[tab$area == area & tab$indicator == id]
+
+    # 15+ = 15 of 18 bands, both sexes: Alfa 3,000, Norte 4,500.
+    expect_equal(get("Norte", "rsi_rate"), 42 / 4500 * 1000)
+    expect_equal(get("Norte", "pensioners"), 400)
+    expect_equal(get("Norte", "pensioners_rate"), 400 / 4500 * 1000)
+    # Weighted by pensioners, not the mean of means (7,000).
+    expect_equal(get("Norte", "pension_mean"), (100 * 9000 + 300 * 5000) / 400)
+    # Sum of shares over implied population shares: 4 / (2 + 2) = 100, not the
+    # mean of the indices (100 by coincidence would hide a bug, so check Alfa too).
+    expect_equal(get("Norte", "purchasing_power"), 4 / (3 / 150 + 1 / 50))
+    expect_equal(get("Alfa", "purchasing_power"), 150)
+    expect_equal(get("Norte", "waste_per_capita"), 2700 * 1000 / 5400)
+    expect_equal(get("Norte", "waste_selective_per_capita"), 600 * 1000 / 5400)
+
+    # Fertility: each group's births over 100 women (Alfa 100 per band per sex,
+    # the same at both ends of the year, so the mid-year mean is 100 too),
+    # under-15 folded into 15-19 and 50+ into 45-49; single years ignored.
+    expect_equal(get("Alfa", "fertility_index"), (10 + 20 + 30 + 20 + 12 + 6 + 2) / 100 * 5)
+    ages <- planning_indicator_table("Alfa", 2022L, ids = "fertility_index", lookup = lookup)
+    comps <- planning_components_year("Alfa", 2022L, lookup)
+    expect_equal(comps$births_mother_ge35, 12 + 6 + 1 + 1)
+    expect_equal(comps$births_mother_lt20, 1 + 9)
+  })
+})
+
+test_that("triennial birth and neonatal proportions need all three years", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    for (year in 2020:2022) {
+      put <- function(measure, frame) {
+        dir.create(file.path(root, "planning_extra", measure), recursive = TRUE, showWarnings = FALSE)
+        saveRDS(dplyr::mutate(frame, year = year, source_indicator = "x"),
+                file.path(root, "planning_extra", measure, paste0("year_", year, ".rds")))
+      }
+      put("births_by_mother_age", tibble::tibble(
+        area = c("Alfa", "Alfa", "Alfa", "Alfa"),
+        category = c("Total", "15 - 19 anos", "35 - 39 anos", "50 e mais anos"),
+        value = c(100, 5, 10, 1)
+      ))
+      put("births_by_gestation", tibble::tibble(
+        area = "Alfa", category = c("Total", "32 - 36 semanas", "Ignorada"), value = c(100, 8, 20)
+      ))
+      put("infant_deaths_by_age", tibble::tibble(
+        area = "Alfa", category = c("Menos de 28 dias", "Menos de 7 dias", "28 - 364 dias"), value = c(1, 1, 1)
+      ))
+    }
+    planning_clear_cache()
+
+    tab <- planning_indicator_table("Alfa", 2022L,
+                                    ids = c("teen_births_pct", "older_births_pct", "preterm_pct", "neonatal_rate", "postneonatal_rate"),
+                                    lookup = lookup)
+    get <- function(id) tab[tab$indicator == id, ]
+    expect_equal(get("teen_births_pct")$value, 15 / 300 * 100)
+    expect_equal(get("older_births_pct")$value, 33 / 300 * 100)
+    # Preterm over births of known duration.
+    expect_equal(get("preterm_pct")$value, 24 / 240 * 100)
+    expect_equal(c(get("preterm_pct")$lower, get("preterm_pct")$upper), as.numeric(stats::binom.test(24, 240)$conf.int * 100))
+    # Per 1,000 live births from the births file (Alfa: 300 a year).
+    expect_equal(get("neonatal_rate")$value, 3 / 900 * 1000)
+    expect_equal(get("postneonatal_rate")$value, 3 / 900 * 1000)
+    expect_equal(planning_indicator_years("preterm_pct"), 2022L)
+  })
+})
+
+test_that("every indicator has a computation and a year rule", {
+  for (id in PLANNING_INDICATORS$id) {
+    expect_type(planning_indicator_years(id), "integer")
+  }
+  choices <- planning_indicator_choices()
+  expect_setequal(unlist(choices, use.names = FALSE), PLANNING_INDICATORS$id)
+})
+
+test_that("the fertility index counts women at mid-year", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    # Double the 2021 population: the 2022 mid-year denominator is 150 women
+    # per band for Alfa, not the 100 at the end of 2022.
+    pop <- readRDS(file.path(root, "population", "year_2021.rds"))
+    pop$pop <- pop$pop * 2
+    saveRDS(pop, file.path(root, "population", "year_2021.rds"))
+    dir.create(file.path(root, "planning_extra", "births_by_mother_age"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(
+      tibble::tibble(year = 2022L, area = "Alfa", category = paste0(seq(15, 45, 5), " - ", seq(19, 49, 5), " anos"),
+                     value = 15, source_indicator = "x"),
+      file.path(root, "planning_extra", "births_by_mother_age", "year_2022.rds")
+    )
+    planning_clear_cache()
+    tab <- planning_indicator_table("Alfa", 2022L, ids = "fertility_index", lookup = lookup)
+    expect_equal(tab$value, 7 * 15 / 150 * 5)
+  })
+})

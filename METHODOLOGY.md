@@ -888,9 +888,68 @@ location. The engine is `R/planning_indicators.R`.
 | Crude birth rate | I8 | births / population x 1,000 |
 | Deaths | I37 | count, all causes and ages |
 | Crude death rate | I38 | deaths / population x 1,000 |
+| Total fertility rate | I9 | sum over mother's age 15-49 of births / women x 5 |
+| Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
+| Preterm births | I35 | under 37 weeks / births of known duration x 100, three years |
+| RSI beneficiaries | I13, I14 | count; per 1,000 residents aged 15+ |
+| Social security pensioners | I15, I16 | count; per 1,000 residents aged 15+ |
+| Mean pension | I17 | sum(pensioners x mean) / sum(pensioners) |
+| Purchasing power per capita | I28 | sum(share) / sum(share / index) x 100 |
+| Urban waste per inhabitant | I64, I65 | tonnes x 1,000 / population |
 | Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
+| Neonatal, early neonatal, post-neonatal | I40-I42 | deaths <28 d, <7 d, 28-364 d / live births x 1,000, three years |
 | Proportional mortality | I45 | deaths per large cause group / all deaths x 100, three years |
 | Population pyramid | I3 | share by five-year band and sex |
+
+### Socio-economic, birth and neonatal sources
+
+`tools/fetch_planning_extra.R` writes every measure as additive municipal
+components to `data/snapshots/planning_extra/<measure>/year_<year>.rds`. Each
+measure is published in up to three editions, one per NUTS vintage; for every
+year the newest edition covering it wins, and rows are mapped by DICO.
+
+| Measure | Editions (oldest first) | Years |
+|---|---|---|
+| RSI beneficiaries | `0004299`, `0008251`, `0013417` | 2007-2025 |
+| Pensioners | `0004294`, `0010271`, `0013395`, `0014534` (Série 2017) | 2004-2025 |
+| Mean pension | `0004149`, `0010266`, `0013398`, `0014532` (Série 2017) | 2004-2025 |
+| Urban waste collected (t, by collection type) | `0000482`, `0009612`, `0012769` | 1995-2024 |
+| Purchasing power per capita / share | `0001354`+`0001355`, `0008614`+`0008615`, `0014580`+`0014581` | biennial, 1993-2023 |
+| Births by mother's age | `0005952`, `0008092`, `0012441` | 1995-2025 |
+| Births by gestation | `0005950`, `0008084`, `0012434` | 1995-2025 |
+| Under-1 deaths by age | `0008181`, `0012541` | 2011-2025 |
+
+Every dimension other than area and the measure's own is pinned to its total
+category; a response whose other dimension has no total is refused rather than
+summed. Birth indicators pad their labels with Unicode spaces, which are trimmed
+before matching.
+
+Non-additive published figures are rebuilt from additive parts. A mean pension
+is kept as pensioners and pensioners x mean. Purchasing power per capita is an
+index with Portugal = 100: a municipality's share of national purchasing power
+divided by its index is its implied share of population, so an area's index is
+the sum of shares over the sum of implied population shares, times 100 -
+reproducing INE's published Continente (100.63) and Norte (92.90) exactly.
+
+The mother's-age dimension carries overlapping categories together: single
+years, five-year groups, a 15-49 group, and `50 - 54`, `50 e mais` and
+`55 e mais` side by side. Only the five-year groups below the lowest open group
+and that open group are read, so no birth is counted twice. For the fertility
+index, births to mothers under 15 are counted in 15-19 and those of 50 and over
+in 45-49; births of unknown mother's age are left out. Women are counted at
+mid-year, as the mean of the end-of-year estimates of the previous year and the
+current one. With that denominator the index reproduces INE's published series
+for Portugal (`0001293`) to two decimals in 2018-2020 and 2022-2025; 2021 reads
+1.32 against 1.30 because its mid-year mean straddles the population revision.
+The end-of-year estimate alone reads up to 0.03 low.
+
+The workbook's RSI and pensioner rates divide by residents aged 15 and over (its
+2021 denominators match the 15+ population of the superseded estimate to within
+0.02%); INE's own per-1,000 indicators use 15-64. The app follows the workbook.
+
+Pensions change series in 2017 (Série 1990-2023 to Série 2017, about 5.5% fewer
+pensioners); `PLANNING_SERIES_BREAKS` records it and the evolution chart marks
+it.
 
 ### Aggregation
 
@@ -944,6 +1003,24 @@ malformations) is shown as `Restantes causas`, so the column sums to 100%.
   at parish level. The workbook assigns each whole municipality to every ULS
   that serves part of it, so the ULS of ARS Norte add up to about 3,000 more
   deaths than ARS Norte itself. The app offers the two exact groups instead.
+- **Population denominators of 2024.** Every population-based indicator
+  differs from the workbook by one factor per area (Continente 1.067 for birth,
+  death, waste and RSI rates alike; Algarve 1.18), which is the population
+  revision. Indicators without a population denominator agree: mean pension
+  2024 Continente 7,697 vs 7,696.62; pensioners and RSI beneficiaries 2021 exact.
+- **Fertility index.** The workbook's 2024 values (Continente 1.41) predate
+  the population revision; INE's own revised figure for Portugal is 1.27, which
+  the app reproduces.
+- **Births to mothers under 20 (I32).** The workbook counts mothers aged 15-19
+  only (Continente 2022-2024: 1.82%); the app follows the indicator's title and
+  includes mothers aged 10-14 (1.87%).
+- **Purchasing power and neonatal mortality of some ULS.** The workbook's ULS
+  values disagree with INE's municipal values: Matosinhos (a single municipality)
+  2021 purchasing power is 118.06 at INE and 130.57 in the workbook; Alto Minho
+  is 55.76, neither the weighted index (82.2) nor the plain mean (77.3). Its
+  neonatal and post-neonatal rates do not add up to its infant rate (Alto Minho
+  2022-2024: 1.1 + 0.9 vs 2.4), which suggests misaligned rows. In the app the
+  two always add up.
 - **Edition of 2022.** The app reads 2022 from `0013166` (NUTS-2024). For
   Continente 2020-2022 it gets 356,355 deaths against the workbook's 356,333
   (+22, 0.006%); circulatory (95,307), genitourinary (11,855) and perinatal
