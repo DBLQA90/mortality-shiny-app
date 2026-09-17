@@ -601,3 +601,46 @@ test_that("birth-weight bands parse, including the open top band", {
   expect_equal(planning_weight_lower(c("Menos de 500 g", "500 - 999 g", "2 000 - 2 499 g", "5 000 g e mais", "Total", "Ignorada")),
                c(0, 500, 2000, 5000, NA, NA))
 })
+
+test_that("census indicators use the census years and their own denominators", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    put <- function(measure, year, frame) {
+      dir.create(file.path(root, "planning_extra", measure), recursive = TRUE, showWarnings = FALSE)
+      saveRDS(dplyr::mutate(frame, year = year, source_indicator = "x"),
+              file.path(root, "planning_extra", measure, paste0("year_", year, ".rds")))
+    }
+    both <- function(area, value_2011, value_2021) list("2011" = value_2011, "2021" = value_2021)
+    for (year in c(2011L, 2021L)) {
+      scale <- if (year == 2011L) 1 else 1.1
+      put("census_population", year, tibble::tibble(area = c("Alfa", "Beta"), category = "Total", value = c(1000, 500) * scale))
+      put("census_population_by_age", year, tibble::tibble(
+        area = rep(c("Alfa", "Beta"), each = 3),
+        category = rep(c("0 - 4 anos", "5 - 9 anos", "10 - 14 anos"), 2),
+        value = c(100, 100, 800, 50, 50, 400) * scale
+      ))
+      put("census_illiteracy_rate", year, tibble::tibble(area = c("Alfa", "Beta"), category = "Total", value = c(5, 10)))
+      put("census_education", year, tibble::tibble(
+        area = rep(c("Alfa", "Beta"), each = 4),
+        category = rep(c("Total", "Primário/Básico", "Secundário", "Superior"), 2),
+        value = c(800, 500, 200, 100, 400, 250, 100, 50) * scale
+      ))
+    }
+    planning_clear_cache()
+
+    ids <- c("census_population", "census_population_change", "pct_education_none", "pct_education_higher", "illiteracy_rate")
+    tab <- planning_indicator_table("Norte", c(2011L, 2021L), ids = ids, lookup = lookup)
+    get <- function(id, year) tab$value[tab$indicator == id & tab$year == year]
+
+    expect_equal(get("census_population", 2011), 1500)
+    # Ten years apart, not one.
+    expect_true(is.na(get("census_population_change", 2011)))
+    expect_equal(get("census_population_change", 2021), 10)
+    # Those with no level are the census population less those with one.
+    expect_equal(get("pct_education_none", 2011), (1500 - 1200) / 1500 * 100)
+    expect_equal(get("pct_education_higher", 2011), 150 / 1500 * 100)
+    # The rate is weighted by each municipality's population aged 10 and over.
+    expect_equal(get("illiteracy_rate", 2011), (0.05 * 800 + 0.10 * 400) / 1200 * 100)
+    expect_equal(planning_indicator_years("illiteracy_rate"), c(2011L, 2021L))
+  })
+})

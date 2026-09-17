@@ -902,6 +902,9 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Índice de envelhecimento | I4 | 65 e mais anos por 100 com 0-14 anos |
 | Índice de dependência de jovens | I5 | 0-14 anos por 100 com 15-64 anos |
 | Índice de dependência de idosos | I6 | 65 e mais anos por 100 com 15-64 anos |
+| População residente nos Censos e variação desde o censo anterior | I2 | Censos de 1991, 2001, 2011 e 2021 |
+| População por nível de escolaridade mais elevado completo | I24 | % da população nos Censos: sem nível completo, básico, secundário, superior |
+| Taxa de analfabetismo | I26 | % da população com 10 e mais anos que não sabe ler nem escrever, nos Censos |
 | Nados-vivos | I7 | contagem |
 | Taxa bruta de natalidade | I8 | nados-vivos por 1.000 habitantes |
 | Óbitos | I37 | contagem, todas as causas e idades |
@@ -926,10 +929,13 @@ lado das áreas que contêm o local, e resume todos os outros.
 Os indicadores aparecem agrupados por tema: Demografia, Natalidade, Contexto
 social, Ambiente e Mortalidade.
 
-Ficam de fora, por agora, os indicadores do ficheiro que não se podem somar entre
-municípios sem dados que o INE não publica a esse nível (esperança de vida,
-ganho médio mensal), os dos Censos (I2, I12, I24, I26) e os que não vêm do INE
-(IEFP, PORDATA, SIM@SNS).
+Ficam de fora, por agora: o ganho médio mensal (I27) e a população empregada por
+sector de actividade (I12), que o INE não publica por município de forma que
+permita somar entre municípios; a mortalidade proporcional abaixo dos 75 anos
+(I46); e os indicadores que não vêm do INE (IEFP, PORDATA, SIM@SNS).
+
+Os indicadores dos Censos (I2, I24, I26) existem apenas nos anos censitários
+(1991, 2001, 2011 e 2021).
 
 ### Comparadores
 
@@ -1017,6 +1023,21 @@ proporções) têm intervalo de confiança de 95%. Os índices de estrutura da
 população não têm: as estimativas de população não são uma amostra de
 acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
 1.000 nados-vivos, como no resto da aplicação.
+
+### Indicadores dos Censos
+
+Vêm das séries históricas do INE por município (população residente desde 1864,
+escolaridade desde 1940, alfabetismo desde 1878), pelo que os valores dos Censos
+de 1991, 2001, 2011 e 2021 são comparáveis entre si.
+
+A taxa de analfabetismo segue a definição do INE — população com 10 e mais anos
+que não sabe ler nem escrever, sobre a população com 10 e mais anos. O INE publica
+a taxa por município, não a contagem; para um agrupamento, a aplicação faz a média
+das taxas dos municípios ponderada pela população com 10 e mais anos de cada um,
+o que é equivalente à razão das contagens.
+
+Na escolaridade, a série conta apenas quem tem um nível completo; «sem nível
+completo» é a diferença para a população total do censo.
 
 ### Mortalidade fetal tardia e perinatal
 

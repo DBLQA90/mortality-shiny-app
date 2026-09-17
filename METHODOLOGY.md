@@ -893,6 +893,9 @@ location. The engine is `R/planning_indicators.R`.
 | Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
 | Preterm births | I35 | under 37 weeks / births of known duration x 100, three years |
 | Low birth weight | I36 | under 2,500 g / births of known weight x 100, three years |
+| Census population and change | I2 | census population; change against the previous census |
+| Education level | I24 | share of the census population per completed level |
+| Illiteracy rate | I26 | illiterate aged 10+ / population aged 10+ x 100 |
 | RSI beneficiaries | I13, I14 | count; per 1,000 residents aged 15+ |
 | Social security pensioners | I15, I16 | count; per 1,000 residents aged 15+ |
 | Mean pension | I17 | sum(pensioners x mean) / sum(pensioners) |
@@ -958,6 +961,10 @@ year the newest edition covering it wins, and rows are mapped by DICO.
 | Under-1 deaths by age | `0008181`, `0012541` | 2011-2025 |
 | Births by weight | `0005611`, `0008088`, `0012438` | 1995-2025 |
 | Perinatal deaths | `0003527`, `0008173`, `0012549` | 1995-2025 |
+| Census population | `0014353` | 1991, 2001, 2011, 2021 |
+| Census population by age | `0014164` | 1991, 2001, 2011, 2021 |
+| Census education level | `0014380` | 1991, 2001, 2011, 2021 |
+| Census illiteracy rate | `0014375` | 1991, 2001, 2011, 2021 |
 
 Every dimension other than area and the measure's own is pinned to its total
 category; a response whose other dimension has no total is refused rather than
@@ -982,6 +989,18 @@ current one. With that denominator the index reproduces INE's published series
 for Portugal (`0001293`) to two decimals in 2018-2020 and 2022-2025; 2021 reads
 1.32 against 1.30 because its mid-year mean straddles the population revision.
 The end-of-year estimate alone reads up to 0.03 low.
+
+The census series code municipalities as one character plus the DICO (five
+characters) rather than the usual seven, which the fetcher handles. INE
+publishes the illiteracy rate per municipality but not the count, so an area's
+rate is its municipalities' rates weighted by population aged 10 and over -
+equal to the ratio of the implied counts. The education series counts only
+people with a completed level, so "no level completed" is the census population
+less that total. Validated against workbook v26: Continente census population
+exact for 2011 and 2021, illiteracy 5.19% and 3.04% (workbook 5.187, 3.047),
+education shares within 0.05 points. Regional rows differ (Norte 2011:
+3,689,682 here, the published Census figure, against 3,737,768 in the workbook),
+which points to an older region definition there.
 
 INE publishes perinatal deaths per municipality but not stillbirths on their
 own, so stillbirths of 28 or more weeks are the perinatal deaths less the deaths

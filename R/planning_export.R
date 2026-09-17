@@ -17,7 +17,10 @@
 # be told apart.
 
 PLANNING_SHEET_NAMES <- c(
-  pop_total = "I1 População", pct_0_14 = "I1 Jovens", pct_65_plus = "I1 Idosos",
+  pop_total = "I1 População", census_population = "I2 População nos Censos",
+  census_population_change = "I2 Variação da população", pct_education_none = "I24 Sem escolaridade",
+  pct_education_basic = "I24 Ensino básico", pct_education_secondary = "I24 Ensino secundário",
+  pct_education_higher = "I24 Ensino superior", illiteracy_rate = "I26 Analfabetismo", pct_0_14 = "I1 Jovens", pct_65_plus = "I1 Idosos",
   pct_75_plus = "I1 75 e mais anos", ageing_index = "I4 Envelhecimento",
   youth_dependency = "I5 Dependência jovens", old_dependency = "I6 Dependência idosos",
   births = "I7 Nados-vivos", birth_rate = "I8 Natalidade", fertility_index = "I9 Fecundidade",

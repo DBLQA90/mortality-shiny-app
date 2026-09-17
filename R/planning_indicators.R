@@ -36,12 +36,19 @@
 PLANNING_INDICATORS <- tibble::tribble(
   ~id,                   ~theme,                ~label,                                                    ~ref,  ~unit,                      ~window, ~digits, ~comparable,
   "pop_total",           "Demografia",          "População residente (estimativa)",                        "I1",  "N.º",                      1L,      0L, FALSE,
+  "census_population",   "Demografia",          "População residente nos Censos",                          "I2",  "N.º",                      1L,      0L, FALSE,
+  "census_population_change", "Demografia",     "Variação da população desde o censo anterior",            "I2",  "%",                        1L,      1L, TRUE,
   "pct_0_14",            "Demografia",          "Proporção de jovens (0-14 anos)",                         "I1",  "%",                        1L,      1L, TRUE,
   "pct_65_plus",         "Demografia",          "Proporção de idosos (65 e mais anos)",                    "I1",  "%",                        1L,      1L, TRUE,
   "pct_75_plus",         "Demografia",          "Proporção de 75 e mais anos",                             "I1",  "%",                        1L,      1L, TRUE,
   "ageing_index",        "Demografia",          "Índice de envelhecimento",                                "I4",  "por 100 jovens",           1L,      1L, TRUE,
   "youth_dependency",    "Demografia",          "Índice de dependência de jovens",                         "I5",  "por 100 em idade activa",  1L,      1L, TRUE,
   "old_dependency",      "Demografia",          "Índice de dependência de idosos",                         "I6",  "por 100 em idade activa",  1L,      1L, TRUE,
+  "pct_education_none",  "Educação",            "População sem nível de escolaridade completo (Censos)",   "I24", "%",                        1L,      1L, TRUE,
+  "pct_education_basic", "Educação",            "População com o ensino básico (Censos)",                  "I24", "%",                        1L,      1L, TRUE,
+  "pct_education_secondary", "Educação",        "População com o ensino secundário (Censos)",              "I24", "%",                        1L,      1L, TRUE,
+  "pct_education_higher", "Educação",           "População com o ensino superior (Censos)",                "I24", "%",                        1L,      1L, TRUE,
+  "illiteracy_rate",     "Educação",            "Taxa de analfabetismo (Censos)",                          "I26", "%",                        1L,      1L, TRUE,
   "births",              "Natalidade",          "Nados-vivos",                                             "I7",  "N.º",                      1L,      0L, FALSE,
   "birth_rate",          "Natalidade",          "Taxa bruta de natalidade",                                "I8",  "‰",                        1L,      1L, TRUE,
   "fertility_index",     "Natalidade",          "Índice sintético de fecundidade",                         "I9",  "filhos por mulher",        1L,      2L, TRUE,
@@ -186,6 +193,11 @@ planning_indicator_years <- function(id) {
     teen_births_pct = , older_births_pct = "extra:births_by_mother_age",
     preterm_pct = "extra:births_by_gestation",
     low_birth_weight_pct = "extra:births_by_weight",
+    census_population = "extra:census_population",
+    census_population_change = "extra:census_population",
+    pct_education_none = , pct_education_basic = , pct_education_secondary = , pct_education_higher =
+      c("extra:census_education", "extra:census_population"),
+    illiteracy_rate = c("extra:census_illiteracy_rate", "extra:census_population_by_age"),
     late_fetal_rate = , perinatal_rate = c("extra:perinatal_deaths", "extra:infant_deaths_by_age", "births"),
     rsi_beneficiaries = "extra:rsi_beneficiaries",
     rsi_rate = c("extra:rsi_beneficiaries", "population"),
@@ -239,6 +251,8 @@ planning_component_columns <- c(
   paste0("births_mage_", seq(15, 45, by = 5)),
   "births_gest_total", "births_gest_known", "births_preterm",
   "births_weight_known", "births_low_weight",
+  "census_pop", "census_pop_10plus", "census_illiterate",
+  "census_education_total", "census_education_basic", "census_education_secondary", "census_education_higher",
   "neonatal_deaths", "early_neonatal_deaths", "postneonatal_deaths", "perinatal_deaths"
 )
 
@@ -459,6 +473,48 @@ planning_component_blocks <- function(year) {
       dplyr::summarise(perinatal_deaths = sum(value, na.rm = TRUE), .groups = "drop")
   }
 
+  # Census measures: only the census years have files.
+  census_population <- read_planning_extra("census_population", year)
+  census_age <- read_planning_extra("census_population_by_age", year)
+  census_rate <- read_planning_extra("census_illiteracy_rate", year)
+  if (!is.null(census_population)) {
+    blocks$census_population <- census_population %>%
+      dplyr::filter(.data$category == "Total") %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(census_pop = sum(value, na.rm = TRUE), .groups = "drop")
+  }
+  if (!is.null(census_age)) {
+    lower <- planning_five_year_lower(census_age$category)
+    open <- planning_open_lower(census_age$category)
+    blocks$census_age <- tibble::tibble(area = census_age$area, value = census_age$value,
+                                        lower = dplyr::coalesce(lower, open)) %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(census_pop_10plus = sum(value[!is.na(lower) & lower >= 10], na.rm = TRUE), .groups = "drop")
+  }
+  # INE publishes the illiteracy rate by municipality, not the count. The count
+  # each rate implies is additive, so an area's rate is the population-weighted
+  # mean of its municipalities'.
+  if (!is.null(census_rate) && !is.null(blocks$census_age)) {
+    blocks$census_illiteracy <- census_rate %>%
+      dplyr::filter(.data$category == "Total") %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(rate = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::inner_join(blocks$census_age, by = "area") %>%
+      dplyr::transmute(area, census_illiterate = .data$rate / 100 * .data$census_pop_10plus)
+  }
+  census_education <- read_planning_extra("census_education", year)
+  if (!is.null(census_education)) {
+    blocks$census_education <- census_education %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(
+        census_education_total = sum(value[category == "Total"], na.rm = TRUE),
+        census_education_basic = sum(value[grepl("Básico", category)], na.rm = TRUE),
+        census_education_secondary = sum(value[grepl("Secundário", category)], na.rm = TRUE),
+        census_education_higher = sum(value[grepl("Superior", category)], na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+
   infant_age <- read_planning_extra("infant_deaths_by_age", year)
   if (!is.null(infant_age)) {
     blocks$infant_age <- infant_age %>%
@@ -488,6 +544,11 @@ planning_column_block <- function(column) {
     waste_total = , waste_selective = "waste",
     births_gest_total = , births_gest_known = , births_preterm = "gestation",
     births_weight_known = , births_low_weight = "weight",
+    census_pop = "census_population",
+    census_pop_10plus = "census_age",
+    census_illiterate = "census_illiteracy",
+    census_education_total = , census_education_basic = , census_education_secondary = ,
+    census_education_higher = "census_education",
     perinatal_deaths = "perinatal",
     neonatal_deaths = , early_neonatal_deaths = , postneonatal_deaths = "infant_age",
     stop("Unknown planning component: ", column, call. = FALSE)
@@ -722,6 +783,26 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
       },
       teen_births_pct = set_share("births_mother_lt20", "births_mother_total"),
       low_birth_weight_pct = set_share("births_low_weight", "births_weight_known"),
+      census_population = set_count("census_pop", interval = FALSE),
+      census_population_change = {
+        # Censuses are ten years apart; the change is against the previous one.
+        now <- total("census_pop")
+        before <- lag_of("census_pop", 10)
+        numerator <- now - before
+        denominator <- before
+        value <- ratio(numerator, denominator, 100)
+      },
+      pct_education_none = , pct_education_basic = , pct_education_secondary = , pct_education_higher = {
+        # The series counts only people with a completed level, so those with
+        # none are the census population less that total.
+        column <- switch(id, pct_education_basic = "census_education_basic",
+                         pct_education_secondary = "census_education_secondary",
+                         pct_education_higher = "census_education_higher", NA_character_)
+        numerator <- if (is.na(column)) total("census_pop") - total("census_education_total") else total(column)
+        denominator <- total("census_pop")
+        value <- ratio(numerator, denominator, 100)
+      },
+      illiteracy_rate = set_ratio("census_illiterate", "census_pop_10plus", 100),
       late_fetal_rate = , perinatal_rate = {
         # Stillbirths of 28 or more weeks are the perinatal deaths less the
         # deaths under 7 days; both denominators are live births plus those

@@ -98,6 +98,30 @@ MEASURES <- list(
     editions = c("0003527", "0008173", "0012549"),
     target = NULL
   ),
+  # Census series, one value per census year (the app uses 1991 onwards).
+  census_population = list(
+    editions = "0014353",
+    target = NULL
+  ),
+  census_education = list(
+    editions = "0014380",
+    target = "Primário|Básico|Secundário|Superior"
+  ),
+  census_population_by_age = list(
+    # For the population aged 10 and over, the denominator of the illiteracy rate.
+    editions = "0014164",
+    # "0 - 4 anos" … "75 e mais anos", plus "Ignorado".
+    target = "anos$|^Ignorado$"
+  ),
+  census_illiteracy_rate = list(
+    # INE's published municipal rate: illiterate aged 10+ over population 10+.
+    editions = "0014375",
+    target = NULL
+  ),
+  census_literacy = list(
+    editions = "0014379",
+    target = "Sabe ler e escrever|Não sabe ler e escrever"
+  ),
   infant_deaths_by_age = list(
     editions = c("0008181", "0012541"),
     target = "dias|meses|Menos de 1 dia|hora"
@@ -119,8 +143,11 @@ area_for_code <- function(code) {
   out <- rep(NA_character_, length(code))
   out[code == "PT"] <- "Portugal"
   out[code == "1"] <- "Continente"
-  municipal <- nchar(code) == 7
-  out[municipal] <- dico_lookup$municipality[match(substr(code[municipal], 4, 7), dico_lookup$dico)]
+  # Municipal codes are the NUTS III code plus the DICO (7 characters), or, in
+  # the historical census series, one character plus the DICO (5).
+  municipal <- nchar(code) %in% c(5L, 7L)
+  dico <- substr(code[municipal], nchar(code[municipal]) - 3L, nchar(code[municipal]))
+  out[municipal] <- dico_lookup$municipality[match(dico, dico_lookup$dico)]
   out
 }
 
