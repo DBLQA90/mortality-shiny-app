@@ -61,6 +61,11 @@ PLANNING_INDICATORS <- tibble::tribble(
   "pensioners_rate",     "Contexto social",     "Pensionistas por 1.000 habitantes com 15+ anos",          "I16", "‰",                        1L,      1L, TRUE,
   "pension_mean",        "Contexto social",     "Valor médio anual das pensões",                           "I17", "€",                        1L,      0L, TRUE,
   "purchasing_power",    "Contexto social",     "Poder de compra per capita",                              "I28", "Portugal = 100",           1L,      1L, TRUE,
+  "earnings_mean",       "Contexto social",     "Ganho médio mensal dos trabalhadores por conta de outrem", "I27", "€",                        1L,      0L, TRUE,
+  "employees",           "Contexto social",     "Trabalhadores por conta de outrem",                        "I12", "N.º",                      1L,      0L, FALSE,
+  "pct_employees_primary", "Contexto social",   "Trabalhadores no sector primário",                        "I12", "%",                        1L,      1L, TRUE,
+  "pct_employees_secondary", "Contexto social", "Trabalhadores no sector secundário",                      "I12", "%",                        1L,      1L, TRUE,
+  "pct_employees_tertiary", "Contexto social",  "Trabalhadores no sector terciário",                       "I12", "%",                        1L,      1L, TRUE,
   "waste_per_capita",    "Ambiente",            "Resíduos urbanos recolhidos por habitante",               "I64", "kg/hab.",                  1L,      0L, TRUE,
   "waste_selective_per_capita", "Ambiente",     "Resíduos recolhidos selectivamente por habitante",        "I65", "kg/hab.",                  1L,      0L, TRUE,
   "life_expectancy",     "Mortalidade",         "Esperança de vida à nascença (triénio)",                  "I10", "anos",                     3L,      1L, TRUE,
@@ -196,6 +201,9 @@ planning_indicator_years <- function(id) {
     teen_births_pct = , older_births_pct = "extra:births_by_mother_age",
     preterm_pct = "extra:births_by_gestation",
     low_birth_weight_pct = "extra:births_by_weight",
+    earnings_mean = c("extra:earnings_mean", "extra:employees_by_sector"),
+    employees = , pct_employees_primary = , pct_employees_secondary = , pct_employees_tertiary =
+      "extra:employees_by_sector",
     census_population = "extra:census_population",
     census_population_change = "extra:census_population",
     pct_education_none = , pct_education_basic = , pct_education_secondary = , pct_education_higher =
@@ -254,6 +262,7 @@ planning_component_columns <- c(
   paste0("births_mage_", seq(15, 45, by = 5)),
   "births_gest_total", "births_gest_known", "births_preterm",
   "births_weight_known", "births_low_weight",
+  "earnings_value", "employees_total", "employees_primary", "employees_secondary", "employees_tertiary",
   "census_pop", "census_pop_10plus", "census_illiterate",
   "census_education_total", "census_education_basic", "census_education_secondary", "census_education_higher",
   "neonatal_deaths", "early_neonatal_deaths", "postneonatal_deaths", "perinatal_deaths"
@@ -476,6 +485,31 @@ planning_component_blocks <- function(year) {
       dplyr::summarise(perinatal_deaths = sum(value, na.rm = TRUE), .groups = "drop")
   }
 
+  # Employees by sector, and their average earnings. The mean is not additive,
+  # so it is kept as earnings x employees and divided back after summing. The
+  # source counts employees where they work, not where they live.
+  employees <- read_planning_extra("employees_by_sector", year)
+  if (!is.null(employees)) {
+    blocks$employees <- employees %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(
+        employees_total = sum(value[category == "Total"], na.rm = TRUE),
+        employees_primary = sum(value[grepl("^Agricultura", category)], na.rm = TRUE),
+        employees_secondary = sum(value[grepl("^Indústria", category)], na.rm = TRUE),
+        employees_tertiary = sum(value[grepl("^Serviços", category)], na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  earnings <- read_planning_extra("earnings_mean", year)
+  if (!is.null(earnings) && !is.null(blocks$employees)) {
+    blocks$earnings <- earnings %>%
+      dplyr::filter(.data$category == "Total") %>%
+      dplyr::group_by(area) %>%
+      dplyr::summarise(mean_earnings = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::inner_join(blocks$employees[, c("area", "employees_total")], by = "area") %>%
+      dplyr::transmute(area, earnings_value = .data$mean_earnings * .data$employees_total)
+  }
+
   # Census measures: only the census years have files.
   census_population <- read_planning_extra("census_population", year)
   census_age <- read_planning_extra("census_population_by_age", year)
@@ -547,6 +581,8 @@ planning_column_block <- function(column) {
     waste_total = , waste_selective = "waste",
     births_gest_total = , births_gest_known = , births_preterm = "gestation",
     births_weight_known = , births_low_weight = "weight",
+    employees_total = , employees_primary = , employees_secondary = , employees_tertiary = "employees",
+    earnings_value = "earnings",
     census_pop = "census_population",
     census_pop_10plus = "census_age",
     census_illiterate = "census_illiteracy",
@@ -786,6 +822,11 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
       },
       teen_births_pct = set_share("births_mother_lt20", "births_mother_total"),
       low_birth_weight_pct = set_share("births_low_weight", "births_weight_known"),
+      earnings_mean = set_ratio("earnings_value", "employees_total", 1),
+      employees = set_count("employees_total", interval = FALSE),
+      pct_employees_primary = set_ratio("employees_primary", "employees_total", 100),
+      pct_employees_secondary = set_ratio("employees_secondary", "employees_total", 100),
+      pct_employees_tertiary = set_ratio("employees_tertiary", "employees_total", 100),
       census_population = set_count("census_pop", interval = FALSE),
       census_population_change = {
         # Censuses are ten years apart; the change is against the previous one.

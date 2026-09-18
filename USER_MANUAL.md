@@ -918,6 +918,8 @@ lado das áreas que contêm o local, e resume todos os outros.
 | Pensionistas da segurança social | I15, I16 | contagem, e por 1.000 habitantes com 15 e mais anos |
 | Valor médio das pensões | I17 | valor total das pensões sobre o total de pensionistas (€ por ano) |
 | Poder de compra per capita | I28 | Portugal = 100; anos ímpares (estudo bienal) |
+| Ganho médio mensal | I27 | ganho médio dos trabalhadores por conta de outrem, ponderado pelo número de trabalhadores (€/mês) |
+| Trabalhadores por conta de outrem e repartição por sector | I12 | contagem e % nos sectores primário, secundário e terciário |
 | Resíduos urbanos por habitante | I64, I65 | total e recolha selectiva, kg por habitante |
 | Esperança de vida à nascença e aos 65 anos, total e por sexo | I10 | tábua de mortalidade abreviada por triénio (ver abaixo) |
 | Taxa de mortalidade infantil | I39 | óbitos com menos de 1 ano por 1.000 nados-vivos, no triénio |
@@ -929,10 +931,12 @@ lado das áreas que contêm o local, e resume todos os outros.
 Os indicadores aparecem agrupados por tema: Demografia, Natalidade, Contexto
 social, Ambiente e Mortalidade.
 
-Ficam de fora, por agora: o ganho médio mensal (I27) e a população empregada por
-sector de actividade (I12), que o INE não publica por município de forma que
-permita somar entre municípios; a mortalidade proporcional abaixo dos 75 anos
-(I46); e os indicadores que não vêm do INE (IEFP, PORDATA, SIM@SNS).
+Ficam de fora, por agora: os indicadores que não vêm do INE (I11 do IEFP, I18 e
+I19 da PORDATA, I34 e I49 do SIM@SNS), o abastecimento de água e a drenagem de
+águas residuais (I61 e I62), cuja série municipal do INE terminou em 2009, e a
+água segura (I63), publicada como percentagem sem denominador, que por isso não
+se pode agregar. As folhas I29, I30 e I31 estão marcadas como descontinuadas no
+próprio ficheiro.
 
 Os indicadores dos Censos (I2, I24, I26) existem apenas nos anos censitários
 (1991, 2001, 2011 e 2021).
@@ -1025,6 +1029,23 @@ população não têm: as estimativas de população não são uma amostra de
 acontecimentos. O `*` na mortalidade infantil marca um triénio com menos de
 1.000 nados-vivos, como no resto da aplicação.
 
+### Ganho médio mensal e trabalhadores por sector
+
+Vêm dos Quadros de Pessoal (MTSSS/GEP), publicados pelo INE por município, e
+cobrem os trabalhadores **por conta de outrem**, contados no **local de
+trabalho** e não no local de residência. Os indicadores do ficheiro de apoio
+usam, para o I12, a população empregada dos Censos, por residência: as duas
+medidas não são comparáveis entre si, embora respondam à mesma pergunta.
+
+O ganho médio de uma área é a média dos valores municipais **ponderada pelo
+número de trabalhadores**, não a média simples: um município pequeno não pesa o
+mesmo que a sede de concelho onde estão os empregos. Para uma ULS com um só
+município o valor é o do próprio município, e coincide exactamente com o do
+ficheiro de apoio (ULS Matosinhos, 2013-2018).
+
+Cobertura: ganho médio desde 2011, trabalhadores por sector desde 2013. O ganho
+médio só é apresentado a partir de 2013, porque antes disso não há os pesos.
+
 ### Indicadores dos Censos
 
 Vêm das séries históricas do INE por município (população residente desde 1864,
@@ -1110,6 +1131,11 @@ anos entre si.
   a mesma população duas vezes: no ficheiro, a soma das ULS do Norte
   ultrapassa a ARS Norte em cerca de 3.000 óbitos. A aplicação mostra antes os
   dois agrupamentos exactos.
+- **Ganho médio mensal das ULS com vários municípios.** No ficheiro, a linha de
+  uma ULS repete o valor do primeiro município por ordem alfabética: a série da
+  ULS Alto Minho de 2013 a 2018 (802,3; 797,3; 801,3; 815,8; 875,8; 882,1) é,
+  ano a ano, a de Arcos de Valdevez. A aplicação pondera pelos trabalhadores
+  (878,9 em 2013). Onde a ULS tem um só município, os valores coincidem.
 - **Poder de compra de uma ULS.** É a soma das quotas dos municípios no poder de
   compra nacional sobre a soma das suas quotas de população, e não a média dos
   índices municipais. Nalgumas ULS o ficheiro tem valores que não coincidem com os

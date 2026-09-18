@@ -157,6 +157,7 @@
       <li><a href="#formulas">Indicadores e fórmulas</a></li>
       <li><a href="#isf">Índice sintético de fecundidade</a></li>
       <li><a href="#ev">Esperança de vida à nascença</a></li>
+      <li><a href="#u75">Mortalidade proporcional &lt; 75 anos</a></li>
       <li><a href="#incerteza">Intervalos e marcas</a></li>
       <li><a href="#qualidade">Qualidade dos dados de base</a></li>
       <li><a href="#ficheiro">Diferenças face ao ficheiro v26</a></li>
@@ -172,8 +173,8 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.0</li>
-          <li><b>Data</b> 17 de Setembro de 2026</li>
+          <li><b>Versão</b> 1.1</li>
+          <li><b>Data</b> 18 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
         </ul>
@@ -181,9 +182,9 @@
 
       <section>
         <h2 id="ambito"><span class="n">1</span>Âmbito</h2>
-        <p>A nota descreve o cálculo de 30 indicadores do ficheiro de apoio aos PLS (I1, I3–I10, I13–I17, I28, I32, I33, I35, I37–I42, I45 e I64–I65), obtidos de forma automática a partir das bases de dados do INE, para qualquer área que se possa compor a partir de municípios: Portugal, NUTS I, II e III, as 5 ARS, as 36 ULS e agrupamentos de ULS, e os 308 municípios.</p>
+        <p>A nota descreve o cálculo dos indicadores do ficheiro de apoio aos PLS que se obtêm de forma automática a partir das bases de dados do INE — I1 a I10, I12 a I17, I24, I26 a I28, I32, I33, I35 a I46, I64 e I65 — para qualquer área que se possa compor a partir de municípios: Portugal, NUTS I, II e III, as 5 ARS, as 36 ULS e agrupamentos de ULS, e os 308 municípios. São 48 séries anuais ou trienais, mais as repartições por grandes grupos de causas (I45 e I46) e a pirâmide etária (I3).</p>
         <p>Destina-se às equipas das DRS e, se necessário, a validação junto do INE. Todos os valores referidos foram verificados sobre os dados importados na data indicada no cabeçalho.</p>
-        <p>Ficam fora do âmbito, nesta versão: os indicadores exclusivamente censitários (I2, I12, I24, I26), os que não vêm do INE (I11 IEFP, I18–I19 PORDATA, I34 e I49 SIM@SNS), o ganho médio mensal (I27), a mortalidade proporcional abaixo dos 75 anos (I46), o baixo peso à nascença (I36) e as mortalidades fetal tardia e perinatal (I43, I44).</p>
+        <p>Ficam fora do âmbito: os indicadores que não vêm do INE (I11 do IEFP, I18 e I19 da PORDATA, I34 e I49 do SIM@SNS); o abastecimento de água e a drenagem de águas residuais (I61, I62), cuja série municipal do INE terminou em 2009; e a água segura (I63), publicada como percentagem sem denominador, que por isso não se pode agregar. As folhas I29, I30 e I31 estão marcadas como descontinuadas no próprio ficheiro.</p>
       </section>
 
       <section>
@@ -207,6 +208,14 @@
               <tr><td>Valor médio das pensões</td><td><span class="code">0004149</span> <span class="code">0010266</span> <span class="code">0013398</span> <span class="code">0014532</span></td><td class="num">2004–2025</td></tr>
               <tr><td>Poder de compra per capita e proporção nacional</td><td><span class="code">0001354</span>/<span class="code">0001355</span> <span class="code">0008614</span>/<span class="code">0008615</span> <span class="code">0014580</span>/<span class="code">0014581</span></td><td class="num">1993–2023<br>bienal</td></tr>
               <tr><td>Resíduos urbanos recolhidos, por tipo de recolha</td><td><span class="code">0000482</span> <span class="code">0009612</span> <span class="code">0012769</span></td><td class="num">1995–2024</td></tr>
+              <tr><td>Nados-vivos por escalão de peso à nascença</td><td><span class="code">0005611</span> <span class="code">0008088</span> <span class="code">0012438</span></td><td class="num">1995–2025</td></tr>
+              <tr><td>Óbitos perinatais</td><td><span class="code">0003527</span> <span class="code">0008173</span> <span class="code">0012549</span></td><td class="num">1996–2025</td></tr>
+              <tr><td>Ganho médio mensal (Quadros de Pessoal)</td><td><span class="code">0009047</span> <span class="code">0012656</span></td><td class="num">2011–2024</td></tr>
+              <tr><td>Trabalhadores por conta de outrem, por sector</td><td><span class="code">0010378</span> <span class="code">0012648</span></td><td class="num">2013–2024</td></tr>
+              <tr><td>População residente nos Censos</td><td><span class="code">0014353</span></td><td class="num">1991, 2001, 2011, 2021</td></tr>
+              <tr><td>População nos Censos por grupo etário</td><td><span class="code">0014164</span></td><td class="num">1991, 2001, 2011, 2021</td></tr>
+              <tr><td>Nível de escolaridade nos Censos</td><td><span class="code">0014380</span></td><td class="num">1991, 2001, 2011, 2021</td></tr>
+              <tr><td>Taxa de analfabetismo nos Censos</td><td><span class="code">0014375</span></td><td class="num">1991, 2001, 2011, 2021</td></tr>
             </tbody>
           </table>
         </div>
@@ -264,7 +273,16 @@
               <tr><td>I7</td><td>Nados-vivos</td><td>nados-vivos</td><td>—</td><td>N.º</td><td>anual</td></tr>
               <tr><td>I8</td><td>Taxa bruta de natalidade</td><td>nados-vivos</td><td>população total</td><td>‰</td><td>anual</td></tr>
               <tr><td>I9</td><td>Índice sintético de fecundidade</td><td colspan="2">secção 7</td><td>filhos por mulher</td><td>anual</td></tr>
-              <tr><td>I10</td><td>Esperança de vida à nascença, total e por sexo</td><td colspan="2">secção 8</td><td>anos</td><td>triénio</td></tr>
+              <tr><td>I2</td><td>População residente nos Censos e variação face ao censo anterior</td><td>população do censo</td><td>população do censo anterior</td><td>N.º e %</td><td>censos</td></tr>
+              <tr><td>I10</td><td>Esperança de vida à nascença e aos 65 anos, total e por sexo</td><td colspan="2">secção 8</td><td>anos</td><td>triénio</td></tr>
+              <tr><td>I12</td><td>Trabalhadores por conta de outrem e repartição por sector</td><td>trabalhadores do sector</td><td>total de trabalhadores</td><td>N.º e %</td><td>anual</td></tr>
+              <tr><td>I24</td><td>População por nível de escolaridade</td><td>população do nível</td><td>população do censo</td><td>%</td><td>censos</td></tr>
+              <tr><td>I26</td><td>Taxa de analfabetismo</td><td>analfabetos com 10+ anos</td><td>população com 10+ anos</td><td>%</td><td>censos</td></tr>
+              <tr><td>I27</td><td>Ganho médio mensal</td><td>Σ ganho × trabalhadores</td><td>Σ trabalhadores</td><td>€/mês</td><td>anual</td></tr>
+              <tr><td>I36</td><td>Nascimentos com baixo peso</td><td>nados-vivos com menos de 2.500 g</td><td>nados-vivos com peso conhecido</td><td>%</td><td>triénio</td></tr>
+              <tr><td>I43</td><td>Mortalidade fetal tardia</td><td>fetos-mortos com 28+ semanas</td><td>nados-vivos + fetos-mortos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I44</td><td>Mortalidade perinatal</td><td>fetos-mortos + óbitos com menos de 7 dias</td><td>nados-vivos + fetos-mortos</td><td>‰</td><td>triénio</td></tr>
+              <tr><td>I46</td><td>Mortalidade proporcional, idades &lt; 75</td><td colspan="2">secção 8-A</td><td>%</td><td>triénio</td></tr>
               <tr><td>I13</td><td>Beneficiários do RSI</td><td>beneficiários</td><td>—</td><td>N.º</td><td>anual</td></tr>
               <tr><td>I14</td><td>Beneficiários do RSI por 1.000</td><td>beneficiários</td><td>população 15+</td><td>‰</td><td>anual</td></tr>
               <tr><td>I15</td><td>Pensionistas</td><td>pensionistas</td><td>—</td><td>N.º</td><td>anual</td></tr>
@@ -365,6 +383,13 @@ e(0)  = Σ L(x) / l(0)</div>
       </section>
 
       <section>
+        <h2 id="u75"><span class="n">8-A</span>Mortalidade proporcional abaixo dos 75 anos</h2>
+        <p>O I45, para todas as idades, lê os totais de óbitos por município e causa, que estão completos. O I46 precisa da repartição por idade, e cada área usa a melhor fonte disponível: a <strong>linha regional do INE</strong>, onde existe (Portugal, Continente, todas as regiões NUTS e as ULS que coincidem com uma NUTS III), e a <strong>soma dos municípios</strong> nas restantes. Uma área usa sempre uma única fonte em cada ano, para que as quotas fechem em 100%.</p>
+        <p>A soma dos municípios é fiável: em 2020-2022 reproduz exactamente os óbitos abaixo dos 75 anos do Alto Minho e do Algarve publicados pelo INE, e as quotas com um desvio máximo de 0,3 pontos percentuais. A excepção é 2014, ano em que o INE publicou a idade de apenas 79,7% dos óbitos por município (52,7% no pior grupo de causas): nos três triénios que o incluem, as áreas sem linha regional aparecem marcadas com §, e as quotas podem estar desviadas em cerca de 2 pontos.</p>
+        <p>Os óbitos não são reescalados para os totais completos. Testado contra as linhas do INE, reescalar piora as quotas: os óbitos sem idade publicada estão sobretudo nas idades altas, pelo que distribuí-los na proporção dos restantes coloca demasiados abaixo dos 75 anos (Portugal 2020-2022, tumores malignos: 38,69% exacto, 38,48% pela soma municipal, 39,20% reescalado). Para o Continente em 2020-2022 a aplicação obtém 98.546 óbitos abaixo dos 75 anos, exactamente o valor do ficheiro de apoio.</p>
+      </section>
+
+      <section>
         <h2 id="incerteza"><span class="n">9</span>Intervalos de confiança e marcas</h2>
         <ul>
           <li><strong>Contagens e taxas de acontecimentos</strong> (nados-vivos, óbitos, taxas brutas, mortalidade infantil e neonatal): intervalo de Poisson exacto sobre a contagem, com o denominador tratado como fixo.</li>
@@ -380,6 +405,7 @@ e(0)  = Σ L(x) / l(0)</div>
               <tr><td>*</td><td>Taxa de mortalidade infantil ou neonatal calculada sobre menos de 1.000 nados-vivos no triénio: exacta, mas um único óbito desloca-a em mais de uma unidade por 1.000.</td></tr>
               <tr><td>†</td><td>Triénio que inclui anos de 1995 a 2001, em que os óbitos com menos de 1 ano por município somam cerca de 85% do total nacional: o valor está subestimado. Não se aplica a Portugal.</td></tr>
               <tr><td>‡</td><td>Esperança de vida em que mais de 2% dos óbitos do triénio não tinham idade publicada por município.</td></tr>
+              <tr><td>§</td><td>Mortalidade proporcional abaixo dos 75 anos, num triénio que inclui 2014, numa área sem linha regional do INE.</td></tr>
             </tbody>
           </table>
         </div>
@@ -411,6 +437,9 @@ e(0)  = Σ L(x) / l(0)</div>
               <tr><td>Nascimentos em mães com menos de 20 anos</td><td>Continente 2022–2024: 1,8% face a 1,87%</td><td>O ficheiro conta só mães de 15–19 anos; a aplicação inclui as de 10–14.</td></tr>
               <tr><td>Poder de compra de algumas ULS</td><td>Matosinhos 2021: 130,6 no ficheiro, 118,1 no INE e na aplicação</td><td>O valor do ficheiro não corresponde ao publicado para o município; em agrupamentos, deve usar-se a fórmula da secção 4 e não a média.</td></tr>
               <tr><td>Mortalidade neonatal e pós-neonatal de algumas ULS</td><td>Alto Minho 2022–2024: 1,1 + 0,9 no ficheiro, face a 2,4 de mortalidade infantil</td><td>No ficheiro as duas não somam a infantil, o que sugere linhas desalinhadas; na aplicação somam sempre.</td></tr>
+              <tr><td>Ganho médio mensal das ULS com vários municípios</td><td>ULS Alto Minho, 2013–2018: 802,3; 797,3; 801,3; 815,8; 875,8; 882,1</td><td>Essa série é, ano a ano, a do primeiro município por ordem alfabética (Arcos de Valdevez), e não uma agregação. A aplicação pondera os valores municipais pelo número de trabalhadores (878,9 em 2013). Onde a ULS tem um só município, os valores coincidem exactamente (ULS Matosinhos, 2013–2018).</td></tr>
+              <tr><td>Trabalhadores por sector (I12)</td><td>—</td><td>O ficheiro usa a população empregada dos Censos, por residência; a aplicação usa os Quadros de Pessoal, que contam apenas trabalhadores por conta de outrem, no local de trabalho. Não existe série censitária de emprego por sector por município para 2011.</td></tr>
+              <tr><td>População dos Censos das regiões</td><td>Norte 2011: 3.689.682 na aplicação, 3.737.768 no ficheiro</td><td>O valor da aplicação é o publicado nos Censos para a NUTS II Norte; a diferença aponta para uma definição de regiões anterior no ficheiro. O Continente coincide exactamente nos dois censos.</td></tr>
               <tr><td>Designações</td><td>«Loures-Odivelas» / «Loures/Odivelas»; «Almada-Seixal» / «Almada/Seixal»</td><td>Grafias diferentes entre folhas impedem cruzamentos por nome; a aplicação usa os códigos dos municípios.</td></tr>
             </tbody>
           </table>
@@ -434,6 +463,7 @@ e(0)  = Σ L(x) / l(0)</div>
           <li>As cinco ULS que partilham os municípios de Lisboa, Loures e Porto só são apresentadas em agrupamentos.</li>
           <li>As composições de ULS e ARS actuais são aplicadas a todos os anos, incluindo os anteriores à sua criação.</li>
           <li>As áreas agregadas, com excepção de Portugal e do Continente, não incluem acontecimentos de residência desconhecida.</li>
+          <li>O I12 e o I27 cobrem apenas trabalhadores por conta de outrem, no local de trabalho, e não toda a população empregada.</li>
           <li>Os valores municipais de mortalidade infantil e de esperança de vida têm intervalos de confiança largos; a mediana da amplitude do intervalo da esperança de vida municipal em 2022–2024 é de 2,5 anos.</li>
           <li>A esperança de vida não é directamente comparável com os valores publicados pelo INE (secção 8).</li>
           <li>Os indicadores socioeconómicos seguem as edições do INE e as suas mudanças de série; não são harmonizados entre séries.</li>

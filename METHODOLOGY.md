@@ -901,6 +901,8 @@ location. The engine is `R/planning_indicators.R`.
 | Mean pension | I17 | sum(pensioners x mean) / sum(pensioners) |
 | Purchasing power per capita | I28 | sum(share) / sum(share / index) x 100 |
 | Urban waste per inhabitant | I64, I65 | tonnes x 1,000 / population |
+| Average monthly earnings | I27 | sum(earnings x employees) / sum(employees) |
+| Employees and sector shares | I12 | count; share of employees per sector |
 | Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
 | Neonatal, early neonatal, post-neonatal | I40-I42 | deaths <28 d, <7 d, 28-364 d / live births x 1,000, three years |
 | Late fetal, perinatal mortality | I43, I44 | stillbirths 28+ weeks, and those plus deaths <7 d, / (live births + stillbirths) x 1,000, three years |
@@ -998,6 +1000,8 @@ year the newest edition covering it wins, and rows are mapped by DICO.
 | Census population by age | `0014164` | 1991, 2001, 2011, 2021 |
 | Census education level | `0014380` | 1991, 2001, 2011, 2021 |
 | Census illiteracy rate | `0014375` | 1991, 2001, 2011, 2021 |
+| Average monthly earnings | `0009047`, `0012656` | 2011-2024 |
+| Employees by sector | `0010378`, `0012648` | 2013-2024 |
 
 Every dimension other than area and the measure's own is pinned to its total
 category; a response whose other dimension has no total is refused rather than
@@ -1022,6 +1026,16 @@ current one. With that denominator the index reproduces INE's published series
 for Portugal (`0001293`) to two decimals in 2018-2020 and 2022-2025; 2021 reads
 1.32 against 1.30 because its mid-year mean straddles the population revision.
 The end-of-year estimate alone reads up to 0.03 low.
+
+Earnings and employees come from Quadros de Pessoal (MTSSS/GEP): employees
+only, counted at their workplace. The workbook's I12 uses census employment by
+residence, a different universe, and no census series of employment by sector
+exists per municipality for 2011. An area's mean earnings weight the municipal
+means by employees; for a single-municipality ULS the result equals the
+workbook's exactly (ULS Matosinhos 2013-2018). For a ULS of several
+municipalities the workbook repeats the first municipality alphabetically - its
+ULS Alto Minho series is Arcos de Valdevez's, year for year - which the app does
+not reproduce.
 
 The census series code municipalities as one character plus the DICO (five
 characters) rather than the usual seven, which the fetcher handles. INE

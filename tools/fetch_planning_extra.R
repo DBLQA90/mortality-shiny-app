@@ -99,6 +99,16 @@ MEASURES <- list(
     target = NULL
   ),
   # Census series, one value per census year (the app uses 1991 onwards).
+  earnings_mean = list(
+    # Average monthly earnings of employees (MTSSS/Quadros de Pessoal), by
+    # workplace. Not additive: weighted by the number of employees below.
+    editions = c("0009047", "0012656"),
+    target = NULL
+  ),
+  employees_by_sector = list(
+    editions = c("0010378", "0012648"),
+    target = "Agricultura|Indústria|Serviços"
+  ),
   census_population = list(
     editions = "0014353",
     target = NULL

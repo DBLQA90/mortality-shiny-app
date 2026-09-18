@@ -745,3 +745,43 @@ test_that("proportional mortality under 75 prefers INE's rows and flags 2014", {
     expect_null(planning_under75_note(with_rows))
   })
 })
+
+test_that("earnings are weighted by employees, and sector shares sum to the total", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    put <- function(measure, frame) {
+      dir.create(file.path(root, "planning_extra", measure), recursive = TRUE, showWarnings = FALSE)
+      saveRDS(dplyr::mutate(frame, year = 2022L, source_indicator = "x"),
+              file.path(root, "planning_extra", measure, "year_2022.rds"))
+    }
+    put("employees_by_sector", tibble::tibble(
+      area = rep(c("Alfa", "Beta"), each = 4),
+      category = rep(c("Total", "Agricultura, produção animal, caça, floresta e pesca",
+                       "Indústria, construção, energia e água", "Serviços"), 2),
+      value = c(1000, 100, 300, 600, 500, 50, 250, 200)
+    ))
+    put("earnings_mean", tibble::tibble(area = c("Alfa", "Beta"), category = "Total", value = c(1200, 900)))
+    planning_clear_cache()
+
+    ids <- c("earnings_mean", "employees", "pct_employees_primary", "pct_employees_tertiary")
+    tab <- planning_indicator_table(c("Norte", "Alfa"), 2022L, ids = ids, lookup = lookup)
+    get <- function(area, id) tab$value[tab$area == area & tab$indicator == id]
+
+    # Weighted by employees, not the mean of the two means (1,050).
+    expect_equal(get("Norte", "earnings_mean"), (1200 * 1000 + 900 * 500) / 1500)
+    expect_equal(get("Alfa", "earnings_mean"), 1200)
+    expect_equal(get("Norte", "employees"), 1500)
+    expect_equal(get("Norte", "pct_employees_primary"), 150 / 1500 * 100)
+    expect_equal(get("Norte", "pct_employees_tertiary"), 800 / 1500 * 100)
+
+    # The three sectors account for the total.
+    shares <- planning_indicator_table("Norte", 2022L,
+                                       ids = c("pct_employees_primary", "pct_employees_secondary", "pct_employees_tertiary"),
+                                       lookup = lookup)
+    expect_equal(sum(shares$value), 100)
+
+    # A count has no comparators; a mean and a share do.
+    expect_false(planning_indicator_spec("employees")$comparable)
+    expect_true(planning_indicator_spec("earnings_mean")$comparable)
+  })
+})
