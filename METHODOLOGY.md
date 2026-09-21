@@ -1132,6 +1132,34 @@ level is divided by everyone of that age and over; 1991 and 2001 have no age
 breakdown and stay empty. With 0 (the default, as in the workbook) the
 historical series `0014380` is used unchanged.
 
+### Standardised, premature and avoidable mortality
+
+`R/planning_standardised.R` adds, per triennium and area: the SMR against the
+benchmark (indirect, Portugal = 100, exact Poisson interval on the observed
+count), the directly standardised rate (ESP-2013, Dobson interval with exact
+Poisson limits - PHEindicatormethods uses Byar's approximation; they agree to
+0.002% at 120 deaths and exactly at regional counts), the same under 75
+(premature), the preventable and treatable rates under 75 (the lists of
+`R/avoidable.R`, a lower bound), premature and avoidable death counts, and years
+of potential life lost before 70 per 100,000 residents under 70 (band
+midpoints; infant deaths weighted at 69.5 years). `planning_cause_standardised()`
+gives observed, expected, SMR and both standardised rates for the 13 I45 groups
+and all causes, by sex.
+
+Deaths by age and cause per municipality are incomplete at INE (97.9% of
+circulatory deaths in the municipal bands in 2023; 65% of suicides in 2014),
+while the national row and the municipal all-ages totals are complete. Each
+municipality and cause is completed to its total (death_totals), and the
+missing deaths are spread with the national gap profile - Portugal's row by age
+less the municipal sum - rather than the municipality's own profile. The gap is
+concentrated at young ages (INE suppresses small cells), and the own-profile
+version read 2012-2014 premature mortality of the municipal sum at 338.8
+against Portugal's 350.5; with the gap profile the two agree (350.5), and Norte
+2022-2024 deaths under 75 reproduce INE's regional row exactly (33,155).
+Alentejo 2014-2016 is 2% off INE's composed row. Values with more than 2% of
+their deaths spread carry `‡`. The regional rows INE publishes by age could
+replace the municipal sums for NUTS areas; not done yet.
+
 ### Location profile
 
 `write_planning_profile()` (`R/planning_profile.R`) builds a .docx with

@@ -357,7 +357,10 @@ PLANNING_FUNNEL_MODELS <- tibble::tribble(
   "teen_births_pct",      "binomial", 100,  "Nados-vivos no triénio",
   "older_births_pct",     "binomial", 100,  "Nados-vivos no triénio",
   "preterm_pct",          "binomial", 100,  "Nascimentos com duração da gestação conhecida, no triénio",
-  "low_birth_weight_pct", "binomial", 100,  "Nascimentos com peso conhecido, no triénio"
+  "low_birth_weight_pct", "binomial", 100,  "Nascimentos com peso conhecido, no triénio",
+  # SMR: observed deaths against those expected; around 100 the expected count
+  # is the Poisson mean, so the denominator is the expected deaths.
+  "smr_all",              "poisson",  100,  "Óbitos esperados no triénio"
 )
 
 # Limits at `probability` (two-sided) for denominators `n` around the rate
@@ -458,4 +461,74 @@ planning_funnel_chart <- function(units, spec, year, benchmark_area, highlight =
                  range = c(min(0, min(units$value)), max(units$value, reference) * 1.15)),
     margin = list(b = 90)
   )
+}
+
+# ---------------------------------------------------------
+# SMR by cause group
+# ---------------------------------------------------------
+# One row per cause group, ordered by the location's SMR: the location's SMR
+# with its interval, coloured by significance against the benchmark (= 100),
+# and each comparator as a hollow marker in its level's colour.
+planning_cause_smr_chart <- function(table, areas, benchmark) {
+  local <- areas$area[[1]]
+  rows <- table[is.finite(table$smr), , drop = FALSE]
+  own <- rows[rows$area == local, , drop = FALSE]
+  order <- own$group[order(own$smr)]
+  rows$label <- factor(rows$group, levels = unique(c(order, rows$group)))
+  own$label <- factor(own$group, levels = levels(rows$label))
+  own$colour <- ifelse(is.na(own$significance), PLANNING_SIGNIFICANCE_COLOURS[["Semelhante"]], PLANNING_SIGNIFICANCE_COLOURS[own$significance])
+  own$hover <- paste0("<b>", own$group, "</b><br>", local, ": SMR ", planning_format_value(own$smr, 1), own$flag,
+                      " (IC 95%: ", planning_format_value(own$smr_lower, 1), " - ", planning_format_value(own$smr_upper, 1), ")",
+                      "<br>Óbitos: ", planning_format_value(own$observed, 0), "; esperados: ", planning_format_value(own$expected, 1))
+  p <- plotly::plot_ly()
+  p <- plotly::add_markers(
+    p, data = own, x = ~smr, y = ~label, name = local, text = ~hover, hoverinfo = "text",
+    error_x = list(type = "data", symmetric = FALSE, array = own$smr_upper - own$smr, arrayminus = own$smr - own$smr_lower,
+                   color = PLANNING_INK$muted, thickness = 1.2, width = 3),
+    marker = list(color = own$colour, size = 11, line = list(color = "#ffffff", width = 1))
+  )
+  others <- areas[areas$area != local & !areas$area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL), , drop = FALSE]
+  for (i in seq_len(nrow(others))) {
+    comp <- rows[rows$area == others$area[[i]], , drop = FALSE]
+    if (nrow(comp) == 0) next
+    name <- planning_series_name(others$area[[i]], others$level[[i]])
+    p <- plotly::add_markers(
+      p, data = comp, x = ~smr, y = ~label, name = name, hoverinfo = "text",
+      text = paste0("<b>", comp$group, "</b><br>", name, ": SMR ", planning_format_value(comp$smr, 1), comp$flag),
+      marker = list(color = PLANNING_LEVEL_COLOURS[[others$level[[i]]]], size = 9, symbol = "circle-open", line = list(width = 2))
+    )
+  }
+  planning_plotly_layout(
+    p,
+    shapes = list(list(type = "line", x0 = 100, x1 = 100, yref = "paper", y0 = 0, y1 = 1,
+                       line = list(color = PLANNING_LEVEL_COLOURS[["Portugal"]], dash = "dash", width = 2))),
+    xaxis = list(title = paste0("Razão padronizada de mortalidade (", benchmark, " = 100)"), type = "log",
+                 tickvals = c(10, 25, 50, 75, 100, 150, 200, 400, 800), ticktext = c("10", "25", "50", "75", "100", "150", "200", "400", "800")),
+    yaxis = list(title = "", tickfont = list(color = PLANNING_INK$secondary, size = 11)),
+    margin = list(l = 330, b = 90)
+  )
+}
+
+# The cause table: the location's counts, SMR and standardised rates, and each
+# comparator's SMR.
+planning_cause_display <- function(table, areas) {
+  local <- areas$area[[1]]
+  own <- table[table$area == local, , drop = FALSE]
+  ci <- function(v, l, u, d) ifelse(is.na(v), "\u2014", paste0(planning_format_value(v, d), " (", planning_format_value(l, d), " - ", planning_format_value(u, d), ")"))
+  out <- tibble::tibble(
+    `Grupo de causas` = own$group,
+    `Óbitos` = planning_format_value(own$observed, 0),
+    `Esperados` = planning_format_value(own$expected, 1),
+    SMR = paste0(ci(own$smr, own$smr_lower, own$smr_upper, 1), own$flag, planning_significance_mark(own$significance)),
+    `Taxa padronizada` = ci(own$dsr, own$dsr_lower, own$dsr_upper, 1),
+    `Taxa padronizada < 75` = ci(own$dsr75, own$dsr75_lower, own$dsr75_upper, 1)
+  )
+  names(out)[2:6] <- paste0(names(out)[2:6], " - ", local)
+  for (i in seq_len(nrow(areas))[-1]) {
+    comp <- table[table$area == areas$area[[i]], , drop = FALSE]
+    comp <- comp[match(own$code, comp$code), , drop = FALSE]
+    out[[paste0("SMR - ", planning_series_name(areas$area[[i]], areas$level[[i]]))]] <-
+      paste0(ifelse(is.na(comp$smr), "\u2014", planning_format_value(comp$smr, 1)), comp$flag, planning_significance_mark(comp$significance))
+  }
+  out
 }

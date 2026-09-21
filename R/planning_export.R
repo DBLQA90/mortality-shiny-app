@@ -37,7 +37,9 @@ PLANNING_SHEET_NAMES <- c(
   life_expectancy_65_men = "I10 EV aos 65, homens", life_expectancy_65_women = "I10 EV aos 65, mulheres", deaths = "I37 Óbitos", death_rate = "I38 Mortalidade", infant_rate = "I39 Mortalidade infantil",
   neonatal_rate = "I40 Mortalidade neonatal", early_neonatal_rate = "I41 Neonatal precoce",
   postneonatal_rate = "I42 Pós-neonatal", late_fetal_rate = "I43 Fetal tardia",
-  perinatal_rate = "I44 Perinatal"
+  perinatal_rate = "I44 Perinatal", smr_all = "SMR todas as causas", dsr_all = "Taxa padronizada",
+  dsr_premature = "Mortalidade prematura", premature_deaths = "Óbitos prematuros", dsr_preventable = "Evitável por prevenção",
+  dsr_treatable = "Evitável por cuidados", avoidable_deaths = "Óbitos evitáveis", ypll_rate = "Anos de vida perdidos"
 )
 
 planning_number_format <- function(digits) {
@@ -71,7 +73,7 @@ write_planning_workbook <- function(path,
   years <- if (is.null(years)) all_years else intersect(as.integer(years), all_years)
 
   progress(0.05, "indicadores")
-  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age) %>%
+  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark) %>%
     planning_add_significance(benchmark) %>%
     dplyr::filter(.data$area %in% areas$area) %>%
     dplyr::left_join(areas, by = "area")
@@ -299,6 +301,33 @@ write_planning_workbook <- function(path,
     openxlsx::writeData(wb, "Mortalidade proporcional <75", under75, headerStyle = header_style)
     openxlsx::freezePane(wb, "Mortalidade proporcional <75", firstRow = TRUE)
     openxlsx::setColWidths(wb, "Mortalidade proporcional <75", cols = 1:10, widths = c(11, 42, 11, 8, 50, 22, 8, 14, 14, 7))
+  }
+
+  # --- Mortality by cause group, standardised --------------------------------------
+  cause_years <- planning_standardised_years()
+  cause_years <- cause_years[cause_years <= max(years) & cause_years >= min(years)]
+  # Every triennium for a selection; the latest one for the file of all areas.
+  if (!include_long) cause_years <- utils::tail(cause_years, 1)
+  if (length(cause_years) > 0) {
+    progress(0.96, "mortalidade por causa")
+    causes <- dplyr::bind_rows(lapply(cause_years, function(y) {
+      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark)
+    })) %>%
+      dplyr::filter(.data$area %in% areas$area) %>%
+      dplyr::left_join(areas, by = "area") %>%
+      dplyr::transmute(
+        `Nível` = .data$level, Local = .data$area, `Triénio` = .data$period, `Código` = .data$code,
+        `Grupo de causas` = .data$group, `Óbitos` = round(.data$observed, 1), `Óbitos esperados` = round(.data$expected, 1),
+        SMR = round(.data$smr, 1), `SMR IC 95% inferior` = round(.data$smr_lower, 1), `SMR IC 95% superior` = round(.data$smr_upper, 1),
+        `Face a Portugal` = .data$significance,
+        `Taxa padronizada` = round(.data$dsr, 1), `Taxa padronizada IC inferior` = round(.data$dsr_lower, 1), `Taxa padronizada IC superior` = round(.data$dsr_upper, 1),
+        `Taxa padronizada < 75` = round(.data$dsr75, 1), `< 75 IC inferior` = round(.data$dsr75_lower, 1), `< 75 IC superior` = round(.data$dsr75_upper, 1),
+        Marca = .data$flag
+      )
+    openxlsx::addWorksheet(wb, "Mortalidade por causa (SMR)")
+    openxlsx::writeData(wb, "Mortalidade por causa (SMR)", causes, headerStyle = header_style)
+    openxlsx::freezePane(wb, "Mortalidade por causa (SMR)", firstRow = TRUE)
+    openxlsx::setColWidths(wb, "Mortalidade por causa (SMR)", cols = seq_len(ncol(causes)), widths = c(11, 42, 11, 8, 50, rep(12, ncol(causes) - 5)))
   }
 
   progress(0.97, "a gravar")

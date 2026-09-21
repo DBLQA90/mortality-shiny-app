@@ -45,6 +45,7 @@ for (app_file in c(
   "R/planning_indicators.R",
   "R/life_expectancy.R",
   "R/planning_under75.R",
+  "R/planning_standardised.R",
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/planning_profile.R",
@@ -4301,7 +4302,7 @@ server <- function(input, output, session) {
     )))
     # The benchmark is computed even when not shown, for the significance marks.
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(),
+    table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
                                       education_min_age = planning_education_age())
     planning_add_significance(table, benchmark)
   })
@@ -4363,7 +4364,7 @@ server <- function(input, output, session) {
     # Back to the last census, so the census indicators appear in the summary.
     years <- seq.int(max(1991L, min(last - 4L, 10L * (last %/% 10L) + 1L)), last)
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(),
+    table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(), benchmark = benchmark,
                                       education_min_age = planning_education_age())
     planning_add_significance(table, benchmark)
   })
@@ -4420,7 +4421,7 @@ server <- function(input, output, session) {
     year <- planning_ranking_year()
     units <- planning_uls_units()
     benchmark <- planning_benchmark()
-    ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(),
+    ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
                                         education_min_age = planning_education_age())
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
@@ -4444,7 +4445,7 @@ server <- function(input, output, session) {
       levels$area[levels$level == kind]
     }
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup)
+    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark)
     data <- planning_funnel_data(table, spec, benchmark)
     validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
     list(data = data, year = year, kind = kind, model = model)
@@ -4540,6 +4541,42 @@ server <- function(input, output, session) {
       tidyr::pivot_wider(names_from = column, values_from = cell) %>%
       dplyr::arrange(order) %>%
       dplyr::select(-order)
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  planning_cause_view <- reactive({
+    available <- planning_standardised_years()
+    available <- available[available <= max(planning_year_range())]
+    validate(need(length(available) > 0, "A mortalidade por causa precisa de três anos de óbitos e população até ao ano escolhido."))
+    end_year <- max(available)
+    areas <- planning_areas_all_comparators()
+    benchmark <- planning_benchmark()
+    sex <- input$planning_cause_sex %||% "HM"
+    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex)
+    validate(need(nrow(table) > 0 && any(is.finite(table$smr[table$area == areas$area[[1]]])), "Sem valores para este local neste triénio."))
+    list(table = table, end_year = end_year, areas = areas, benchmark = benchmark, sex = sex)
+  })
+
+  output$planningCauseNote <- renderUI({
+    view <- planning_cause_view()
+    sex_label <- c(HM = "ambos os sexos", H = "homens", M = "mulheres")[[view$sex]]
+    helpText(HTML(paste(htmltools::htmlEscape(c(
+      paste0(
+        "Triénio ", view$end_year - 2L, "-", view$end_year, ", ", sex_label, ". A razão padronizada de mortalidade (SMR) compara os óbitos ",
+        "observados com os que o local teria com as taxas por idade de ", view$benchmark, " no mesmo triénio (", view$benchmark, " = 100). ",
+        "Ponto cheio: o local, laranja acima e azul abaixo de ", view$benchmark, " com significância, cinzento sem diferença; círculos: os comparadores. Escala logarítmica, para que 50 e 200 fiquem à mesma distância de 100."
+      ),
+      "Taxas padronizadas: População Padrão Europeia de 2013, por 100.000 habitantes; a de menos de 75 anos é a mortalidade prematura. \u2021 mais de 2% dos óbitos sem idade publicada por município foram redistribuídos."
+    )), collapse = "<br>")))
+  })
+
+  output$planningCausePlot <- plotly::renderPlotly({
+    view <- planning_cause_view()
+    planning_cause_smr_chart(view$table, view$areas, view$benchmark)
+  })
+
+  output$planningCauseTable <- renderTable({
+    view <- planning_cause_view()
+    planning_cause_display(view$table, view$areas)
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
 
   output$planningDataDate <- renderUI({

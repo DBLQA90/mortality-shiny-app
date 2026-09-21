@@ -1041,6 +1041,49 @@ gráfico, no fim do resumo, no Excel e no perfil:
   acima dos valores do INE, que usa outra metodologia; compare valores da
   aplicação entre si.
 
+### Mortalidade padronizada, prematura e evitável
+
+O tema **Mortalidade padronizada** acrescenta indicadores que não estão no
+ficheiro de apoio, todos por triénio:
+
+| Indicador | O que mede |
+|---|---|
+| Razão padronizada de mortalidade (SMR) | óbitos observados sobre os esperados com as taxas por idade de Portugal no mesmo triénio; Portugal = 100 |
+| Taxa de mortalidade padronizada | a taxa que o local teria com a População Padrão Europeia de 2013, por 100.000 habitantes |
+| Mortalidade prematura padronizada | o mesmo, só antes dos 75 anos |
+| Mortalidade evitável por prevenção / por cuidados de saúde | taxas padronizadas antes dos 75 anos, com as listas Eurostat/OCDE de 2019 |
+| Óbitos prematuros e óbitos evitáveis | contagens antes dos 75 anos |
+| Anos potenciais de vida perdidos | anos que faltavam até aos 70 em cada óbito, por 100.000 residentes com menos de 70 anos |
+
+Ao contrário da taxa bruta, estes indicadores comparam áreas com estruturas
+etárias diferentes: um concelho envelhecido tem mais óbitos sem ter por isso
+mais mortalidade. A SMR segue a opção **Portugal** (total do INE ou soma dos
+municípios).
+
+O subseparador **Mortalidade por causa** mostra, para os 13 grandes grupos de
+causas e para todas as causas, os óbitos observados e esperados, a SMR com o
+seu intervalo e as taxas padronizadas (todas as idades e antes dos 75), para
+ambos os sexos, homens ou mulheres.
+
+**Como se lidam os óbitos sem idade.** O INE publica os óbitos por idade e causa
+de cada município incompletos: em 2023 os grupos etários municipais têm 97,9%
+dos óbitos por doenças do aparelho circulatório, e em 2014 só 65% dos
+suicídios; o total de todas as idades, esse, é completo. Somados tal como
+estão, todas as regiões e ULS ficariam 1% a 3% abaixo de Portugal. Por isso os
+óbitos de cada município e causa são primeiro completados até ao total, e os
+que faltam distribuídos pelas idades com o perfil dos óbitos que faltam no
+país (a linha de Portugal por idade menos a soma dos municípios). Assim a soma
+dos municípios reproduz Portugal por idade, e o Norte reproduz a linha do INE
+de óbitos antes dos 75 anos (33.155 em 2022-2024). A marca `‡` assinala os
+valores em que mais de 2% dos óbitos foram redistribuídos.
+
+**Mortalidade evitável é um limite inferior**: seis causas da lista sucinta
+(cerca de 18% dos óbitos antes dos 75) não se podem atribuir a um grupo sem
+juízo clínico e ficam de fora. Serve para comparar locais e anos, não para
+reproduzir os números do Eurostat.
+
+O funil também existe para a SMR, com os óbitos esperados como dimensão.
+
 ### Perfil do local (Word)
 
 O botão **Perfil do local (Word)** gera um documento editável com: um resumo dos

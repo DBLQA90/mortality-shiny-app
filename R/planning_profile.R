@@ -16,8 +16,9 @@
 # Word rather than PDF because the teams paste from it and edit it. Charts are
 # static ggplot images with the tab's colours (one per level, fixed).
 
-PLANNING_PROFILE_TRENDS <- c("ageing_index", "birth_rate", "death_rate", "infant_rate", "life_expectancy", "fertility_index")
-PLANNING_PROFILE_RANKED <- c("birth_rate", "death_rate", "infant_rate", "perinatal_rate", "teen_births_pct",
+PLANNING_PROFILE_TRENDS <- c("ageing_index", "birth_rate", "dsr_premature", "infant_rate", "life_expectancy", "fertility_index")
+PLANNING_PROFILE_RANKED <- c("smr_all", "dsr_premature", "dsr_preventable", "dsr_treatable", "ypll_rate",
+                             "birth_rate", "infant_rate", "perinatal_rate", "teen_births_pct",
                              "preterm_pct", "low_birth_weight_pct", "life_expectancy", "life_expectancy_65")
 
 planning_profile_theme <- function() {
@@ -56,7 +57,7 @@ write_planning_profile <- function(path,
   years <- sort(unique(c(years, utils::tail(census, 1))))
 
   progress(0.1, "indicadores")
-  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age) %>%
+  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark) %>%
     planning_add_significance(benchmark)
   summary <- planning_profile_summary(table, areas, education_min_age)
 
@@ -140,6 +141,40 @@ write_planning_profile <- function(path,
     ft <- flextable::set_table_properties(ft, layout = "fixed")
     doc <- flextable::body_add_flextable(doc, ft)
     doc <- officer::body_add_par(doc, "Posição 1 = valor mais alto. A posição não tem em conta o intervalo de confiança: veja a coluna de significância.", style = "Normal")
+  }
+
+  # 5b. Mortality by cause, standardised ------------------------------------------
+  cause_years <- planning_standardised_years()
+  cause_years <- cause_years[cause_years <= last_year]
+  if (length(cause_years) > 0) {
+    progress(0.75, "mortalidade por causa")
+    end_year <- max(cause_years)
+    causes <- planning_cause_standardised(c(local, benchmark), end_year, lookup = lookup, benchmark = benchmark)
+    own <- causes[causes$area == local & is.finite(causes$smr), , drop = FALSE]
+    if (nrow(own) > 0) {
+      doc <- officer::body_add_par(doc, paste0("Mortalidade padronizada por causa, ", end_year - 2L, "-", end_year), style = "heading 2")
+      fmt <- function(v, l, u) paste0(planning_format_value(v, 1), " (", planning_format_value(l, 1), "-", planning_format_value(u, 1), ")")
+      shown <- tibble::tibble(
+        `Grupo de causas` = own$group,
+        `Óbitos` = planning_format_value(own$observed, 0),
+        `Esperados` = planning_format_value(own$expected, 1),
+        SMR = paste0(fmt(own$smr, own$smr_lower, own$smr_upper), own$flag),
+        `Face a Portugal` = ifelse(is.na(own$significance), "\u2014", own$significance),
+        `Taxa padronizada < 75` = fmt(own$dsr75, own$dsr75_lower, own$dsr75_upper)
+      )
+      ft <- flextable::flextable(shown)
+      ft <- flextable::fontsize(ft, size = 8, part = "all")
+      ft <- flextable::bold(ft, part = "header")
+      ft <- flextable::bg(ft, bg = "#e1e0d9", part = "header")
+      ft <- flextable::width(ft, j = 1:6, width = c(2.3, 0.6, 0.7, 1.2, 0.8, 1.1))
+      ft <- flextable::set_table_properties(ft, layout = "fixed")
+      doc <- flextable::body_add_flextable(doc, ft)
+      doc <- officer::body_add_par(doc, paste0(
+        "SMR: óbitos observados sobre os esperados com as taxas por idade de ", benchmark, " no mesmo triénio (", benchmark,
+        " = 100), com intervalo de confiança de 95%. Taxa padronizada: População Padrão Europeia de 2013, por 100.000 habitantes.",
+        " \u2021 mais de 2% dos óbitos sem idade publicada por município foram redistribuídos."
+      ), style = "Normal")
+    }
   }
 
   # 6. Causes of death --------------------------------------------------------------
@@ -273,7 +308,7 @@ planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark)
     years <- years[years <= last_year]
     if (length(years) == 0) return(NULL)
     year <- max(years)
-    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup) %>% planning_add_significance(benchmark)
+    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark) %>% planning_add_significance(benchmark)
     ranked <- t[t$area %in% units & !is.na(t$value), , drop = FALSE]
     ranked <- ranked[order(-ranked$value), , drop = FALSE]
     position <- match(unit, ranked$area)

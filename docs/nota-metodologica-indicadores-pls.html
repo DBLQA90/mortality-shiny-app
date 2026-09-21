@@ -160,6 +160,7 @@
       <li><a href="#u75">Mortalidade proporcional &lt; 75 anos</a></li>
       <li><a href="#incerteza">Intervalos e marcas</a></li>
       <li><a href="#comparacao">Comparação com Portugal</a></li>
+      <li><a href="#padronizada">Mortalidade padronizada e evitável</a></li>
       <li><a href="#qualidade">Qualidade dos dados de base</a></li>
       <li><a href="#ficheiro">Diferenças face ao ficheiro v26</a></li>
       <li><a href="#versoes">Versões dos dados</a></li>
@@ -174,7 +175,7 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.3</li>
+          <li><b>Versão</b> 1.4</li>
           <li><b>Data</b> 21 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
@@ -427,6 +428,26 @@ e(0)  = Σ L(x) / l(0)</div>
         <p>Um * junto ao nome do indicador remete para uma nota: o I27 e o I12 vêm dos Quadros de Pessoal, contados no local de trabalho e sem a Administração Pública nem os trabalhadores por conta própria; a esperança de vida (I10) reproduz o Eurostat e fica cerca de 0,8–0,9 anos acima dos valores do INE (secção <a href="#ev">8</a>).</p>
         <h3>Perfil do local</h3>
         <p>A aplicação gera um documento Word editável por local, com os indicadores acima e abaixo de Portugal, o quadro completo com os comparadores e as marcas, a pirâmide etária, a evolução de seis indicadores, a posição da ULS entre as ULS do Continente, a mortalidade proporcional e estas notas.</p>
+      </section>
+
+      <section>
+        <h2 id="padronizada"><span class="n">9-B</span>Mortalidade padronizada, prematura e evitável</h2>
+        <p>Indicadores acrescentados ao ficheiro de apoio, por triénio e para qualquer área:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Indicador</th><th>Cálculo</th></tr></thead>
+            <tbody>
+              <tr><td>Razão padronizada de mortalidade (SMR)</td><td>óbitos observados / óbitos esperados com as taxas por idade de Portugal no mesmo triénio × 100; intervalo de Poisson exacto</td></tr>
+              <tr><td>Taxa de mortalidade padronizada</td><td>padronização directa para a População Padrão Europeia de 2013, por 100.000; intervalo de Dobson</td></tr>
+              <tr><td>Mortalidade prematura padronizada</td><td>o mesmo, grupos etários abaixo dos 75 anos</td></tr>
+              <tr><td>Mortalidade evitável por prevenção / por cuidados de saúde</td><td>taxas padronizadas abaixo dos 75 anos, listas Eurostat/OCDE (2019) adaptadas à lista sucinta europeia</td></tr>
+              <tr><td>Anos potenciais de vida perdidos</td><td>Σ óbitos antes dos 70 × (70 − ponto médio do grupo etário; 69,5 para menos de 1 ano) / residentes com menos de 70 × 100.000</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Óbitos sem idade publicada.</strong> Os óbitos por idade e causa de cada município estão incompletos no INE (em 2023, 97,9% dos óbitos por doenças do aparelho circulatório; em 2014, 65% dos suicídios), enquanto a linha de Portugal e os totais municipais de todas as idades são completos. Somados tal como estão, todas as regiões e ULS ficariam 1–3% abaixo de Portugal e as maiores apareceriam como significativamente abaixo. Os óbitos de cada município e causa são por isso completados até ao total, distribuindo os que faltam com o perfil etário dos óbitos em falta no país — a linha de Portugal por idade menos a soma dos municípios —, que se concentra nas idades jovens porque o INE omite as células pequenas. Com este perfil a soma dos municípios reproduz Portugal por idade (mortalidade prematura de 2012–2014: 350,5 em ambos; com o perfil de cada município seria 338,8), e o Norte reproduz a linha regional do INE de óbitos antes dos 75 anos em 2022–2024 (33.155). A marca ‡ assinala os valores em que mais de 2% dos óbitos foram redistribuídos.</p>
+        <p><strong>Mortalidade evitável.</strong> A lista sucinta é menos detalhada do que a CID-10 usada pelo Eurostat: só entram as causas cuja correspondência não exige juízo clínico, e seis rubricas (cerca de 18% dos óbitos antes dos 75 anos) ficam de fora. Os valores são um limite inferior, adequado para comparar áreas e anos, e não reproduzem os publicados pelo Eurostat.</p>
+        <p><strong>Validação.</strong> As taxas padronizadas reproduzem as do PHEindicatormethods (Norte 2022–2024: 838,4 por 100.000, com o mesmo intervalo).</p>
       </section>
 
       <section>

@@ -915,6 +915,17 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
             div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
           ),
+          tabPanel(
+            "Mortalidade por causa",
+            br(),
+            radioButtons(
+              "planning_cause_sex", "Sexo:",
+              choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE
+            ),
+            uiOutput("planningCauseNote"),
+            plotly::plotlyOutput("planningCausePlot", height = "560px"),
+            div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
+          ),
           tabPanel("Notas", br(), planning_method_notes())
         ),
         hr(),
@@ -970,6 +981,14 @@ planning_method_notes <- function() {
       tags$li("Funil: cada unidade contra o tamanho do denominador, com os limites do que o acaso produziria à volta de Portugal (95% e 99,8%), calculados pelos quantis exactos da contagem (Poisson ou binomial, Spiegelhalter 2005). Só para taxas de acontecimentos e proporções de nascimentos."),
       tags$li("Escolaridade com idade mínima: Censos de 2011 e 2021 por grupo etário (o INE não a publica por idade e município em 1991 e 2001). Com toda a população, as crianças contam como sem nível completo."),
       tags$li("* junto ao nome de um indicador: nota de método. Ganho médio e sectores [I27, I12] contam no local de trabalho, sem Administração Pública nem trabalhadores por conta própria; a esperança de vida [I10] reproduz o Eurostat e fica 0,8-0,9 anos acima do INE.")
+    ),
+    h4("Mortalidade padronizada, prematura e evitável"),
+    tags$ul(
+      tags$li("SMR: óbitos observados sobre os esperados com as taxas por idade de Portugal (a opção escolhida) no mesmo triénio, vezes 100; intervalo de Poisson exacto."),
+      tags$li("Taxas padronizadas: População Padrão Europeia de 2013, por 100.000 habitantes; intervalo de Dobson. Prematura: antes dos 75 anos."),
+      tags$li("Evitável por prevenção e por cuidados de saúde: listas Eurostat/OCDE de 2019 adaptadas à lista sucinta do INE, antes dos 75 anos. É um limite inferior: seis causas (cerca de 18% dos óbitos antes dos 75) ficam de fora."),
+      tags$li("Anos potenciais de vida perdidos: anos que faltavam até aos 70 em cada óbito, por 100.000 residentes com menos de 70 anos."),
+      tags$li("Os óbitos por idade e causa de cada município estão incompletos no INE; são completados até ao total de todas as idades, e os que faltam distribuídos pelas idades com o perfil dos que faltam no país, de modo que a soma dos municípios reproduz Portugal por idade. \u2021 quando mais de 2% foram redistribuídos.")
     ),
     h4("Como são calculados"),
     tags$ul(

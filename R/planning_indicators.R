@@ -82,7 +82,16 @@ PLANNING_INDICATORS <- tibble::tribble(
   "early_neonatal_rate", "Mortalidade",         "Taxa de mortalidade neonatal precoce (triénio)",          "I41", "‰ nados-vivos",            3L,      1L, TRUE,
   "postneonatal_rate",   "Mortalidade",         "Taxa de mortalidade pós-neonatal (triénio)",              "I42", "‰ nados-vivos",            3L,      1L, TRUE,
   "late_fetal_rate",     "Mortalidade",         "Taxa de mortalidade fetal tardia (triénio)",              "I43", "‰ nascimentos",            3L,      1L, TRUE,
-  "perinatal_rate",      "Mortalidade",         "Taxa de mortalidade perinatal (triénio)",                 "I44", "‰ nascimentos",            3L,      1L, TRUE
+  "perinatal_rate",      "Mortalidade",         "Taxa de mortalidade perinatal (triénio)",                 "I44", "‰ nascimentos",            3L,      1L, TRUE,
+  # Not in the workbook: standardised, premature and avoidable mortality (R/planning_standardised.R).
+  "smr_all",             "Mortalidade padronizada", "Razão padronizada de mortalidade, todas as causas (triénio)", "novo", "Portugal = 100",     3L,      1L, TRUE,
+  "dsr_all",             "Mortalidade padronizada", "Taxa de mortalidade padronizada pela idade (triénio)",  "novo", "por 100.000 hab.",       3L,      1L, TRUE,
+  "dsr_premature",       "Mortalidade padronizada", "Taxa de mortalidade prematura padronizada, < 75 anos (triénio)", "novo", "por 100.000 hab.", 3L,     1L, TRUE,
+  "premature_deaths",    "Mortalidade padronizada", "Óbitos prematuros, < 75 anos (triénio)",               "novo", "N.º",                    3L,      0L, FALSE,
+  "dsr_preventable",     "Mortalidade padronizada", "Mortalidade evitável por prevenção, < 75 anos, padronizada (triénio)", "novo", "por 100.000 hab.", 3L, 1L, TRUE,
+  "dsr_treatable",       "Mortalidade padronizada", "Mortalidade evitável por cuidados de saúde (tratável), < 75 anos, padronizada (triénio)", "novo", "por 100.000 hab.", 3L, 1L, TRUE,
+  "avoidable_deaths",    "Mortalidade padronizada", "Óbitos evitáveis, < 75 anos (triénio)",                "novo", "N.º",                    3L,      0L, FALSE,
+  "ypll_rate",           "Mortalidade padronizada", "Anos potenciais de vida perdidos antes dos 70 anos (triénio)", "novo", "por 100.000 hab. < 70", 3L, 0L, TRUE
 )
 
 # Where a source changes definition, so the series is not continuous across the
@@ -184,7 +193,7 @@ planning_significance_mark <- function(significance) {
 
 # Version of the method, as in the methodological note. Part of the cache key of
 # the all-areas export: raise it whenever a change alters published values.
-PLANNING_METHOD_VERSION <- "1.3"
+PLANNING_METHOD_VERSION <- "1.4"
 
 planning_cache <- new.env(parent = emptyenv())
 
@@ -271,6 +280,7 @@ planning_dataset_years <- function(dataset) {
 # Years each indicator can be computed for, from the files actually present.
 planning_indicator_years <- function(id) {
   if (id %in% life_expectancy_ids) return(life_expectancy_years())
+  if (id %in% standardised_ids) return(planning_standardised_years())
   needs <- switch(
     id,
     births = "births",
@@ -1140,14 +1150,15 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
   dplyr::bind_rows(lapply(ids, one))
 }
 
-planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup(), education_min_age = 0L) {
+planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup(), education_min_age = 0L,
+                                     benchmark = "Portugal") {
   years <- as.integer(years)
   areas <- unique(as.character(areas))
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
   # One year earlier than the widest window: the fertility index needs the
   # previous year's population for its mid-year denominator.
   component_years <- seq.int(min(years) - max_window, max(years))
-  components <- if (length(setdiff(ids, life_expectancy_ids)) > 0) planning_components(areas, component_years, lookup) else NULL
+  components <- if (length(setdiff(ids, c(life_expectancy_ids, standardised_ids))) > 0) planning_components(areas, component_years, lookup) else NULL
 
   undercount <- if (any(c("infant_rate") %in% ids)) {
     infant_undercount_years(component_years, municipalities = lookup$municipality)
@@ -1156,7 +1167,8 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   }
 
   life_ids <- intersect(ids, life_expectancy_ids)
-  other_ids <- setdiff(ids, life_ids)
+  standard_ids <- intersect(ids, standardised_ids)
+  other_ids <- setdiff(ids, c(life_ids, standard_ids))
   results <- list()
   if (length(other_ids) > 0) {
     results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount, education_min_age = as.integer(education_min_age)) %>%
@@ -1165,6 +1177,10 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   if (length(life_ids) > 0) {
     results$life <- planning_life_expectancy_table(areas, years, ids = life_ids, lookup = lookup) %>%
       dplyr::select(-dplyr::any_of("reason"))
+  }
+  if (length(standard_ids) > 0) {
+    # The SMR is against the benchmark's rates, so it follows the Portugal choice.
+    results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark)
   }
   dplyr::bind_rows(results) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
@@ -1175,6 +1191,13 @@ PLANNING_INDICATOR_NOTES <- c(
   earnings_mean = "Quadros de Pessoal (MTSSS): trabalhadores por conta de outrem, contados no local de trabalho e não no de residência; não incluem a Administração Pública nem os trabalhadores por conta própria. Um concelho com muitos empregos mas poucos residentes (sede de distrito, zona industrial) aparece acima do que os seus residentes ganham; os concelhos-dormitório à volta, abaixo.",
   life_expectancy = "Tábua de mortalidade abreviada (Chiang II, método do PHE e do Eurostat). Reproduz o Eurostat para Portugal (2017-2019: 81,9 anos na aplicação; 82,0 no Eurostat), mas fica cerca de 0,8-0,9 anos acima dos valores publicados pelo INE, que usa outra metodologia (2007). A ordenação das regiões coincide com a do INE (correlação 0,97): compare valores da aplicação entre si, não com os do INE."
 )
+PLANNING_INDICATOR_NOTES[["smr_all"]] <- "Óbitos observados sobre os esperados se a área tivesse as taxas por idade de Portugal (a opção escolhida: total do INE ou soma dos municípios) no mesmo triénio, vezes 100. Portugal = 100. Os óbitos por idade e causa de cada município são primeiro completados até ao total de todas as idades publicado pelo INE (\u2021 quando mais de 2% foram redistribuídos)."
+PLANNING_INDICATOR_NOTES[["dsr_all"]] <- "Taxa que a área teria com a estrutura etária da População Padrão Europeia de 2013, por 100.000 habitantes; intervalo de Dobson. Os óbitos por idade de cada município são completados até ao total publicado pelo INE (\u2021 quando mais de 2% foram redistribuídos)."
+PLANNING_INDICATOR_NOTES[["dsr_premature"]] <- PLANNING_INDICATOR_NOTES[["dsr_all"]]
+PLANNING_INDICATOR_NOTES[["dsr_preventable"]] <- "Listas Eurostat/OCDE (2019) adaptadas à lista sucinta europeia do INE, menos detalhada: só entram as causas cuja correspondência não exige juízo clínico. Seis causas (cerca de 18% dos óbitos antes dos 75) ficam de fora, pelo que é um limite inferior da mortalidade evitável e não reproduz os valores do Eurostat. Padronizada para a População Padrão Europeia de 2013 (0-74 anos)."
+PLANNING_INDICATOR_NOTES[["dsr_treatable"]] <- PLANNING_INDICATOR_NOTES[["dsr_preventable"]]
+PLANNING_INDICATOR_NOTES[["avoidable_deaths"]] <- PLANNING_INDICATOR_NOTES[["dsr_preventable"]]
+PLANNING_INDICATOR_NOTES[["ypll_rate"]] <- "Soma, para cada óbito antes dos 70 anos, dos anos que faltavam até aos 70 (a partir do ponto médio do grupo etário; os óbitos com menos de 1 ano contam com 69,5 anos), por 100.000 residentes com menos de 70 anos. Taxa bruta: não padronizada, depende da estrutura etária abaixo dos 70."
 for (id in c("employees", "pct_employees_primary", "pct_employees_secondary", "pct_employees_tertiary")) {
   PLANNING_INDICATOR_NOTES[[id]] <- PLANNING_INDICATOR_NOTES[["earnings_mean"]]
 }

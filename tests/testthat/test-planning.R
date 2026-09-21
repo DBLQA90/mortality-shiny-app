@@ -1011,3 +1011,79 @@ test_that("the location profile is a Word document", {
     expect_true(any(grepl("Esperança de vida", text, fixed = TRUE)))
   })
 })
+
+# Deaths by age for all causes: Alfa complete (10 at 60-64, 30 at 80-84 = its
+# total of 40); Beta records only 15 of its 20, all at 80-84; Portugal's row
+# holds the 5 missing ones at 30-34 plus one death of unknown residence.
+with_cause_age_fixture <- function(code) {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    for (year in 2020:2022) {
+      dir <- file.path(root, "deaths", "0008206", paste0("year_", year))
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      rows <- tibble::tribble(
+        ~area,      ~age_band,       ~deaths,
+        "Alfa",     "60 - 64 anos",  10,
+        "Alfa",     "80 - 84 anos",  30,
+        "Beta",     "80 - 84 anos",  15,
+        "Portugal", "30 - 34 anos",  5,
+        "Portugal", "60 - 64 anos",  10,
+        "Portugal", "80 - 84 anos",  46
+      )
+      saveRDS(dplyr::mutate(rows, year = year, sex = "HM", cause = "Todas as causas de morte"),
+              file.path(dir, "cause_todas_as_causas_de_morte.rds"))
+    }
+    planning_clear_cache()
+    code(lookup)
+  })
+}
+
+test_that("missing deaths by age follow the national gap, so the municipal sum matches Portugal by age", {
+  with_cause_age_fixture(function(lookup) {
+    pool <- planning_standardised_pool(c("Beta", "Portugal", PLANNING_PORTUGAL_MUNICIPAL), 2022L, "HM", lookup)
+    beta <- pool$deaths["Beta", , "all"]
+    # Gap: 5 at 30-34 and 1 at 80-84 (Portugal 46 against 30 + 15), so Beta's
+    # 5 missing go 5/6 and 1/6.
+    expect_equal(unname(beta[["30 - 34 anos"]]), 3 * 5 * 5 / 6)
+    expect_equal(unname(beta[["80 - 84 anos"]]), 3 * (15 + 5 / 6))
+    expect_equal(sum(beta), 3 * 20)
+    tab <- planning_indicator_table(c("Alfa", "Beta"), 2022L, ids = c("premature_deaths", "dsr_all"), lookup = lookup)
+    expect_equal(tab$value[tab$area == "Beta" & tab$indicator == "premature_deaths"], 3 * 5 * 5 / 6)
+    # A quarter of Beta's deaths were spread: flagged.
+    expect_equal(tab$flag[tab$area == "Beta" & tab$indicator == "dsr_all"], "‡")
+    expect_equal(tab$flag[tab$area == "Alfa" & tab$indicator == "dsr_all"], "")
+  })
+})
+
+test_that("standardised rates match PHEindicatormethods and the SMR is 100 for the benchmark", {
+  skip_if_not_installed("PHEindicatormethods")
+  with_cause_age_fixture(function(lookup) {
+    tab <- planning_indicator_table(c("Alfa", "Portugal"), 2022L, ids = c("dsr_all", "smr_all", "dsr_premature"), lookup = lookup)
+    get <- function(area, id, column = "value") tab[[column]][tab$area == area & tab$indicator == id]
+    deaths <- stats::setNames(rep(0, length(age_levels)), age_levels)
+    deaths[c("60 - 64 anos", "80 - 84 anos")] <- c(30, 90)
+    phe <- PHEindicatormethods::calculate_dsr(
+      tibble::tibble(x = deaths, n = rep(600, length(age_levels)), stdpop = esp2013_df$stdpop),
+      x = x, n = n, stdpop = stdpop
+    )
+    expect_equal(get("Alfa", "dsr_all"), phe$value, tolerance = 1e-9)
+    # Dobson's interval; the Poisson limits are exact here and Byar's
+    # approximation in PHEindicatormethods, which agree to 0.002% at 120 deaths.
+    expect_equal(get("Alfa", "dsr_all", "lower"), phe$lowercl, tolerance = 1e-4)
+    expect_equal(get("Alfa", "dsr_all", "upper"), phe$uppercl, tolerance = 1e-4)
+    expect_equal(get("Portugal", "smr_all"), 100)
+    # Alfa's expected deaths at Portugal's rates (Portugal: 300 per band a year).
+    expected <- 600 * (15 + 30 + 138) / 900
+    expect_equal(get("Alfa", "smr_all"), 120 / expected * 100)
+    expect_equal(get("Alfa", "smr_all", "denominator"), expected)
+  })
+})
+
+test_that("years of potential life lost weight each death to 70", {
+  with_cause_age_fixture(function(lookup) {
+    tab <- planning_indicator_table("Alfa", 2022L, ids = "ypll_rate", lookup = lookup)
+    # Alfa: 10 deaths a year at 60-64 (midpoint 62.5): 7.5 years each, over
+    # 14 bands under 70 of 200 people, three years.
+    expect_equal(tab$value, 3 * 10 * 7.5 / (3 * 14 * 200) * 1e5)
+  })
+})
