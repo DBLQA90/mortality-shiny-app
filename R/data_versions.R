@@ -59,7 +59,7 @@ relpath_dataset <- function(relpath) {
   parts <- strsplit(relpath, "/", fixed = TRUE)
   vapply(parts, function(p) {
     if (length(p) >= 2 && identical(p[[1]], "snapshots")) {
-      if (identical(p[[2]], "planning_extra") && length(p) >= 3) return(paste0("planning_extra/", p[[3]]))
+      if (p[[2]] %in% c("planning_extra", "sns", "weekly_deaths") && length(p) >= 3) return(paste0(p[[2]], "/", sub("\\.rds$", "", p[[3]])))
       return(sub("\\.rds$", "", p[[2]]))
     }
     sub("\\.rds$", "", p[[length(p)]])
@@ -420,6 +420,13 @@ DATASET_LABELS <- c(
   "planning_extra/births_by_mother_age" = "Nados-vivos por idade da mãe",
   "planning_extra/births_by_gestation" = "Nados-vivos por duração da gestação",
   "planning_extra/infant_deaths_by_age" = "Óbitos com menos de 1 ano, por idade",
+  "sns/utentes-inscritos-em-cuidados-de-saude-primarios" = "SNS: utentes inscritos e médico de família",
+  "sns/rastreios-oncologicos" = "SNS: rastreios oncológicos",
+  "sns/diabetes" = "SNS: programa de diabetes",
+  "sns/hipertensao" = "SNS: programa de hipertensão",
+  "sns/saude-da-mulher-e-crianca" = "SNS: saúde da mulher e da criança",
+  "weekly_deaths/0012100" = "Óbitos semanais por NUTS III e idade (NUTS 2024)",
+  "weekly_deaths/0010112" = "Óbitos semanais por NUTS III e idade (NUTS 2013)",
   "nuts_lookup_2013" = "Municípios por região (NUTS 2013)",
   "nuts_lookup_2024" = "Municípios por região (NUTS 2024)",
   "uls_lookup" = "Municípios por ULS e ARS",

@@ -1160,6 +1160,43 @@ Alentejo 2014-2016 is 2% off INE's composed row. Values with more than 2% of
 their deaths spread carry `‡`. The regional rows INE publishes by age could
 replace the municipal sums for NUTS areas; not done yet.
 
+### Primary care from the SNS Transparency portal
+
+`tools/fetch_sns.R` exports five datasets of transparencia.sns.gov.pt
+(Opendatasoft Explore API v2.1, `/exports/json`, no key) whole, in long form,
+through the versioning layer. `R/planning_sns.R` keeps January 2024 onwards (ULS
+units; the ACES before do not map onto ULS), maps the portal's labels onto the
+app's ULS (`SNS_UNIT_RENAMES`: spelling variants, and the five Lisboa/Porto ULS
+into the two exact groups), and rebuilds every proportion as numerator and
+denominator (the denominator from count / proportion when only those are
+published) so ARS and Continente are exact sums. Clopper-Pearson intervals;
+significance against the Continente.
+
+Several indicators accumulate and reset. From the published series: blood
+pressure and HbA1c control rise from about 10% in January to 50-65% in June and
+restart in July; the foot exam and the three screenings rise from January to
+December. So `SNS_INDICATORS$cycle` marks each as month, semester or year, and
+only ends of cycle are compared; the chart breaks the line at each reset. A
+field the portal renames leaves its indicator out with a warning. An area is
+shown only when it is a union of whole ULS (or a municipality, which shows its
+ULS; Portugal shows the Continente).
+
+### Weekly deaths and excess mortality
+
+`tools/fetch_weekly_deaths.R` fetches `0012100` (NUTS 2024, 2021-) and `0010112`
+(NUTS 2013, 2018-2024), both sexes, all weeks in one request each. Older-edition
+years are kept only for regions whose annual counts agree between the editions
+within 0.5% in 2021-2024 (not Centro, Alentejo, Médio Tejo, Beira Baixa).
+`planning_weekly_excess()` applies the mean age-specific weekly rate of the
+baseline years (under 65, 65-74, 75-84, 85+; population from the annual
+estimates, the latest available for the current year) to the year's
+population; the 95% prediction band uses the between-year variance of the
+baseline rates, at least Poisson, times (1 + 1/n). Baseline: up to five years,
+from 2023 only. A first version used 2018-2019 as well; over the superseded
+population estimate their rates were 4-7% higher, and Portugal showed a
+spurious deficit of 4-7% in every year from 2023. Week 53 borrows week 52.
+Deaths of unknown age (0.014%) are left out on both sides.
+
 ### Location profile
 
 `write_planning_profile()` (`R/planning_profile.R`) builds a .docx with

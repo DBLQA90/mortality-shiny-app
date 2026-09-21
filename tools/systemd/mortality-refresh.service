@@ -1,0 +1,11 @@
+[Unit]
+Description=Mortality app: refresh INE and SNS data
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/Desktop/DGS/Mortality/scripts/mortality-app-smr/tools/scheduled_refresh.sh
+# INE is slow; the refresh stops itself after REFRESH_MINUTES (default 120).
+TimeoutStartSec=3h
+Nice=10

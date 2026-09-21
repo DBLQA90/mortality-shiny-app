@@ -330,6 +330,49 @@ write_planning_workbook <- function(path,
     openxlsx::setColWidths(wb, "Mortalidade por causa (SMR)", cols = seq_len(ncol(causes)), widths = c(11, 42, 11, 8, 50, rep(12, ncol(causes) - 5)))
   }
 
+  # --- Primary care (SNS) and weekly deaths: the selection only -------------------
+  if (!is.null(focus) && planning_sns_available()) {
+    resolved <- planning_sns_sets(areas, lookup)
+    if (!is.null(planning_sns_area_units(focus, lookup))) {
+      sns <- planning_sns_table(resolved$sets) %>%
+        dplyr::left_join(SNS_INDICATORS[, c("id", "label", "cycle")], by = c("indicator" = "id")) %>%
+        dplyr::transmute(
+          Local = .data$area, Indicador = .data$label, `Mês` = .data$period, `%` = round(.data$value, 2),
+          `IC 95% inferior` = round(.data$lower, 2), `IC 95% superior` = round(.data$upper, 2),
+          Numerador = round(.data$numerator), Denominador = round(.data$denominator),
+          `Fim de ciclo (comparável)` = ifelse(.data$complete, "sim", "não"), `Provisório` = ifelse(.data$provisional, "sim", "")
+        )
+      openxlsx::addWorksheet(wb, "SNS cuidados primários")
+      openxlsx::writeData(wb, "SNS cuidados primários", c(
+        "Portal da Transparência do SNS, por ULS desde Janeiro de 2024; base: utentes inscritos. Vários indicadores acumulam ao longo do ano (rastreios, exame dos pés) ou do semestre (tensão arterial, HbA1c): só os fins de ciclo são comparáveis entre si.",
+        resolved$notes
+      ), startRow = 1)
+      openxlsx::writeData(wb, "SNS cuidados primários", sns, startRow = 3 + length(resolved$notes), headerStyle = header_style)
+      openxlsx::setColWidths(wb, "SNS cuidados primários", cols = 1:10, widths = c(28, 60, 9, 8, 12, 12, 12, 12, 14, 10))
+    }
+  }
+  if (!is.null(focus) && planning_weekly_available()) {
+    region <- planning_weekly_region(focus, lookup)
+    data <- planning_weekly_data()
+    weekly_years <- sort(unique(data$year[data$region == region$region]))
+    weekly_years <- weekly_years[weekly_years >= max(weekly_years) - 2L]
+    weekly <- dplyr::bind_rows(lapply(c("all", "lt65", "65_74", "75_84", "85plus"), function(age) {
+      planning_weekly_excess(region$region, weekly_years, age, lookup)
+    })) %>%
+      dplyr::transmute(
+        `Região` = .data$region, Idades = names(WEEKLY_AGE_GROUPS)[match(.data$age, WEEKLY_AGE_GROUPS)], Ano = .data$year, Semana = .data$week,
+        `Óbitos` = .data$observed, Esperados = round(.data$expected, 1), `Esperados IC inferior` = round(.data$lower, 1),
+        `Esperados IC superior` = round(.data$upper, 1), `Anos de base` = .data$baseline
+      )
+    openxlsx::addWorksheet(wb, "Óbitos semanais")
+    openxlsx::writeData(wb, "Óbitos semanais", c(
+      "INE 0012100, óbitos semanais por NUTS III e idade; as últimas semanas são provisórias. Esperados: taxas por idade dos anos de base (desde 2023, sem 2020-2022) aplicadas à população do ano, com intervalo de previsão de 95%.",
+      if (is.null(region$note)) "" else region$note
+    ), startRow = 1)
+    openxlsx::writeData(wb, "Óbitos semanais", weekly, startRow = 4, headerStyle = header_style)
+    openxlsx::setColWidths(wb, "Óbitos semanais", cols = 1:9, widths = c(28, 16, 6, 7, 8, 10, 12, 12, 22))
+  }
+
   progress(0.97, "a gravar")
   openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
   invisible(path)

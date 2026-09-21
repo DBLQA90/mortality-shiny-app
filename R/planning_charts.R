@@ -532,3 +532,144 @@ planning_cause_display <- function(table, areas) {
   }
   out
 }
+
+# ---------------------------------------------------------
+# Primary care (SNS)
+# ---------------------------------------------------------
+planning_sns_period_label <- function(period) {
+  months <- c("Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez")
+  paste(months[as.integer(substr(period, 6, 7))], substr(period, 1, 4))
+}
+
+# Monthly values, one line per area, broken where an accumulating indicator
+# resets (January, and July for semester ones) so each cycle climbs on its own;
+# the ends of cycles - the comparable values - as markers.
+planning_sns_chart <- function(table, spec, levels) {
+  p <- plotly::plot_ly()
+  for (area in names(levels)) {
+    rows <- table[table$area == area & table$indicator == spec$id, , drop = FALSE]
+    if (nrow(rows) == 0) next
+    rows <- rows[order(rows$period), , drop = FALSE]
+    rows$date <- as.Date(paste0(rows$period, "-15"))
+    colour <- PLANNING_LEVEL_COLOURS[[levels[[area]]]]
+    width <- if (levels[[area]] == "Local") 3 else 2
+    rows$hover <- paste0("<b>", area, "</b><br>", planning_sns_period_label(rows$period), ": ", planning_format_value(rows$value, 1), "%",
+                         ifelse(rows$provisional, " (provisório)", ""), ifelse(rows$complete, "", " - acumulado no ciclo em curso"),
+                         "<br>IC 95%: ", planning_format_value(rows$lower, 1), " - ", planning_format_value(rows$upper, 1),
+                         "<br>", planning_format_value(rows$numerator, 0), " / ", planning_format_value(rows$denominator, 0))
+    # A gap before each reset month keeps plotly from joining the cycles.
+    reset <- switch(spec$cycle, year = 1L, semester = c(1L, 7L), integer(0))
+    line <- rows[, c("date", "value", "hover")]
+    if (length(reset) > 0) {
+      starts <- which(rows$month %in% reset)
+      starts <- starts[starts > 1]
+      if (length(starts) > 0) {
+        gaps <- tibble::tibble(date = rows$date[starts] - 1, value = NA_real_, hover = NA_character_)
+        line <- dplyr::arrange(dplyr::bind_rows(line, gaps), .data$date)
+      }
+    }
+    p <- plotly::add_trace(p, data = line, x = ~date, y = ~value, type = "scatter", mode = "lines", name = area, legendgroup = area,
+                           line = list(color = colour, width = width), text = ~hover, hoverinfo = "text", connectgaps = FALSE)
+    ends <- rows[rows$complete & spec$cycle != "month", , drop = FALSE]
+    if (nrow(ends) > 0) {
+      p <- plotly::add_markers(p, data = ends, x = ~date, y = ~value, name = area, legendgroup = area, showlegend = FALSE,
+                               marker = list(color = colour, size = 9), text = ~hover, hoverinfo = "text")
+    }
+  }
+  planning_plotly_layout(
+    p, xaxis = list(title = ""), yaxis = list(title = "%", rangemode = "tozero"), margin = list(b = 90)
+  )
+}
+
+# Every ULS at the latest complete period, coloured by significance against
+# the Continente.
+planning_sns_ranking_chart <- function(table, spec, highlight = character(0)) {
+  rows <- table[table$indicator == spec$id & table$complete, , drop = FALSE]
+  if (nrow(rows) == 0) return(plotly::plot_ly())
+  period <- max(rows$period)
+  rows <- rows[rows$period == period, , drop = FALSE]
+  reference <- rows$value[rows$area == "Continente"]
+  units <- rows[rows$area != "Continente", , drop = FALSE]
+  units$significance <- planning_significance(units$lower, units$upper, rep(reference, nrow(units)))
+  units <- units[order(units$value), , drop = FALSE]
+  units$label <- factor(units$area, levels = units$area)
+  units$colour <- ifelse(is.na(units$significance), "#c3c2b7", PLANNING_SIGNIFICANCE_COLOURS[units$significance])
+  units$outline <- ifelse(units$area %in% highlight, PLANNING_INK$primary, "rgba(0,0,0,0)")
+  p <- plotly::plot_ly(
+    units, y = ~label, x = ~value, type = "bar", orientation = "h",
+    marker = list(color = ~colour, line = list(color = ~outline, width = 2)),
+    error_x = list(type = "data", symmetric = FALSE, array = units$upper - units$value, arrayminus = units$value - units$lower,
+                   color = PLANNING_INK$muted, thickness = 1, width = 2),
+    text = paste0("<b>", units$area, "</b><br>", planning_format_value(units$value, 1), "% (IC 95%: ",
+                  planning_format_value(units$lower, 1), " - ", planning_format_value(units$upper, 1), ")<br>Face ao Continente: ",
+                  tolower(ifelse(is.na(units$significance), "sem intervalo", units$significance))),
+    hoverinfo = "text", textposition = "none"
+  )
+  planning_plotly_layout(
+    p, showlegend = FALSE, bargap = 0.25, margin = list(t = 40, l = 260, b = 50),
+    shapes = list(list(type = "line", x0 = reference, x1 = reference, yref = "paper", y0 = 0, y1 = 1,
+                       line = list(color = PLANNING_LEVEL_COLOURS[["Portugal"]], dash = "dash", width = 2))),
+    annotations = list(list(x = reference, y = 1.01, yref = "paper", text = paste0("Continente: ", planning_format_value(reference, 1), "%"),
+                            showarrow = FALSE, xanchor = "left", font = list(color = PLANNING_INK$secondary, size = 11))),
+    xaxis = list(title = paste0(spec$label, " (%), ", planning_sns_period_label(period))),
+    yaxis = list(title = "", tickfont = list(color = PLANNING_INK$secondary, size = 11))
+  )
+}
+
+# ---------------------------------------------------------
+# Weekly deaths
+# ---------------------------------------------------------
+planning_iso_week_date <- function(year, week) {
+  jan4 <- as.Date(paste0(year, "-01-04"))
+  monday <- jan4 - (as.integer(format(jan4, "%u")) - 1L)
+  monday + (week - 1L) * 7L + 3L
+}
+
+# Observed weekly deaths against the expected band.
+planning_weekly_chart <- function(excess, region) {
+  excess$date <- planning_iso_week_date(excess$year, excess$week)
+  band <- excess[!is.na(excess$expected), , drop = FALSE]
+  hover <- paste0("<b>Semana ", excess$week, " de ", excess$year, "</b><br>Óbitos: ", planning_format_value(excess$observed, 0),
+                  ifelse(is.na(excess$expected), "", paste0("<br>Esperados: ", planning_format_value(excess$expected, 0),
+                                                            " (", planning_format_value(excess$lower, 0), " - ", planning_format_value(excess$upper, 0), ")")))
+  p <- plotly::plot_ly()
+  if (nrow(band) > 0) {
+    for (y in unique(band$year)) {
+      b <- band[band$year == y, , drop = FALSE]
+      p <- plotly::add_ribbons(p, x = b$date, ymin = b$lower, ymax = b$upper, name = "Esperados (IC 95%)", legendgroup = "band",
+                               showlegend = y == min(band$year), fillcolor = "rgba(74,58,167,0.15)", line = list(width = 0), hoverinfo = "skip")
+      p <- plotly::add_lines(p, x = b$date, y = b$expected, name = "Esperados", legendgroup = "expected", showlegend = y == min(band$year),
+                             line = list(color = PLANNING_LEVEL_COLOURS[["Portugal"]], dash = "dash", width = 1.5), hoverinfo = "skip")
+    }
+  }
+  p <- plotly::add_lines(p, x = excess$date, y = excess$observed, name = "Óbitos observados", text = hover, hoverinfo = "text",
+                         line = list(color = PLANNING_LEVEL_COLOURS[["Local"]], width = 2))
+  planning_plotly_layout(p, xaxis = list(title = ""), yaxis = list(title = paste0("Óbitos por semana, ", region), rangemode = "tozero"),
+                         margin = list(b = 90))
+}
+
+# Cumulative excess over each year, with its 95% interval.
+planning_weekly_cumulative_chart <- function(excess) {
+  rows <- excess[!is.na(excess$expected) & !is.na(excess$observed), , drop = FALSE]
+  if (nrow(rows) == 0) return(plotly::plot_ly())
+  palette <- c("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+  p <- plotly::plot_ly()
+  years <- sort(unique(rows$year))
+  for (i in seq_along(years)) {
+    r <- rows[rows$year == years[[i]], , drop = FALSE]
+    r <- r[order(r$week), , drop = FALSE]
+    cum <- cumsum(r$observed - r$expected)
+    sd <- sqrt(cumsum(r$variance))
+    colour <- palette[[(i - 1L) %% length(palette) + 1L]]
+    p <- plotly::add_ribbons(p, x = r$week, ymin = cum - 1.96 * sd, ymax = cum + 1.96 * sd, name = paste(years[[i]], "IC 95%"),
+                             showlegend = FALSE, fillcolor = grDevices::adjustcolor(colour, alpha.f = 0.15), line = list(width = 0), hoverinfo = "skip")
+    p <- plotly::add_lines(p, x = r$week, y = cum, name = as.character(years[[i]]), line = list(color = colour, width = 2),
+                           text = paste0("<b>", years[[i]], ", semana ", r$week, "</b><br>Excesso acumulado: ", planning_format_value(cum, 0),
+                                         " (", planning_format_value(cum - 1.96 * sd, 0), " a ", planning_format_value(cum + 1.96 * sd, 0), ")"),
+                           hoverinfo = "text")
+  }
+  planning_plotly_layout(
+    p, shapes = list(list(type = "line", x0 = 1, x1 = 53, y0 = 0, y1 = 0, line = list(color = PLANNING_INK$muted, width = 1))),
+    xaxis = list(title = "Semana"), yaxis = list(title = "Óbitos acima (abaixo) dos esperados, acumulados"), margin = list(b = 90)
+  )
+}

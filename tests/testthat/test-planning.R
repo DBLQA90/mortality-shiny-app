@@ -1087,3 +1087,66 @@ test_that("years of potential life lost weight each death to 70", {
     expect_equal(tab$value, 3 * 10 * 7.5 / (3 * 14 * 200) * 1e5)
   })
 })
+
+test_that("SNS units map onto the app's ULS, with the Lisboa and Porto groups summed", {
+  expect_equal(planning_sns_unit("Área dos CSP da ULS Gaia / Espinho"), "ULS Vila Nova de Gaia/Espinho")
+  expect_equal(planning_sns_unit("CSP da ULS Póvoa Varzim / Vila Conde"), "ULS Póvoa de Varzim/Vila do Conde")
+  expect_equal(planning_sns_unit("CSP da ULS São José"), "ULS Loures/Odivelas + Santa Maria + São José")
+  expect_equal(planning_sns_unit("Área dos CSP da ULS Guarda"), "ULS Guarda")
+})
+
+test_that("SNS proportions are rebuilt as numerators and denominators, and compared at the end of their cycle", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    dir.create(file.path(root, "sns"), recursive = TRUE, showWarnings = FALSE)
+    units <- c("Área dos CSP da ULS Santa Maria", "Área dos CSP da ULS São José", "Área dos CSP da ULS Loures / Odivelas")
+    rows <- tidyr::expand_grid(period = c("2024-11", "2024-12", "2025-01"), unit = units)
+    # Screened women: 50, 30 and 20 of 100, 100 and 50 eligible.
+    counts <- c(50, 30, 20); eligible <- c(100, 100, 50)
+    rows$count <- rep(counts, 3); rows$prop <- rep(counts / eligible * 100, 3)
+    sns <- dplyr::bind_rows(
+      dplyr::transmute(rows, period, unit, region = "LVT", field = "contagem_de_mulheres_com_registo_de_mamografia_nos_ultimos_dois_anos", value = count),
+      dplyr::transmute(rows, period, unit, region = "LVT", field = "proporcao_mulheres_50_70_a_c_mamogr_2_anos", value = prop)
+    ) %>% dplyr::mutate(dataset = "rastreios-oncologicos")
+    saveRDS(sns, file.path(root, "sns", "rastreios-oncologicos.rds"))
+    planning_clear_cache()
+    group <- "ULS Loures/Odivelas + Santa Maria + São José"
+    # The other screenings' fields are absent here: skipped, with a warning.
+    expect_warning(t <- planning_sns_table(list(grupo = group), "sns_mammography"), "skipped")
+    expect_equal(t$denominator, rep(250, 3))
+    expect_equal(t$value, rep(100 / 250 * 100, 3))
+    # Mammography accumulates over the calendar year: only December compares.
+    expect_equal(t$complete, c(FALSE, TRUE, FALSE))
+    expect_equal(t$provisional, c(FALSE, FALSE, TRUE))
+  })
+})
+
+test_that("weekly expected deaths come from baseline rates, leaving out the pandemic years", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    dir.create(file.path(root, "weekly_deaths"), recursive = TRUE, showWarnings = FALSE)
+    weekly <- tidyr::expand_grid(year = c(2021L, 2023L, 2024L, 2025L), week = 1:3, age_group = c("40-44 anos", "85-89 anos", "Total")) %>%
+      dplyr::mutate(
+        deaths = dplyr::case_when(
+          age_group == "Total" ~ NA_real_,
+          year == 2021L ~ 1000,                                   # pandemic: must not count
+          year == 2023L ~ ifelse(age_group == "85-89 anos", 10, 2),
+          year == 2024L ~ ifelse(age_group == "85-89 anos", 14, 2),
+          TRUE ~ ifelse(age_group == "85-89 anos", 20, 2)
+        ),
+        code = "11", region = "Norte", source_indicator = "0012100"
+      )
+    weekly$deaths[weekly$age_group == "Total"] <- NA
+    saveRDS(weekly, file.path(root, "weekly_deaths", "0012100.rds"))
+    planning_clear_cache()
+    expect_equal(planning_weekly_region("Alfa", lookup)$region, "Norte")
+    x <- planning_weekly_excess("Norte", 2025L, "85plus", lookup)
+    # Population is constant, so the expected count is the mean of 2023-2024.
+    expect_equal(x$expected, rep(12, 3))
+    expect_equal(unique(x$baseline), "2023, 2024")
+    s <- planning_weekly_summary(x)
+    expect_equal(s$excess, 3 * (20 - 12))
+    # 2024 has only one baseline year: no expected value.
+    expect_true(all(is.na(planning_weekly_excess("Norte", 2024L, "85plus", lookup)$expected)))
+  })
+})

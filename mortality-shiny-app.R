@@ -46,6 +46,8 @@ for (app_file in c(
   "R/life_expectancy.R",
   "R/planning_under75.R",
   "R/planning_standardised.R",
+  "R/planning_sns.R",
+  "R/planning_weekly.R",
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/planning_profile.R",
@@ -4578,6 +4580,121 @@ server <- function(input, output, session) {
     view <- planning_cause_view()
     planning_cause_display(view$table, view$areas)
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  # Primary care, from the SNS Transparency portal: the location's ULS (or the
+  # ULS that make it up), its ARS and the Continente.
+  planning_sns_view <- reactive({
+    validate(need(planning_sns_available(), "Sem dados do Portal da Transparência do SNS. Corra tools/fetch_sns.R."))
+    areas <- planning_areas_all_comparators()
+    resolved <- planning_sns_sets(areas, active_nuts_lookup())
+    validate(need(!is.null(planning_sns_area_units(areas$area[[1]], active_nuts_lookup())), paste0(
+      "Os dados do SNS são por ULS e ", areas$area[[1]], " não coincide com um conjunto de ULS (nem está numa só). ",
+      "Escolha um município, uma ULS, uma ARS ou Portugal."
+    )))
+    spec <- as.list(SNS_INDICATORS[SNS_INDICATORS$id == (input$planning_sns_indicator %||% "sns_no_gp"), ])
+    table <- planning_sns_table(resolved$sets, spec$id)
+    ranking <- planning_sns_table(c(stats::setNames(as.list(planning_uls_units()), planning_uls_units()), list(Continente = planning_uls_units())), spec$id)
+    list(spec = spec, table = table, ranking = ranking, levels = resolved$levels, notes = resolved$notes)
+  })
+
+  output$planningSnsNote <- renderUI({
+    view <- planning_sns_view()
+    last <- max(view$table$period)
+    helpText(HTML(paste(htmltools::htmlEscape(c(
+      paste0(view$spec$label, ": ", SNS_CYCLE_LABELS[[view$spec$cycle]], ".",
+             if (view$spec$cycle != "month") paste0(" A linha sobe ao longo de cada ciclo e recomeça; os pontos marcam os fins de ciclo, os únicos valores comparáveis entre si. O ciclo em curso vai até ", planning_sns_period_label(last), ": compare-o com o mesmo mês do ano anterior (tabela).") else ""),
+      "Base: utentes inscritos nos cuidados de saúde primários, não residentes. ULS desde Janeiro de 2024; as cinco ULS de Lisboa e do Porto aparecem nos dois agrupamentos exactos. O último mês é provisório.",
+      view$notes
+    )), collapse = "<br>")))
+  })
+
+  output$planningSnsPlot <- plotly::renderPlotly({
+    view <- planning_sns_view()
+    planning_sns_chart(view$table, view$spec, view$levels)
+  })
+
+  output$planningSnsTable <- renderTable({
+    view <- planning_sns_view()
+    t <- view$table
+    complete <- t[t$complete, , drop = FALSE]
+    last_complete <- max(complete$period)
+    previous <- paste0(as.integer(substr(last_complete, 1, 4)) - 1L, substr(last_complete, 5, 7))
+    latest <- max(t$period)
+    latest_previous <- paste0(as.integer(substr(latest, 1, 4)) - 1L, substr(latest, 5, 7))
+    reference <- complete$value[complete$area == "Continente" & complete$period == last_complete]
+    cell <- function(area, period) {
+      r <- t[t$area == area & t$period == period, , drop = FALSE]
+      if (nrow(r) == 0) return("\u2014")
+      paste0(planning_format_value(r$value, 1), "% (", planning_format_value(r$lower, 1), " - ", planning_format_value(r$upper, 1), ")")
+    }
+    rows <- lapply(names(view$levels), function(area) {
+      r <- complete[complete$area == area & complete$period == last_complete, , drop = FALSE]
+      sig <- if (area != "Continente" && nrow(r) == 1) planning_significance_mark(planning_significance(r$lower, r$upper, reference)) else ""
+      out <- list(Local = area)
+      out[[planning_sns_period_label(last_complete)]] <- paste0(cell(area, last_complete), sig)
+      out[[planning_sns_period_label(previous)]] <- cell(area, previous)
+      if (latest != last_complete) {
+        out[[paste0(planning_sns_period_label(latest), " (acumulado)")]] <- cell(area, latest)
+        out[[paste0(planning_sns_period_label(latest_previous), " (acumulado)")]] <- cell(area, latest_previous)
+      }
+      tibble::as_tibble(out)
+    })
+    dplyr::bind_rows(rows)
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$planningSnsRanking <- plotly::renderPlotly({
+    view <- planning_sns_view()
+    planning_sns_ranking_chart(view$ranking, view$spec, highlight = names(view$levels)[view$levels %in% c("Local", "ULS")])
+  })
+
+  # Weekly deaths, the location's smallest NUTS region.
+  planning_weekly_view <- reactive({
+    validate(need(planning_weekly_available(), "Sem óbitos semanais. Corra tools/fetch_weekly_deaths.R."))
+    region <- planning_weekly_region(planning_location(), active_nuts_lookup())
+    age <- input$planning_weekly_age %||% "all"
+    data <- planning_weekly_data()
+    years <- sort(unique(data$year[data$region == region$region]))
+    years <- years[years >= max(years) - 2L]
+    excess <- planning_weekly_excess(region$region, years, age, active_nuts_lookup())
+    validate(need(nrow(excess) > 0, "Sem óbitos semanais para esta região."))
+    list(region = region, age = age, excess = excess, summary = planning_weekly_summary(excess))
+  })
+
+  output$planningWeeklyNote <- renderUI({
+    view <- planning_weekly_view()
+    last <- view$excess[view$excess$year == max(view$excess$year), ]
+    helpText(HTML(paste(htmltools::htmlEscape(c(
+      paste0("Óbitos semanais do INE (0012100) em ", view$region$region, ", até à semana ", max(last$week), " de ", max(last$year),
+             ". Os dados das últimas semanas são provisórios e crescem com os registos em atraso."),
+      paste0("Esperados: taxas de mortalidade semanais por idade (<65, 65-74, 75-84, 85+) dos anos de base, aplicadas à população do ano, ",
+             "com intervalo de previsão de 95%. Anos de base: até cinco anteriores, desde 2023 - depois do excesso da COVID-19 (2020-2022) e na série de ",
+             "população revista pelo INE a partir de 2021. 2024 não tem anos de base."),
+      view$region$note
+    )), collapse = "<br>")))
+  })
+
+  output$planningWeeklyPlot <- plotly::renderPlotly({
+    view <- planning_weekly_view()
+    planning_weekly_chart(view$excess, view$region$region)
+  })
+
+  output$planningWeeklyTable <- renderTable({
+    s <- planning_weekly_view()$summary
+    validate(need(nrow(s) > 0, "Ainda sem anos de base para calcular óbitos esperados."))
+    s %>% dplyr::transmute(
+      Ano = as.character(.data$year),
+      Semanas = paste0("1-", .data$last_week),
+      `Óbitos` = planning_format_value(.data$observed, 0),
+      Esperados = planning_format_value(.data$expected, 0),
+      Excesso = paste0(planning_format_value(.data$excess, 0), " (", planning_format_value(.data$excess_lower, 0), " a ", planning_format_value(.data$excess_upper, 0), ")"),
+      `Excesso (%)` = planning_format_value(.data$excess_pct, 1),
+      `Anos de base` = .data$baseline
+    )
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$planningWeeklyCumulative <- plotly::renderPlotly({
+    planning_weekly_cumulative_chart(planning_weekly_view()$excess)
+  })
 
   output$planningDataDate <- renderUI({
     date <- planning_data_date()

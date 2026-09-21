@@ -161,6 +161,7 @@
       <li><a href="#incerteza">Intervalos e marcas</a></li>
       <li><a href="#comparacao">Comparação com Portugal</a></li>
       <li><a href="#padronizada">Mortalidade padronizada e evitável</a></li>
+      <li><a href="#recentes">Cuidados primários e mortalidade semanal</a></li>
       <li><a href="#qualidade">Qualidade dos dados de base</a></li>
       <li><a href="#ficheiro">Diferenças face ao ficheiro v26</a></li>
       <li><a href="#versoes">Versões dos dados</a></li>
@@ -175,7 +176,7 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.4</li>
+          <li><b>Versão</b> 1.5</li>
           <li><b>Data</b> 21 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
@@ -448,6 +449,17 @@ e(0)  = Σ L(x) / l(0)</div>
         <p><strong>Óbitos sem idade publicada.</strong> Os óbitos por idade e causa de cada município estão incompletos no INE (em 2023, 97,9% dos óbitos por doenças do aparelho circulatório; em 2014, 65% dos suicídios), enquanto a linha de Portugal e os totais municipais de todas as idades são completos. Somados tal como estão, todas as regiões e ULS ficariam 1–3% abaixo de Portugal e as maiores apareceriam como significativamente abaixo. Os óbitos de cada município e causa são por isso completados até ao total, distribuindo os que faltam com o perfil etário dos óbitos em falta no país — a linha de Portugal por idade menos a soma dos municípios —, que se concentra nas idades jovens porque o INE omite as células pequenas. Com este perfil a soma dos municípios reproduz Portugal por idade (mortalidade prematura de 2012–2014: 350,5 em ambos; com o perfil de cada município seria 338,8), e o Norte reproduz a linha regional do INE de óbitos antes dos 75 anos em 2022–2024 (33.155). A marca ‡ assinala os valores em que mais de 2% dos óbitos foram redistribuídos.</p>
         <p><strong>Mortalidade evitável.</strong> A lista sucinta é menos detalhada do que a CID-10 usada pelo Eurostat: só entram as causas cuja correspondência não exige juízo clínico, e seis rubricas (cerca de 18% dos óbitos antes dos 75 anos) ficam de fora. Os valores são um limite inferior, adequado para comparar áreas e anos, e não reproduzem os publicados pelo Eurostat.</p>
         <p><strong>Validação.</strong> As taxas padronizadas reproduzem as do PHEindicatormethods (Norte 2022–2024: 838,4 por 100.000, com o mesmo intervalo).</p>
+      </section>
+
+      <section>
+        <h2 id="recentes"><span class="n">9-C</span>Cuidados de saúde primários e mortalidade semanal</h2>
+        <h3>Portal da Transparência do SNS</h3>
+        <p>Dez indicadores mensais dos cuidados de saúde primários — utentes sem médico de família, utilização de consultas, rastreios do cancro da mama, do colo do útero e do cólon e reto, exame dos pés e HbA1c nos diabéticos, controlo da tensão arterial nos hipertensos com menos de 65 anos, e vigilância do recém-nascido — obtidos pela interface pública do portal (sem chave), por ULS desde Janeiro de 2024. As cinco ULS de Lisboa e do Porto somam-se nos dois agrupamentos exactos da aplicação; as regiões autónomas não estão cobertas. Cada proporção é reconstruída como numerador e denominador, pelo que os valores da ARS e do Continente são somas exactas. A base são os utentes inscritos, não os residentes.</p>
+        <div class="note"><strong>Indicadores que acumulam.</strong> Os rastreios e o exame dos pés sobem de Janeiro a Dezembro; o controlo da tensão arterial e da HbA1c sobe de Janeiro a Junho e recomeça em Julho (cerca de 10% em Janeiro, 50–65% em Junho). Só os valores de fim de ciclo — Dezembro, ou Junho e Dezembro — são comparáveis entre si; o ciclo em curso compara-se com o mesmo mês do ano anterior.</div>
+        <h3>Óbitos semanais do INE</h3>
+        <p>Óbitos semanais por NUTS III e grupo etário (<span class="code">0012100</span>), com poucas semanas de atraso; o INE não os publica por município nem por ULS. Os óbitos esperados aplicam à população do ano as taxas semanais por idade (menos de 65, 65–74, 75–84, 85 e mais) dos anos de base, com intervalo de previsão de 95% a partir da variação entre anos. Os anos de base são até cinco anteriores, desde 2023: depois do excesso da COVID-19 (2020–2022) e na série de população revista pelo INE a partir de 2021. Usar também 2018–2019, sobre a população antiga, dava taxas 4–7% mais altas e um falso défice de óbitos em todos os anos recentes. As últimas semanas são provisórias.</p>
+        <h3>Actualização</h3>
+        <p>Estes dados, e os óbitos e a população mais recentes do INE, são actualizados semanalmente por uma tarefa agendada no computador da aplicação (o INE recusa ligações dos servidores do GitHub). Cada actualização é registada com a sua data e as versões substituídas são guardadas.</p>
       </section>
 
       <section>

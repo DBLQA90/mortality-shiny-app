@@ -926,6 +926,26 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningCausePlot", height = "560px"),
             div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
           ),
+          tabPanel(
+            "Cuidados de saúde primários",
+            br(),
+            selectInput("planning_sns_indicator", "Indicador (Portal da Transparência do SNS):", choices = planning_sns_choices(), width = "100%"),
+            uiOutput("planningSnsNote"),
+            plotly::plotlyOutput("planningSnsPlot", height = "420px"),
+            div(style = "overflow-x:auto;", tableOutput("planningSnsTable")),
+            h5("Todas as ULS no último período completo"),
+            plotly::plotlyOutput("planningSnsRanking", height = "820px")
+          ),
+          tabPanel(
+            "Mortalidade semanal",
+            br(),
+            radioButtons("planning_weekly_age", "Idades:", choices = WEEKLY_AGE_GROUPS, selected = "all", inline = TRUE),
+            uiOutput("planningWeeklyNote"),
+            plotly::plotlyOutput("planningWeeklyPlot", height = "420px"),
+            div(style = "overflow-x:auto;", tableOutput("planningWeeklyTable")),
+            h5("Excesso acumulado ao longo do ano"),
+            plotly::plotlyOutput("planningWeeklyCumulative", height = "380px")
+          ),
           tabPanel("Notas", br(), planning_method_notes())
         ),
         hr(),
@@ -989,6 +1009,12 @@ planning_method_notes <- function() {
       tags$li("Evitável por prevenção e por cuidados de saúde: listas Eurostat/OCDE de 2019 adaptadas à lista sucinta do INE, antes dos 75 anos. É um limite inferior: seis causas (cerca de 18% dos óbitos antes dos 75) ficam de fora."),
       tags$li("Anos potenciais de vida perdidos: anos que faltavam até aos 70 em cada óbito, por 100.000 residentes com menos de 70 anos."),
       tags$li("Os óbitos por idade e causa de cada município estão incompletos no INE; são completados até ao total de todas as idades, e os que faltam distribuídos pelas idades com o perfil dos que faltam no país, de modo que a soma dos municípios reproduz Portugal por idade. \u2021 quando mais de 2% foram redistribuídos.")
+    ),
+    h4("Cuidados de saúde primários e mortalidade semanal"),
+    tags$ul(
+      tags$li("Cuidados de saúde primários: Portal da Transparência do SNS, por ULS desde Janeiro de 2024; base: utentes inscritos. Os rastreios e o exame dos pés acumulam ao longo do ano, a tensão arterial e a HbA1c ao longo do semestre: só os fins de ciclo são comparáveis. As cinco ULS de Lisboa e do Porto somam-se nos dois agrupamentos exactos."),
+      tags$li("Mortalidade semanal: INE, óbitos semanais por NUTS III e idade. Esperados: taxas por idade dos anos de base (desde 2023, depois da COVID-19 e na série de população revista) aplicadas à população do ano, com intervalo de previsão de 95%."),
+      tags$li("Os dados que mudam com frequência são actualizados semanalmente por uma tarefa agendada; cada actualização fica no histórico dos dados.")
     ),
     h4("Como são calculados"),
     tags$ul(

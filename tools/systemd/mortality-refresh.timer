@@ -1,0 +1,10 @@
+[Unit]
+Description=Mortality app: weekly data refresh (Mondays; catches up after the laptop was off)
+
+[Timer]
+OnCalendar=Mon *-*-* 09:30:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

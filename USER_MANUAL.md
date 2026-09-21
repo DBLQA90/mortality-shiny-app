@@ -1084,6 +1084,61 @@ reproduzir os números do Eurostat.
 
 O funil também existe para a SMR, com os óbitos esperados como dimensão.
 
+### Cuidados de saúde primários (Portal da Transparência do SNS)
+
+O subseparador **Cuidados de saúde primários** mostra, por ULS, indicadores
+mensais do Portal da Transparência do SNS: utentes sem médico de família,
+utilização de consultas, rastreios oncológicos (mama, colo do útero, cólon e
+reto), diabetes (exame dos pés, HbA1c), hipertensão e vigilância do
+recém-nascido. Para o local escolhido mostra a sua ULS (um município mostra a
+ULS a que pertence), a ARS e o Continente, e em baixo todas as ULS no último
+período completo, com a significância face ao Continente.
+
+Três cuidados na leitura:
+
+- **A base são os utentes inscritos** nos cuidados de saúde primários, não os
+  residentes.
+- **Vários indicadores acumulam ao longo do ano ou do semestre** e recomeçam: os
+  rastreios e o exame dos pés sobem de Janeiro a Dezembro; a tensão arterial e a
+  HbA1c de Janeiro a Junho e de Julho a Dezembro. Um valor de Julho não se
+  compara com um de Dezembro. O gráfico parte a linha em cada recomeço e marca
+  os fins de ciclo, os únicos valores comparáveis; a tabela compara o ciclo em
+  curso com o mesmo mês do ano anterior.
+- **Só há ULS desde Janeiro de 2024** (antes, o portal publica por ACES), nada
+  para as regiões autónomas, e o último mês é provisório. As cinco ULS de Lisboa
+  e do Porto somam-se nos dois agrupamentos exactos da aplicação. Uma NUTS III
+  que não coincide com um conjunto de ULS não tem valores.
+
+### Mortalidade semanal e excesso de mortalidade
+
+O subseparador **Mortalidade semanal** mostra os óbitos semanais publicados pelo
+INE, com poucas semanas de atraso, para a NUTS III do local (o INE não os
+publica por município nem por ULS; uma área que atravessa várias NUTS III
+mostra a região maior que a contém). A linha azul são os óbitos observados; a
+faixa, os esperados com o seu intervalo de 95%.
+
+Os **esperados** aplicam à população do ano as taxas de mortalidade semanais por
+idade (menos de 65, 65-74, 75-84, 85 e mais) dos anos de base. Assim o
+envelhecimento e o crescimento da população não aparecem como excesso. Os anos
+de base são até cinco anteriores, **desde 2023**: depois do excesso da COVID-19
+(2020-2022) e na mesma série de população (o INE reviu a população a partir de
+2021; com as taxas de 2018-2019 sobre a população antiga, todos os anos
+recentes pareciam ter menos óbitos do que o esperado). Por isso 2024 ainda não
+tem esperados, 2025 tem dois anos de base e 2026 três.
+
+O gráfico de baixo acumula o excesso ao longo de cada ano; a tabela dá o total
+do ano até à última semana, com o intervalo. As últimas semanas são provisórias
+e sobem à medida que chegam os registos em atraso.
+
+### Actualização automática
+
+Os dados que mudam com frequência (óbitos semanais, Portal do SNS, e os óbitos,
+a população e os óbitos com menos de 1 ano mais recentes do INE) são
+actualizados todas as segundas-feiras por uma tarefa agendada no computador
+onde a aplicação corre (o INE recusa ligações dos servidores do GitHub). Cada
+actualização fica registada no histórico dos dados com a sua data, e as versões
+substituídas são guardadas.
+
 ### Perfil do local (Word)
 
 O botão **Perfil do local (Word)** gera um documento editável com: um resumo dos

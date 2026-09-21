@@ -11,6 +11,10 @@
 #   regional       INE's regional death rows (NUTS I/II/III)
 #   infant         live births, under-1 deaths by cause, complete under-1 counts
 #   planning       socio-economic, birth and neonatal components of the planning tab
+#   weekly         INE weekly deaths by NUTS III and age (0012100, 0010112)
+#   sns            primary-care indicators from the SNS Transparency portal
+#   current        weekly + sns + the latest deaths and population: what the
+#                  scheduled refresh runs (tools/scheduled_refresh.sh)
 #   ambiguous      report municipalities INE labels ambiguously (Calheta, Lagoa)
 #   inventory      rebuild data/snapshots/snapshot_inventory.rds
 #   all            every task above, in that order
@@ -253,6 +257,16 @@ task_planning <- function() {
   task_simple("fetch_planning_extra.R", "planning extra (RSI, pensions, purchasing power, waste, births, neonatal)")
 }
 
+task_weekly <- function() {
+  say("== Task: weekly deaths ==")
+  invisible(run_builder("fetch_weekly_deaths.R", label = "weekly deaths 0012100 / 0010112"))
+}
+
+task_sns <- function() {
+  say("== Task: SNS Transparency portal ==")
+  invisible(run_builder("fetch_sns.R", label = "SNS primary care"))
+}
+
 task_nuts2 <- function() {
   say("== Task: regional (NUTS II) rows ==")
   say("Note: rarely needed. Years fetched by fetch_death_year.R already include ",
@@ -386,11 +400,13 @@ say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 # The Lisboa/Calheta/Lagoa repair is complete (2026-08-11); it no longer runs
 # as part of "all", where it re-read 8,580 chunks every time.
 if (identical(task, "fixareas")) if (have_time(5)) task_fixareas()
-if (task %in% c("all", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
-if (task %in% c("all", "population")) if (have_time(5)) task_population()
-if (task %in% c("all", "deathtotals")) if (have_time(10)) task_death_totals()
+if (task %in% c("all", "current", "weekly")) if (have_time(5)) task_weekly()
+if (task %in% c("all", "current", "sns")) if (have_time(5)) task_sns()
+if (task %in% c("all", "current", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
+if (task %in% c("all", "current", "population")) if (have_time(5)) task_population()
+if (task %in% c("all", "current", "deathtotals")) if (have_time(10)) task_death_totals()
 if (task %in% c("all", "regional")) if (have_time(5)) task_regional()
-if (task %in% c("all", "infant")) if (have_time(10)) task_infant()
+if (task %in% c("all", "current", "infant")) if (have_time(10)) task_infant()
 if (task %in% c("all", "planning")) if (have_time(10)) task_planning()
 if (task %in% c("all", "ambiguous")) if (have_time(5)) task_ambiguous()
 # Not part of "all": regions are built by summing municipalities, so INE's own

@@ -322,6 +322,14 @@ Deaths by cause indicators:
 - `0008206`
 - `0013166`
 
+Weekly deaths by NUTS III and age: `0012100` (NUTS 2024, from 2021) and
+`0010112` (NUTS 2013, 2018-2024), fetched by `tools/fetch_weekly_deaths.R`.
+
+Primary care per ULS, from the SNS Transparency portal
+(transparencia.sns.gov.pt, public Opendatasoft API, no key): registered users
+and family doctors, cancer screening, diabetes, hypertension and newborn care,
+fetched by `tools/fetch_sns.R` into `data/snapshots/sns/`.
+
 The app harmonises age bands, recodes infant mortality into the `0-4` age group, excludes total or ignored age categories where needed, and can compute rates for the full population or the population under 75 years.
 
 ## Methods Summary
@@ -362,10 +370,26 @@ If an INE request fails but a stale cached file exists, the app will use the sta
 
 ## Snapshot Maintenance
 
-`.github/workflows/refresh-snapshots.yml` runs the snapshot maintenance tasks on
-a GitHub runner, weekly and on demand. The work is almost entirely spent waiting
-on INE, and the driver is resumable: each run makes what progress fits in its
-time budget, commits it, and the next run continues.
+INE refuses connections from GitHub's hosted runners, so
+`.github/workflows/refresh-snapshots.yml` is manual-only (for a self-hosted
+runner). The scheduled refresh runs on a local machine instead: a systemd user
+timer (`tools/systemd/mortality-refresh.timer`, Mondays at 09:30, catching up
+after the machine was off) runs `tools/scheduled_refresh.sh`, which calls the
+driver with `task=current` - weekly deaths, the SNS portal, and INE's latest
+deaths, population and under-1 deaths, re-checking the last year. Logs go to
+`~/.local/state/mortality-refresh/`. Data files are left changed in the working
+tree; `AUTO_COMMIT=1` and `AUTO_PUSH=1` in `~/.config/mortality-refresh.env`
+commit and push `data/` only.
+
+```sh
+ln -sf "$PWD/tools/systemd/mortality-refresh."{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now mortality-refresh.timer
+systemctl --user list-timers mortality-refresh.timer
+systemd-run --user --wait --setenv=REFRESH_TASK=sns tools/scheduled_refresh.sh   # quick test
+```
+
+The driver is resumable: each run makes what progress fits in its time budget
+and the next run continues.
 
 ```sh
 Rscript tools/refresh_snapshots.R task=all minutes=300 recent=2 note="INE 2026 release"
@@ -382,6 +406,9 @@ Requests` and then refuses connections for hours.
 | `regional` | INE's regional death rows used for regions and some ULS |
 | `infant` | Live births, under-1 deaths by cause, and complete under-1 counts |
 | `planning` | RSI, pensions, purchasing power, waste, births by mother's age and gestation, under-1 deaths by age |
+| `weekly` | INE weekly deaths by NUTS III and age (`0012100`, `0010112`) |
+| `sns` | Primary-care indicators per ULS from the SNS Transparency portal |
+| `current` | `weekly`, `sns`, `deaths`, `population`, `deathtotals` and `infant`: what the scheduled refresh runs |
 | `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
 | `inventory` | Rebuilds the snapshot manifest |
 | `fixareas` | Explicit only: re-runs the completed Lisboa/Calheta/Lagoa repair of old death chunks |

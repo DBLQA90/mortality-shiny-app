@@ -177,6 +177,73 @@ write_planning_profile <- function(path,
     }
   }
 
+  # 5c. Primary care (SNS) ---------------------------------------------------------
+  if (planning_sns_available() && !is.null(planning_sns_area_units(local, lookup))) {
+    progress(0.78, "cuidados de saúde primários")
+    resolved <- planning_sns_sets(areas[areas$level != "Portugal" | areas$area == benchmark, , drop = FALSE], lookup)
+    sns <- planning_sns_table(resolved$sets)
+    if (nrow(sns) > 0) {
+      latest <- sns[sns$complete, , drop = FALSE] %>%
+        dplyr::group_by(.data$indicator) %>%
+        dplyr::filter(.data$period == max(.data$period)) %>%
+        dplyr::ungroup()
+      shown <- tibble::tibble(Indicador = SNS_INDICATORS$label, id = SNS_INDICATORS$id)
+      shown$`Período` <- vapply(shown$id, function(i) {
+        p <- latest$period[latest$indicator == i]
+        if (length(p) == 0) "\u2014" else planning_sns_period_label(p[[1]])
+      }, character(1))
+      reference <- stats::setNames(latest$value[latest$area == "Continente"], latest$indicator[latest$area == "Continente"])
+      for (set in names(resolved$sets)) {
+        shown[[set]] <- vapply(shown$id, function(i) {
+          r <- latest[latest$indicator == i & latest$area == set, , drop = FALSE]
+          if (nrow(r) == 0) return("\u2014")
+          mark <- if (set != "Continente") planning_significance_mark(planning_significance(r$lower, r$upper, reference[[i]])) else ""
+          paste0(planning_format_value(r$value, 1), "%", mark)
+        }, character(1))
+      }
+      shown$id <- NULL
+      doc <- officer::body_add_par(doc, "Cuidados de saúde primários (Portal da Transparência do SNS)", style = "heading 2")
+      ft <- flextable::flextable(shown)
+      ft <- flextable::fontsize(ft, size = 8, part = "all")
+      ft <- flextable::bold(ft, part = "header")
+      ft <- flextable::bg(ft, bg = "#e1e0d9", part = "header")
+      ft <- flextable::width(ft, j = seq_len(ncol(shown)), width = c(2.9, 0.8, rep(min(1.1, 3.2 / length(resolved$sets)), length(resolved$sets))))
+      ft <- flextable::set_table_properties(ft, layout = "fixed")
+      doc <- flextable::body_add_flextable(doc, ft)
+      doc <- officer::body_add_par(doc, paste(c(
+        "Último fim de ciclo de cada indicador: os rastreios e o exame dos pés acumulam ao longo do ano (Dezembro), a tensão arterial e a HbA1c ao longo do semestre (Junho e Dezembro). Base: utentes inscritos, não residentes. \u25b2 / \u25bc / = face ao Continente.",
+        resolved$notes
+      ), collapse = " "), style = "Normal")
+    }
+  }
+
+  # 5d. Recent mortality (weekly) ----------------------------------------------------
+  if (planning_weekly_available()) {
+    region <- planning_weekly_region(local, lookup)
+    data <- planning_weekly_data()
+    years <- sort(unique(data$year[data$region == region$region]))
+    summary_weekly <- planning_weekly_summary(planning_weekly_excess(region$region, years[years >= max(years) - 1L], "all", lookup))
+    if (nrow(summary_weekly) > 0) {
+      doc <- officer::body_add_par(doc, paste0("Mortalidade recente: óbitos semanais, ", region$region), style = "heading 2")
+      shown <- summary_weekly %>% dplyr::transmute(
+        Ano = as.character(.data$year), Semanas = paste0("1-", .data$last_week),
+        `Óbitos` = planning_format_value(.data$observed, 0), Esperados = planning_format_value(.data$expected, 0),
+        Excesso = paste0(planning_format_value(.data$excess, 0), " (", planning_format_value(.data$excess_lower, 0), " a ", planning_format_value(.data$excess_upper, 0), ")"),
+        `Excesso (%)` = planning_format_value(.data$excess_pct, 1)
+      )
+      ft <- flextable::flextable(shown)
+      ft <- flextable::fontsize(ft, size = 8, part = "all")
+      ft <- flextable::bold(ft, part = "header")
+      ft <- flextable::bg(ft, bg = "#e1e0d9", part = "header")
+      ft <- flextable::autofit(ft)
+      doc <- flextable::body_add_flextable(doc, ft)
+      doc <- officer::body_add_par(doc, paste(c(
+        "INE, óbitos semanais por NUTS III (provisórios nas últimas semanas). Esperados: taxas por idade dos anos de base (desde 2023, sem os anos da COVID-19) aplicadas à população do ano; intervalo de 95%.",
+        region$note
+      ), collapse = " "), style = "Normal")
+    }
+  }
+
   # 6. Causes of death --------------------------------------------------------------
   progress(0.8, "mortalidade proporcional")
   proportional_years <- planning_proportional_years()
