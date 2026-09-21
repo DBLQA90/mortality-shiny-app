@@ -1021,6 +1021,32 @@ repartição está incompleta ao nível municipal, sobretudo em 2014. Contagens,
 taxas brutas e proporções de todas as idades não precisam da idade, pelo que
 aqui são exactas em qualquer nível.
 
+### População média e lacunas nos dados do INE
+
+Nascimentos, óbitos, beneficiários do RSI e resíduos acontecem ao longo do ano,
+por isso as suas taxas dividem pela **população média** do ano (a média das
+estimativas a 31 de Dezembro do ano anterior e do próprio ano), como o INE e o
+ficheiro de apoio. Com isso as taxas brutas de natalidade e mortalidade e os
+resíduos por habitante de 2024 coincidem com os do INE em todos os municípios.
+Os pensionistas, contados a 31 de Dezembro, dividem pela população nessa data.
+
+Uma célula em branco no INE não é um zero:
+
+- Nos resíduos, pensões, trabalhadores e ganho médio, publicados para todos os
+  municípios, um município sem valor deixa **sem valor** as áreas que o contêm
+  (por exemplo, os Açores em 2013-2014 nos trabalhadores por sector).
+- **Odivelas, Trofa e Vizela** foram criados em 1998. Até esse ano os seus
+  nascimentos e óbitos estão registados em Loures, Santo Tirso e Guimarães; só
+  há valores para áreas com os dois municípios de cada par, também na esperança
+  de vida e na mortalidade proporcional dos triénios que incluem esses anos. Os
+  resíduos de Loures incluem sempre os de Odivelas (serviço conjunto SIMAR).
+- Quando o INE deixa em branco o total de óbitos de um município (Vimioso em
+  2024), usa-se a soma dos grupos etários publicados.
+- Nos **trabalhadores por sector**, o INE oculta dois sectores quando um deles
+  revelaria uma empresa. O remanescente é repartido na proporção do resto da
+  NUTS III, e a marca `≈` assinala quotas com mais de 1% de trabalhadores
+  estimados.
+
 ### Intervalos e asterisco
 
 Contagens e taxas de acontecimentos (nascimentos, óbitos, mortalidade infantil,

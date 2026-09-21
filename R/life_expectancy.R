@@ -276,6 +276,10 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
         too_wide <- !is.na(se) & z * se > 10
         reason[too_wide] <- "intervalo de confiança superior a 20 anos"
         value[too_wide | !is.finite(value)] <- NA_real_
+        # Deaths up to 1998 sit with the parent of Odivelas, Trofa and Vizela.
+        joint <- Reduce(`|`, lapply(window, function(y) planning_joint_split(membership, y, "deaths")))
+        reason[joint] <- "óbitos registados no município de origem (criado em 1998)"
+        value[joint] <- NA_real_
 
         rows[[length(rows) + 1L]] <- tibble::tibble(
           area = areas, year = end_year,

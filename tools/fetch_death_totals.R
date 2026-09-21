@@ -119,7 +119,7 @@ for (indicator in names(sources)) {
       transmute(area = if_else(code == "PT", "Portugal", "Continente"), sex, cause, deaths)
 
     chunk <- bind_rows(municipal, national) %>%
-      mutate(year = as.integer(year), deaths = coalesce(deaths, 0), source_indicator = indicator) %>%
+      mutate(year = as.integer(year), source_indicator = indicator) %>%  # blanks stay NA: see repair_death_totals()
       select(year, area, sex, cause, deaths, source_indicator) %>%
       arrange(area, cause, sex)
 

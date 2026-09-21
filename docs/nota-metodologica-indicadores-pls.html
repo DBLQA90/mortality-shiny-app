@@ -173,8 +173,8 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.1</li>
-          <li><b>Data</b> 18 de Setembro de 2026</li>
+          <li><b>Versão</b> 1.2</li>
+          <li><b>Data</b> 21 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
         </ul>
@@ -254,12 +254,12 @@
         <h2 id="populacao"><span class="n">5</span>População residente</h2>
         <p>A população usada em todos os denominadores é, de 2021 a 2025, a série <span class="code">0012918</span>, com última actualização pelo INE a 22 de Junho de 2026, a data da divulgação da nova metodologia de estimativas de base administrativa. De 1991 a 2020 usam-se as séries <span class="code">0003182</span> (até 2013) e <span class="code">0008273</span> (2014–2020).</p>
         <div class="note"><strong>Degrau em 2020/2021.</strong> O INE reviu a população apenas de 2021 em diante. Face à série anterior, a população de Portugal é 1,71% maior em 2021, 3,93% em 2022 e 5,31% em 2023. Todos os indicadores com a população no denominador mudam a partir de 2021, e as séries que atravessam 2020/2021 têm uma descontinuidade que não corresponde a uma mudança real. A aplicação assinala-a. Há ainda um degrau menor (cerca de 3% nas taxas padronizadas) em 2013/2014, na passagem de <span class="code">0003182</span> para <span class="code">0008273</span>.</div>
-        <p>Os indicadores anuais usam a estimativa a 31 de Dezembro do próprio ano. O índice sintético de fecundidade e a esperança de vida usam a população a meio do ano, calculada como a média das estimativas a 31 de Dezembro do ano anterior e do próprio ano.</p>
+        <p>Os acontecimentos contados ao longo do ano — nascimentos, óbitos, beneficiários do RSI, resíduos — dividem pela <strong>população média</strong> do ano, a média das estimativas a 31 de Dezembro do ano anterior e do próprio ano, como o INE e o ficheiro de apoio. Assim, as taxas brutas de natalidade e de mortalidade e os resíduos por habitante de 2024 coincidem com os do INE em todos os 308 municípios, à casa decimal publicada. O mesmo se aplica ao índice sintético de fecundidade e à esperança de vida. Os pensionistas, contados a 31 de Dezembro, e os índices de estrutura etária usam a estimativa nessa data. (A versão 1.1 usava a estimativa de 31 de Dezembro em todos os indicadores anuais, o que subestimava as taxas em 0,5–0,8% em 2024.)</p>
       </section>
 
       <section>
         <h2 id="formulas"><span class="n">6</span>Indicadores e fórmulas</h2>
-        <p>Os indicadores de triénio somam os numeradores e os denominadores dos três anos e são identificados pelo último ano. Os índices por 1.000 habitantes com 15 e mais anos seguem o ficheiro de apoio; os indicadores equivalentes do INE usam 15–64 anos.</p>
+        <p>Os indicadores de triénio somam os numeradores e os denominadores dos três anos e são identificados pelo último ano. Os índices por 1.000 habitantes com 15 e mais anos seguem o ficheiro de apoio e usam o mesmo denominador que os indicadores do INE (<span class="code">0013420</span>, <span class="code">0014599</span>), dos quais ficam a cerca de 1%. (A versão 1.1 dizia, erradamente, que o INE usa 15–64 anos.)</p>
         <div class="table-wrap wide">
           <table>
             <caption>Definição por indicador</caption>
@@ -271,7 +271,7 @@
               <tr><td>I5</td><td>Dependência de jovens</td><td>população 0–14</td><td>população 15–64</td><td>× 100</td><td>anual</td></tr>
               <tr><td>I6</td><td>Dependência de idosos</td><td>população 65+</td><td>população 15–64</td><td>× 100</td><td>anual</td></tr>
               <tr><td>I7</td><td>Nados-vivos</td><td>nados-vivos</td><td>—</td><td>N.º</td><td>anual</td></tr>
-              <tr><td>I8</td><td>Taxa bruta de natalidade</td><td>nados-vivos</td><td>população total</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I8</td><td>Taxa bruta de natalidade</td><td>nados-vivos</td><td>população média</td><td>‰</td><td>anual</td></tr>
               <tr><td>I9</td><td>Índice sintético de fecundidade</td><td colspan="2">secção 7</td><td>filhos por mulher</td><td>anual</td></tr>
               <tr><td>I2</td><td>População residente nos Censos e variação face ao censo anterior</td><td>população do censo</td><td>população do censo anterior</td><td>N.º e %</td><td>censos</td></tr>
               <tr><td>I10</td><td>Esperança de vida à nascença e aos 65 anos, total e por sexo</td><td colspan="2">secção 8</td><td>anos</td><td>triénio</td></tr>
@@ -284,16 +284,16 @@
               <tr><td>I44</td><td>Mortalidade perinatal</td><td>fetos-mortos + óbitos com menos de 7 dias</td><td>nados-vivos + fetos-mortos</td><td>‰</td><td>triénio</td></tr>
               <tr><td>I46</td><td>Mortalidade proporcional, idades &lt; 75</td><td colspan="2">secção 8-A</td><td>%</td><td>triénio</td></tr>
               <tr><td>I13</td><td>Beneficiários do RSI</td><td>beneficiários</td><td>—</td><td>N.º</td><td>anual</td></tr>
-              <tr><td>I14</td><td>Beneficiários do RSI por 1.000</td><td>beneficiários</td><td>população 15+</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I14</td><td>Beneficiários do RSI por 1.000</td><td>beneficiários</td><td>população média 15+</td><td>‰</td><td>anual</td></tr>
               <tr><td>I15</td><td>Pensionistas</td><td>pensionistas</td><td>—</td><td>N.º</td><td>anual</td></tr>
-              <tr><td>I16</td><td>Pensionistas por 1.000</td><td>pensionistas</td><td>população 15+</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I16</td><td>Pensionistas por 1.000</td><td>pensionistas</td><td>população 15+ a 31 de Dezembro</td><td>‰</td><td>anual</td></tr>
               <tr><td>I17</td><td>Valor médio das pensões</td><td>Σ pensionistas × valor médio</td><td>Σ pensionistas</td><td>€ / ano</td><td>anual</td></tr>
               <tr><td>I28</td><td>Poder de compra per capita</td><td>Σ proporção</td><td>Σ proporção / índice</td><td>Portugal = 100</td><td>bienal</td></tr>
               <tr><td>I32</td><td>Nascimentos em mães &lt; 20 anos</td><td>nados-vivos, mães 10–19</td><td>nados-vivos</td><td>%</td><td>triénio</td></tr>
               <tr><td>I33</td><td>Nascimentos em mães 35+ anos</td><td>nados-vivos, mães 35+</td><td>nados-vivos</td><td>%</td><td>triénio</td></tr>
               <tr><td>I35</td><td>Nascimentos pré-termo</td><td>nados-vivos &lt; 37 semanas</td><td>nados-vivos com duração conhecida</td><td>%</td><td>triénio</td></tr>
               <tr><td>I37</td><td>Óbitos</td><td>óbitos, todas as idades</td><td>—</td><td>N.º</td><td>anual</td></tr>
-              <tr><td>I38</td><td>Taxa bruta de mortalidade</td><td>óbitos</td><td>população total</td><td>‰</td><td>anual</td></tr>
+              <tr><td>I38</td><td>Taxa bruta de mortalidade</td><td>óbitos</td><td>população média</td><td>‰</td><td>anual</td></tr>
               <tr><td>I39</td><td>Mortalidade infantil</td><td>óbitos &lt; 1 ano</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
               <tr><td>I40</td><td>Mortalidade neonatal</td><td>óbitos &lt; 28 dias</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
               <tr><td>I41</td><td>Mortalidade neonatal precoce</td><td>óbitos &lt; 7 dias</td><td>nados-vivos</td><td>‰</td><td>triénio</td></tr>
@@ -406,6 +406,7 @@ e(0)  = Σ L(x) / l(0)</div>
               <tr><td>†</td><td>Triénio que inclui anos de 1995 a 2001, em que os óbitos com menos de 1 ano por município somam cerca de 85% do total nacional: o valor está subestimado. Não se aplica a Portugal.</td></tr>
               <tr><td>‡</td><td>Esperança de vida em que mais de 2% dos óbitos do triénio não tinham idade publicada por município.</td></tr>
               <tr><td>§</td><td>Mortalidade proporcional abaixo dos 75 anos, num triénio que inclui 2014, numa área sem linha regional do INE.</td></tr>
+              <tr><td>≈</td><td>Repartição dos trabalhadores por sector em que mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE e foram estimados (secção 10).</td></tr>
             </tbody>
           </table>
         </div>
@@ -413,7 +414,7 @@ e(0)  = Σ L(x) / l(0)</div>
 
       <section>
         <h2 id="qualidade"><span class="n">10</span>Qualidade dos dados de base</h2>
-        <p>A construção a partir de municípios expôs quatro problemas nos dados do INE, tratados como se descreve.</p>
+        <p>A construção a partir de municípios expôs oito problemas nos dados do INE, tratados como se descreve. Os quatro últimos foram encontrados numa auditoria de 21 de Setembro de 2026 e corrigidos na versão 1.2. Têm uma origem comum: uma célula em branco no INE não é um zero.</p>
         <h3>Repartição por idade incompleta ao nível municipal</h3>
         <p>Nos óbitos por causa e idade, a soma dos grupos etários de um município nem sempre iguala o seu total. Para todas as causas, faltam 4.130 óbitos em 2014 (100.702 com idade face a 104.832 no total, em 252 municípios) e cerca de 0,5% em 2013, 2015 e 2024. Nas causas específicas a perda é maior. Por isso, contagens, taxas brutas e mortalidade proporcional usam os totais por município, que estão completos; só a esperança de vida precisa da idade, com o tratamento descrito na secção 8.</p>
         <h3>Óbitos com menos de 1 ano</h3>
@@ -422,6 +423,14 @@ e(0)  = Σ L(x) / l(0)</div>
         <p>No indicador de nados-vivos de 1995–2013 (<span class="code">0000003</span>), a linha «Lisboa» é a região NUTS II de 2002: identificar municípios pelo nome atribuía ao município de Lisboa 37.208 nados-vivos em 2001, em vez de 5.604. A identificação por código (secção 3) resolve este caso e o das duas Calhetas e duas Lagoas.</p>
         <h3>Mudança de série das pensões</h3>
         <p>Em 2017 a Série 2017 da segurança social substitui a Série 1990–2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois de 2017 não são directamente comparáveis.</p>
+        <h3>Totais de óbitos em branco</h3>
+        <p>Em alguns municípios e anos o INE deixa em branco o total de óbitos de todas as idades, mas publica os grupos etários: Vimioso em 2024, Alfândega da Fé e Miranda do Douro em 2015, e casos isolados em 1993–1999. Guardado como zero, o total dava a Vimioso uma taxa bruta de mortalidade de 0 em 2024 e retirava 87 óbitos (4%) à ULS do Nordeste, o que inflacionava a sua mortalidade proporcional. O total passa a ser o maior entre o valor publicado e a soma dos grupos etários: Vimioso tem agora 23,2‰, o valor do INE.</p>
+        <h3>Municípios sem valor em dados completos</h3>
+        <p>Os resíduos, as pensões, os trabalhadores e o ganho médio são publicados para todos os municípios. Um município que tem população mas não tem valor deixa agora sem valor todas as áreas que o contêm, em vez de desaparecer da soma. Casos: os Açores sem trabalhadores em 2013–2014 e sem ganho médio em 2011–2014 (antes lidos como zero trabalhadores), vários municípios insulares nos resíduos de 1995–2006, e quatro municípios nas pensões de 2005.</p>
+        <h3>Municípios criados em 1998 e registos conjuntos</h3>
+        <p>Odivelas, Trofa e Vizela foram criados em 1998, a partir de Loures, Santo Tirso e (sobretudo) Guimarães. A população do INE está estimada com os limites actuais, mas os nascimentos (até 1997, parcialmente 1998), os óbitos (até 1998) e o Censo de 1991 estão no município de origem. Antes da correcção, Odivelas tinha uma esperança de vida de 88,7 anos e a Trofa de 92,4 em 1997–1999, e Loures uma taxa de natalidade calculada sobre uma população sem Odivelas. Até 1998, e nos triénios que incluem esses anos, só há valores para áreas que contenham os dois municípios de cada par. O mesmo se aplica sempre aos resíduos de Loures e Odivelas, que têm um serviço conjunto (SIMAR) registado todo em Loures: o INE mostra 402 kg por habitante para Loures, o valor conjunto, e nada para Odivelas, enquanto a aplicação mostrava 708 e 0.</p>
+        <h3>Sectores de actividade ocultados</h3>
+        <p>Nos trabalhadores por conta de outrem por sector, o INE oculta dois dos três sectores quando um deles revelaria uma única empresa: 6 municípios em 2024, 41 a 49 por ano em 2013–2016 (Vizela, Marinha Grande, Boticas…). Lidos como zero, punham todos os trabalhadores do município no único sector publicado, e as quotas somavam apenas 29%. O remanescente (total menos sectores publicados) é agora repartido pelos sectores ocultos na proporção que têm no resto da NUTS III nesse ano. As quotas em que mais de 1% dos trabalhadores foi estimado levam a marca ≈.</p>
       </section>
 
       <section>

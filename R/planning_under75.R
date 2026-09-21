@@ -238,6 +238,8 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
     if (!all(years %in% death_totals_years())) return(NULL)
     summed <- lapply(years, municipal_year)
     from_rows <- lapply(years, row_values_year)
+    # Deaths up to 1998 sit with the parent of Odivelas, Trofa and Vizela.
+    joint <- stats::setNames(Reduce(`|`, lapply(years, function(y) planning_joint_split(membership, y, "deaths"))), rownames(membership))
 
     dplyr::bind_rows(lapply(areas, function(area) {
       pooled <- stats::setNames(rep(0, length(causes)), causes)
@@ -255,6 +257,7 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
         }
       }
       complete <- on_rows
+      if (isTRUE(joint[[area]])) pooled[] <- NA_real_
       total <- pooled[[planning_all_causes]]
       groups <- pooled[PLANNING_CAUSE_GROUPS$cause]
       other <- max(total - sum(groups), 0)
@@ -264,9 +267,9 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
       tibble::tibble(
         area = area, code = codes, group = labels, deaths = deaths,
         period = paste0(min(years), "-", max(years)), end_year = end_year,
-        share = if (total > 0) deaths / total * 100 else NA_real_,
-        lower = ifelse(codes == "C00", 100, ci$lower),
-        upper = ifelse(codes == "C00", 100, ci$upper),
+        share = if (!is.na(total) && total > 0) deaths / total * 100 else NA_real_,
+        lower = if (is.na(total)) NA_real_ else ifelse(codes == "C00", 100, ci$lower),
+        upper = if (is.na(total)) NA_real_ else ifelse(codes == "C00", 100, ci$upper),
         flag = if (!complete && any(years %in% UNDER75_INCOMPLETE_YEARS)) UNDER75_FLAG else ""
       )
     }))

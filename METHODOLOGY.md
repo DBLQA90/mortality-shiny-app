@@ -885,9 +885,9 @@ location. The engine is `R/planning_indicators.R`.
 | Youth dependency | I5 | pop 0-14 / pop 15-64 x 100 |
 | Old-age dependency | I6 | pop 65+ / pop 15-64 x 100 |
 | Live births | I7 | count |
-| Crude birth rate | I8 | births / population x 1,000 |
+| Crude birth rate | I8 | births / mean population x 1,000 |
 | Deaths | I37 | count, all causes and ages |
-| Crude death rate | I38 | deaths / population x 1,000 |
+| Crude death rate | I38 | deaths / mean population x 1,000 |
 | Life expectancy at birth and at 65, total and by sex | I10 | abridged life table per triennium (below) |
 | Total fertility rate | I9 | sum over mother's age 15-49 of births / women x 5 |
 | Births to mothers under 20, 35+ | I32, I33 | share of live births, three years |
@@ -896,11 +896,11 @@ location. The engine is `R/planning_indicators.R`.
 | Census population and change | I2 | census population; change against the previous census |
 | Education level | I24 | share of the census population per completed level |
 | Illiteracy rate | I26 | illiterate aged 10+ / population aged 10+ x 100 |
-| RSI beneficiaries | I13, I14 | count; per 1,000 residents aged 15+ |
-| Social security pensioners | I15, I16 | count; per 1,000 residents aged 15+ |
+| RSI beneficiaries | I13, I14 | count; per 1,000 residents aged 15+ (mean population) |
+| Social security pensioners | I15, I16 | count; per 1,000 residents aged 15+ (31 December) |
 | Mean pension | I17 | sum(pensioners x mean) / sum(pensioners) |
 | Purchasing power per capita | I28 | sum(share) / sum(share / index) x 100 |
-| Urban waste per inhabitant | I64, I65 | tonnes x 1,000 / population |
+| Urban waste per inhabitant | I64, I65 | tonnes x 1,000 / mean population |
 | Average monthly earnings | I27 | sum(earnings x employees) / sum(employees) |
 | Employees and sector shares | I12 | count; share of employees per sector |
 | Infant mortality | I39 | under-1 deaths / live births x 1,000, pooled over three years |
@@ -1057,7 +1057,9 @@ plus those stillbirths, as INE defines the rates.
 
 The workbook's RSI and pensioner rates divide by residents aged 15 and over (its
 2021 denominators match the 15+ population of the superseded estimate to within
-0.02%); INE's own per-1,000 indicators use 15-64. The app follows the workbook.
+0.02%), and so do INE's own indicators (`0013420`, `0014599`), which the app
+matches to about 1% per municipality in 2024. An earlier version of this note
+said INE used 15-64; that was wrong.
 
 Pensions change series in 2017 (Série 1990-2023 to Série 2017, about 5.5% fewer
 pensioners); `PLANNING_SERIES_BREAKS` records it and the evolution chart marks
@@ -1106,6 +1108,60 @@ every year.
 For each year the engine builds one compact table of components per area label
 present in the files (about 310 rows) and caches it for the session, so a
 ranking of all ULS or a 35-year series is a sum over that table.
+
+### Mean or end-of-year population
+
+Events counted over a year - births, deaths, RSI beneficiaries, waste - are
+divided by the year's mean population, the mean of the end-of-year estimates of
+the previous year and of this one. That is INE's convention and the workbook's:
+with it the app reproduces INE's 2024 crude birth and death rates and waste per
+inhabitant in all 308 municipalities (to the published decimal), and the
+workbook's Continente I8, I38 and I14 of 2015 and 2019 exactly. The end-of-year
+estimate alone read about 0.5-0.8% low in 2024, while the population grew.
+Stocks counted on 31 December (pensioners, the age structure) use that day's
+estimate. The first year of the series has no previous estimate and uses its
+own. Life expectancy and the fertility index already used mid-year population.
+
+### Gaps in INE's municipal data
+
+A blank cell at INE is not a zero, and older fetches stored blanks as 0. The
+audit of 2026-09-21 found four kinds, each now handled explicitly:
+
+- **Complete datasets.** Waste, pensions, employees and earnings are published
+  for every municipality (`PLANNING_COMPLETE_BLOCKS`). A municipality that has a
+  population but no value there makes every area containing it missing, rather
+  than dropping out of the sum: the Azores have no employees in 2013-2014 and
+  no earnings in 2011-2014; 1995-2006 waste lacks many island municipalities;
+  four municipalities lack pensions in 2005. Before the fix, those regions read
+  as zero employees and their NUTS II totals were understated.
+- **Joint reporting** (`PLANNING_JOINT_REPORTING`). Odivelas, Trofa and Vizela
+  were created in 1998 out of Loures, Santo Tirso and Guimarães. INE's
+  population is back-cast to today's boundaries, but births (to 1997, 1998
+  partly), deaths (to 1998) and the 1991 census sit with the parent. Until 1998
+  every area holding one of a pair without the other is missing, for every
+  dataset but the population - including life expectancy and I45/I46 in
+  triennia that include those years. Before the fix Odivelas had a life
+  expectancy of 88.7 and Trofa 92.4 in 1997-1999, and Loures a birth rate over a
+  population without Odivelas. The Loures-Odivelas waste service (SIMAR) is
+  recorded wholly under Loures, with Odivelas blank, in every year: waste per
+  inhabitant exists only for areas holding both (INE shows Loures 402 kg, the
+  joint figure, and Odivelas blank; the app had shown 708 and 0).
+- **Blank all-ages death totals.** INE leaves the all-ages cell blank for a few
+  municipality-years while filling in the age bands: Vimioso 2024,
+  Alfândega da Fé and Miranda do Douro 2015, and single municipalities in
+  1993-1999. `repair_death_totals()` takes the larger of the published total and
+  the sum of its bands for all causes and the I45 groups, and marks the cell
+  `repaired`. Vimioso's 2024 death rate goes from 0 to 23.2, INE's value; ULS
+  Nordeste gains 87 deaths (4%), which had inflated its proportional mortality.
+  `tools/fetch_death_totals.R` now keeps blanks as `NA`.
+- **Suppressed employment sectors.** INE hides two of the three sectors when one
+  would reveal a single employer (6 municipalities in 2024, 41-49 a year in
+  2013-2016: Vizela, Marinha Grande, Boticas...). Read as zeros, all of such a
+  municipality's employees fell in its one published sector and its shares
+  summed to as little as 29%. `planning_estimate_suppressed_sectors()` splits
+  the hidden remainder between the hidden sectors in the proportions of the rest
+  of the NUTS III that year; shares where more than 1% of the area's employees
+  were estimated carry the flag `≈`.
 
 ### Why deaths come from the all-ages totals
 

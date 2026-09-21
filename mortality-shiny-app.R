@@ -4489,7 +4489,8 @@ server <- function(input, output, session) {
       date <- planning_data_date()
       cached <- file.path(
         get_app_dir(), ".mortality-shiny-cache", "exports",
-        paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date), ".xlsx")
+        paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date),
+               "_metodo_", PLANNING_METHOD_VERSION, ".xlsx")
       )
       if (!file.exists(cached)) {
         dir.create(dirname(cached), recursive = TRUE, showWarnings = FALSE)

@@ -785,3 +785,131 @@ test_that("earnings are weighted by employees, and sector shares sum to the tota
     expect_true(planning_indicator_spec("earnings_mean")$comparable)
   })
 })
+
+test_that("crude rates, RSI and waste use the mean population; pensioners the year-end one", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    # Alfa doubles in 2022: 3,600 at the end of 2021, 7,200 at the end of 2022.
+    path <- file.path(root, "population", "year_2022.rds")
+    pop <- readRDS(path)
+    pop$pop[pop$area == "Alfa"] <- pop$pop[pop$area == "Alfa"] * 2
+    saveRDS(pop, path)
+    dir.create(file.path(root, "planning_extra", "pensioners"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(root, "planning_extra", "rsi_beneficiaries"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(90, 10), source_indicator = "x"),
+            file.path(root, "planning_extra", "pensioners", "year_2022.rds"))
+    dir.create(file.path(root, "planning_extra", "pension_mean"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(6000, 6000), source_indicator = "x"),
+            file.path(root, "planning_extra", "pension_mean", "year_2022.rds"))
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(45, 5), source_indicator = "x"),
+            file.path(root, "planning_extra", "rsi_beneficiaries", "year_2022.rds"))
+    planning_clear_cache()
+
+    tab <- planning_indicator_table("Alfa", 2020:2022, ids = c("birth_rate", "death_rate", "rsi_rate", "pensioners_rate"), lookup = lookup)
+    get <- function(id, year) tab$value[tab$indicator == id & tab$year == year]
+    expect_equal(get("birth_rate", 2022L), 300 / 5400 * 1000)
+    expect_equal(get("death_rate", 2022L), 40 / 5400 * 1000)
+    # 15+ is 15 of 18 bands: 3,000 before, 6,000 after.
+    expect_equal(get("rsi_rate", 2022L), 45 / 4500 * 1000)
+    expect_equal(get("pensioners_rate", 2022L), 90 / 6000 * 1000)
+    # The first year of the series has no previous estimate.
+    expect_equal(get("birth_rate", 2020L), 300 / 3600 * 1000)
+  })
+})
+
+test_that("a blank all-ages death total is rebuilt from its age bands", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    path <- file.path(root, "death_totals", "0008206", "year_2022.rds")
+    totals <- readRDS(path)
+    # INE left Alfa's all-causes cell blank; older fetches stored it as 0.
+    totals$deaths[totals$area == "Alfa" & totals$cause == "Todas as causas de morte"] <- 0
+    saveRDS(totals, path)
+    dir.create(file.path(root, "deaths", "0008206", "year_2022"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(tibble::tibble(year = 2022L, area = "Alfa", sex = "HM", cause = "Todas as causas de morte",
+                           age_band = age_levels[1:4], deaths = c(1, 2, 3, 30)),
+            file.path(root, "deaths", "0008206", "year_2022", "cause_todas_as_causas_de_morte.rds"))
+    planning_clear_cache()
+
+    repaired <- read_death_totals_year(2022L)
+    row <- repaired$area == "Alfa" & repaired$cause == "Todas as causas de morte"
+    expect_equal(repaired$deaths[row], 36)
+    expect_true(repaired$repaired[row])
+    # A total above its (incomplete) bands is left alone.
+    expect_false(any(repaired$repaired[repaired$area == "Beta"]))
+    tab <- planning_indicator_table("Norte", 2022L, ids = "deaths", lookup = lookup)
+    expect_equal(tab$value, 56)
+  })
+})
+
+test_that("a municipality missing from a complete block makes its areas missing", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    dir.create(file.path(root, "planning_extra", "waste_collected"), recursive = TRUE, showWarnings = FALSE)
+    # Beta was not reported: INE's blank, stored as 0.
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(2000, 0), source_indicator = "x"),
+            file.path(root, "planning_extra", "waste_collected", "year_2022.rds"))
+    planning_clear_cache()
+    tab <- planning_indicator_table(c("Alfa", "Beta", "Norte"), 2022L, ids = "waste_per_capita", lookup = lookup)
+    expect_equal(tab$value[tab$area == "Alfa"], 2000 * 1000 / 3600)
+    expect_true(is.na(tab$value[tab$area == "Beta"]))
+    expect_true(is.na(tab$value[tab$area == "Norte"]))
+  })
+})
+
+test_that("a municipality filed under another has values only together with it", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    env <- environment(planning_joint_split)
+    old <- get("PLANNING_JOINT_REPORTING", envir = env)
+    on.exit(assign("PLANNING_JOINT_REPORTING", old, envir = env), add = TRUE)
+    # Beta was split from Alfa: joint for everything to 2020, and for waste
+    # whenever Beta is blank.
+    assign("PLANNING_JOINT_REPORTING", tibble::tribble(
+      ~municipality, ~holder, ~until, ~blocks,
+      "Beta",        "Alfa",  2020L,  list("waste")
+    ), envir = env)
+    dir.create(file.path(root, "planning_extra", "waste_collected"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(2700, NA), source_indicator = "x"),
+            file.path(root, "planning_extra", "waste_collected", "year_2022.rds"))
+    planning_clear_cache()
+
+    tab <- planning_indicator_table(c("Alfa", "Beta", "Norte"), 2020:2022, ids = c("birth_rate", "waste_per_capita"), lookup = lookup)
+    get <- function(area, id, year) tab$value[tab$area == area & tab$indicator == id & tab$year == year]
+    expect_true(is.na(get("Alfa", "birth_rate", 2020L)))
+    expect_true(is.na(get("Beta", "birth_rate", 2020L)))
+    expect_equal(get("Norte", "birth_rate", 2020L), 400 / 5400 * 1000)
+    expect_equal(get("Beta", "birth_rate", 2021L), 100 / 1800 * 1000)
+    expect_true(is.na(get("Alfa", "waste_per_capita", 2022L)))
+    expect_true(is.na(get("Beta", "waste_per_capita", 2022L)))
+    expect_equal(get("Norte", "waste_per_capita", 2022L), 2700 * 1000 / 5400)
+
+    # Proportional mortality: the triennium holding 2020 is withheld.
+    prop <- planning_proportional_table(c("Alfa", "Norte"), c(2022L), lookup = lookup)
+    expect_true(all(is.na(prop$share[prop$area == "Alfa"])))
+    expect_false(any(is.na(prop$share[prop$area == "Norte"])))
+    expect_equal(nrow(planning_proportional("Alfa", 2022L, lookup = lookup)), 0)
+  })
+})
+
+test_that("suppressed employment sectors are estimated from the rest of the NUTS III and flagged", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    dir.create(file.path(root, "planning_extra", "employees_by_sector"), recursive = TRUE, showWarnings = FALSE)
+    sectors <- c("Total", "Agricultura, produção animal, caça, floresta e pesca", "Indústria, construção, energia e água", "Serviços")
+    # Alfa: 10 / 40 / 50. Beta publishes only services; INE hid the other two.
+    saveRDS(tibble::tibble(year = 2022L, area = rep(c("Alfa", "Beta"), each = 4), category = rep(sectors, 2),
+                           value = c(100, 10, 40, 50, 100, 0, 0, 30), source_indicator = "x"),
+            file.path(root, "planning_extra", "employees_by_sector", "year_2022.rds"))
+    planning_clear_cache()
+    ids <- c("pct_employees_primary", "pct_employees_secondary", "pct_employees_tertiary")
+    tab <- planning_indicator_table(c("Beta", "Norte"), 2022L, ids = ids, lookup = lookup)
+    get <- function(area, id) tab$value[tab$area == area & tab$indicator == id]
+    # The hidden 70 split 10:40, as in Alfa.
+    expect_equal(get("Beta", "pct_employees_primary"), 14)
+    expect_equal(get("Beta", "pct_employees_secondary"), 56)
+    expect_equal(get("Beta", "pct_employees_tertiary"), 30)
+    expect_equal(get("Norte", "pct_employees_secondary"), 48)
+    expect_true(all(tab$flag == "≈"))
+  })
+})

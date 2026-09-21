@@ -933,23 +933,30 @@ planning_method_notes <- function() {
     tags$ul(
       tags$li("Índice de envelhecimento: população com 65 e mais anos por 100 com 0-14 anos."),
       tags$li("Índices de dependência: jovens (0-14) ou idosos (65+) por 100 pessoas com 15-64 anos."),
-      tags$li("Taxas brutas de natalidade e mortalidade: nados-vivos ou óbitos por 1.000 habitantes (população residente estimada)."),
+      tags$li("Taxas brutas de natalidade e mortalidade: nados-vivos ou óbitos por 1.000 habitantes, sobre a população média do ano (a média das estimativas a 31 de Dezembro do ano anterior e do próprio ano), como o INE. Reproduzem as taxas municipais do INE em todos os 308 municípios."),
       tags$li("Taxa de mortalidade infantil: óbitos com menos de 1 ano por 1.000 nados-vivos, somando três anos de cada."),
       tags$li("Mortalidade proporcional: óbitos de cada grande grupo de causas sobre o total, no triénio. Para todas as idades [I45] lê os totais municipais por causa, completos. Para as idades abaixo de 75 [I46] precisa da repartição por idade: usa a linha regional do INE onde existe (Portugal, Continente, regiões NUTS e as ULS que coincidem com uma NUTS III) e, nas restantes áreas, a soma dos municípios, que reproduz as linhas do INE com um desvio até 0,3 pontos percentuais - excepto nos triénios que incluem 2014, assinalados com \u00a7."),
       tags$li("Esperança de vida à nascença: tábua de mortalidade abreviada (Chiang II) por triénio, com grupos quinquenais até 85 e mais anos, óbitos de todas as causas e população a meio do ano. Os óbitos sem idade publicada num município são distribuídos pelas idades na proporção dos restantes (marca \u2021 quando excedem 2%). Reproduz os valores do Eurostat para Portugal, mas fica cerca de 0,8-0,9 anos acima dos publicados pelo INE, que usa outra metodologia; a ordenação das regiões coincide (correlação 0,97)."),
       tags$li("Mortalidade neonatal, neonatal precoce e pós-neonatal: óbitos com menos de 28 dias, menos de 7 dias e de 28 a 364 dias por 1.000 nados-vivos, no triénio. A neonatal e a pós-neonatal somam a infantil."),
       tags$li("Índice sintético de fecundidade: soma das taxas de fecundidade por grupo quinquenal de idade da mãe (15-49 anos), vezes 5. Os nascimentos de mães com menos de 15 anos contam no grupo 15-19 e os de 50 e mais no grupo 45-49."),
       tags$li("Nascimentos em mães com menos de 20 anos, ou com 35 e mais: proporção do total de nados-vivos no triénio. Pré-termo: menos de 37 semanas de gestação, sobre os nascimentos com duração conhecida."),
-      tags$li("Beneficiários do RSI e pensionistas por 1.000 habitantes com 15 e mais anos, como no ficheiro de apoio. Os indicadores equivalentes do INE usam 15-64 anos e dão valores mais altos."),
+      tags$li("Beneficiários do RSI e pensionistas por 1.000 habitantes com 15 e mais anos, como no ficheiro de apoio e no INE. Os beneficiários do RSI, contados ao longo do ano, dividem-se pela população média; os pensionistas, contados a 31 de Dezembro, pela população nessa data."),
       tags$li("Valor médio das pensões: soma do valor das pensões (pensionistas vezes o valor médio de cada município) sobre o total de pensionistas."),
       tags$li("Poder de compra per capita (Portugal = 100): a quota de cada município no poder de compra nacional, dividida pela sua quota implícita de população. Para um agrupamento é a soma das quotas sobre a soma das quotas de população, e não a média dos índices municipais."),
-      tags$li("Resíduos urbanos por habitante: toneladas recolhidas vezes 1.000, sobre a população residente.")
+      tags$li("Resíduos urbanos por habitante: toneladas recolhidas vezes 1.000, sobre a população média do ano. Loures e Odivelas têm um serviço conjunto (SIMAR) que o INE regista todo em Loures: o indicador só existe para áreas que contenham os dois municípios.")
     ),
     h4("Mudanças de série"),
     tags$ul(
       tags$li("Pensões: em 2017 a Série 2017 da segurança social substitui a Série 1990-2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois não são directamente comparáveis; o gráfico de evolução marca a mudança."),
       tags$li("População: a série revista do INE a partir de 2021 (ver o separador Métricas Anuais e o manual)."),
       tags$li("Óbitos com menos de 1 ano por município: completos desde 2011; em 1995-2001 a soma municipal fica abaixo do total nacional e o valor é marcado com \u2020.")
+    ),
+    h4("Lacunas nos dados municipais do INE"),
+    tags$ul(
+      tags$li("Uma célula em branco no INE não é um zero. Nos dados publicados para todos os municípios (resíduos, pensões, trabalhadores, ganho médio), um município sem valor deixa sem valor todas as áreas que o contêm, em vez de desaparecer da soma: por exemplo, os Açores não têm trabalhadores por conta de outrem em 2013-2014, nem ganho médio em 2011-2014."),
+      tags$li("Odivelas, Trofa e Vizela foram criados em 1998, a partir de Loures, Santo Tirso e Guimarães. A população está estimada com os limites actuais, mas os nascimentos, os óbitos e o Censo de 1991 até 1998 estão registados no município de origem. Até 1998 (e nos triénios que incluem esses anos) os indicadores só existem para áreas que contenham os dois municípios de cada par."),
+      tags$li("Óbitos de todas as causas: em alguns municípios e anos (Vimioso em 2024; Alfândega da Fé e Miranda do Douro em 2015) o INE deixa em branco o total de todas as idades, embora publique os grupos etários. O total é então a soma desses grupos."),
+      tags$li("Trabalhadores por sector: o INE oculta dois dos três sectores quando um deles revelaria uma empresa (6 municípios em 2024, 41-49 em 2013-2016). O remanescente é repartido pelos sectores ocultos na proporção do resto da NUTS III nesse ano; as quotas com mais de 1% de trabalhadores estimados são marcadas com \u2248.")
     ),
     h4("De onde vêm os dados"),
     tags$ul(
