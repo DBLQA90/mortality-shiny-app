@@ -148,15 +148,24 @@ planning_count_chart <- function(series, spec, local) {
 
 # All ULS for one indicator and year. `highlight` is the unit to mark (the
 # location itself, or the ULS containing it).
-planning_ranking_chart <- function(ranking, spec, year, highlight = character(0)) {
-  reference <- ranking$value[ranking$area == "Portugal"]
+# Significance against Portugal is a polarity: a warm and a cool pole with a
+# grey midpoint (validated for colour-vision deficiency: worst adjacent OKLab
+# distance 16.8). Orange rather than red, because which direction is desirable
+# depends on the indicator (life expectancy against the death rate).
+PLANNING_SIGNIFICANCE_COLOURS <- c(Superior = "#eb6834", Inferior = "#2a78d6", Semelhante = "#c3c2b7")
+
+planning_ranking_chart <- function(ranking, spec, year, highlight = character(0), benchmark_area = "Portugal") {
+  reference <- ranking$value[ranking$area == benchmark_area]
+  ranking <- planning_add_significance(ranking, benchmark_area)
   units <- ranking %>%
-    dplyr::filter(.data$area != "Portugal", !is.na(.data$value)) %>%
+    dplyr::filter(!.data$area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL), !is.na(.data$value)) %>%
     dplyr::arrange(.data$value) %>%
     dplyr::mutate(
       label = factor(.data$area, levels = .data$area),
-      colour = ifelse(.data$area %in% highlight, PLANNING_LEVEL_COLOURS[["Local"]], "#c3c2b7"),
-      hover = paste0("<b>", .data$area, "</b><br>", planning_hover_value(.data$value, .data$lower, .data$upper, spec$digits, .data$flag))
+      colour = ifelse(is.na(.data$significance), "#c3c2b7", PLANNING_SIGNIFICANCE_COLOURS[.data$significance]),
+      outline = ifelse(.data$area %in% highlight, PLANNING_INK$primary, "rgba(0,0,0,0)"),
+      hover = paste0("<b>", .data$area, "</b><br>", planning_hover_value(.data$value, .data$lower, .data$upper, spec$digits, .data$flag),
+                     ifelse(is.na(.data$significance), "", paste0("<br>Face a ", benchmark_area, ": ", tolower(.data$significance))))
     )
   error <- if (any(!is.na(units$lower))) {
     list(type = "data", symmetric = FALSE, array = units$upper - units$value, arrayminus = units$value - units$lower,
@@ -166,7 +175,7 @@ planning_ranking_chart <- function(ranking, spec, year, highlight = character(0)
   }
   p <- plotly::plot_ly(
     units, y = ~label, x = ~value, type = "bar", orientation = "h",
-    marker = list(color = ~colour), error_x = error, text = ~hover, hoverinfo = "text", textposition = "none"
+    marker = list(color = ~colour, line = list(color = ~outline, width = 2)), error_x = error, text = ~hover, hoverinfo = "text", textposition = "none"
   )
   shapes <- if (length(reference) == 1 && is.finite(reference)) {
     list(list(type = "line", x0 = reference, x1 = reference, yref = "paper", y0 = 0, y1 = 1,
@@ -175,7 +184,7 @@ planning_ranking_chart <- function(ranking, spec, year, highlight = character(0)
     list()
   }
   annotations <- if (length(shapes) > 0) {
-    list(list(x = reference, y = 1.01, yref = "paper", text = paste0("Portugal: ", planning_format_value(reference, spec$digits)),
+    list(list(x = reference, y = 1.01, yref = "paper", text = paste0(benchmark_area, ": ", planning_format_value(reference, spec$digits)),
               showarrow = FALSE, xanchor = "left", font = list(color = PLANNING_INK$secondary, size = 11)))
   } else {
     list()
@@ -283,7 +292,8 @@ planning_series_display <- function(series, spec, areas) {
     dplyr::mutate(
       cell = ifelse(
         is.na(.data$value), "—",
-        planning_hover_value(.data$value, .data$lower, .data$upper, spec$digits, .data$flag)
+        paste0(planning_hover_value(.data$value, .data$lower, .data$upper, spec$digits, .data$flag),
+               if ("significance" %in% names(series)) planning_significance_mark(.data$significance) else "")
       ),
       `Período` = vapply(.data$year, function(y) planning_period_label(spec$id, y), character(1))
     )
@@ -299,8 +309,9 @@ planning_series_display <- function(series, spec, areas) {
 
 # Every indicator in its latest period for the location, with comparators beside
 # the comparable ones.
-planning_summary_display <- function(table, areas) {
+planning_summary_display <- function(table, areas, education_min_age = 0L) {
   local <- areas$area[[1]]
+  has_significance <- "significance" %in% names(table)
   columns <- planning_series_name(areas$area, areas$level)
   rows <- lapply(PLANNING_INDICATORS$id, function(id) {
     spec <- planning_indicator_spec(id)
@@ -312,13 +323,139 @@ planning_summary_display <- function(table, areas) {
       if (!identical(a, local) && !isTRUE(spec$comparable)) return("")
       v <- values[values$area == a, , drop = FALSE]
       if (nrow(v) == 0 || is.na(v$value[[1]])) return("—")
-      paste0(planning_format_value(v$value[[1]], spec$digits), v$flag[[1]])
+      paste0(planning_format_value(v$value[[1]], spec$digits), v$flag[[1]],
+             if (has_significance) planning_significance_mark(v$significance[[1]]) else "")
     }, character(1))
     tibble::as_tibble(c(
-      list(Tema = spec$theme, Indicador = paste0(spec$label, " [", spec$ref, "]"),
+      list(Tema = spec$theme, Indicador = planning_indicator_label(id, education_min_age),
            Unidade = spec$unit, `Período` = planning_period_label(id, year)),
       stats::setNames(as.list(cells), columns)
     ))
   })
   dplyr::bind_rows(rows)
+}
+
+# ---------------------------------------------------------
+# Funnel plot
+# ---------------------------------------------------------
+# Each unit's value against the size of its denominator, with control limits
+# around the benchmark: what a unit of that size would show by chance alone,
+# 95% and 99.8% (two and three standard deviations). Points outside the limits
+# differ by more than chance; small units scatter widely inside them. Only for
+# indicators with a count model: Poisson for the event rates, binomial for
+# the birth proportions.
+PLANNING_FUNNEL_MODELS <- tibble::tribble(
+  ~id,                    ~model,     ~multiplier, ~denominator_label,
+  "birth_rate",           "poisson",  1000, "População média",
+  "death_rate",           "poisson",  1000, "População média",
+  "infant_rate",          "poisson",  1000, "Nados-vivos no triénio",
+  "neonatal_rate",        "poisson",  1000, "Nados-vivos no triénio",
+  "early_neonatal_rate",  "poisson",  1000, "Nados-vivos no triénio",
+  "postneonatal_rate",    "poisson",  1000, "Nados-vivos no triénio",
+  "late_fetal_rate",      "poisson",  1000, "Nados-vivos e fetos mortos no triénio",
+  "perinatal_rate",       "poisson",  1000, "Nados-vivos e fetos mortos no triénio",
+  "teen_births_pct",      "binomial", 100,  "Nados-vivos no triénio",
+  "older_births_pct",     "binomial", 100,  "Nados-vivos no triénio",
+  "preterm_pct",          "binomial", 100,  "Nascimentos com duração da gestação conhecida, no triénio",
+  "low_birth_weight_pct", "binomial", 100,  "Nascimentos com peso conhecido, no triénio"
+)
+
+# Limits at `probability` (two-sided) for denominators `n` around the rate
+# `reference` (in the indicator's unit): the exact quantiles of the count a unit
+# of that size would show under the benchmark rate - Poisson for event rates,
+# binomial for proportions - interpolated between integers so the lines are
+# smooth (Spiegelhalter, Stat Med 2005). A count of zero in a small unit is then
+# never "significantly low", which an interval around the expected count would
+# wrongly make it.
+planning_funnel_limits <- function(n, reference, model, multiplier, probability) {
+  rate <- reference / multiplier
+  quantile_of <- function(p) {
+    if (identical(model, "poisson")) {
+      lambda <- rate * n
+      r <- stats::qpois(p, lambda)
+      below <- stats::ppois(r - 1, lambda); at <- stats::ppois(r, lambda)
+    } else {
+      size <- round(n)
+      r <- stats::qbinom(p, size, rate)
+      below <- stats::pbinom(r - 1, size, rate); at <- stats::pbinom(r, size, rate)
+    }
+    alpha <- ifelse(at > below, (at - p) / (at - below), 0)
+    pmax(r - alpha, 0) / n * multiplier
+  }
+  list(lower = quantile_of((1 - probability) / 2), upper = quantile_of(1 - (1 - probability) / 2))
+}
+
+# Units with their position against the limits.
+planning_funnel_data <- function(table, spec, benchmark_area) {
+  model <- PLANNING_FUNNEL_MODELS[PLANNING_FUNNEL_MODELS$id == spec$id, , drop = FALSE]
+  if (nrow(model) == 0) return(NULL)
+  reference <- table$value[table$area == benchmark_area]
+  if (length(reference) != 1 || !is.finite(reference)) return(NULL)
+  units <- table[!table$area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL) & is.finite(table$value) &
+                   is.finite(table$denominator) & table$denominator > 0, , drop = FALSE]
+  l95 <- planning_funnel_limits(units$denominator, reference, model$model, model$multiplier, 0.95)
+  l998 <- planning_funnel_limits(units$denominator, reference, model$model, model$multiplier, 0.998)
+  units$position <- dplyr::case_when(
+    units$value > l998$upper ~ "Acima do limite de 99,8%",
+    units$value > l95$upper ~ "Acima do limite de 95%",
+    units$value < l998$lower ~ "Abaixo do limite de 99,8%",
+    units$value < l95$lower ~ "Abaixo do limite de 95%",
+    TRUE ~ "Dentro dos limites"
+  )
+  attr(units, "reference") <- reference
+  attr(units, "model") <- model
+  units
+}
+
+# The same three colours; beyond 99.8% is told apart from beyond 95% by the
+# marker's shape, not by a lighter step (a five-step ramp fails the
+# normal-vision distance check against the grey).
+PLANNING_FUNNEL_COLOURS <- c(
+  "Acima do limite de 99,8%" = "#eb6834", "Acima do limite de 95%" = "#eb6834",
+  "Dentro dos limites" = "#c3c2b7",
+  "Abaixo do limite de 95%" = "#2a78d6", "Abaixo do limite de 99,8%" = "#2a78d6"
+)
+
+planning_funnel_chart <- function(units, spec, year, benchmark_area, highlight = character(0), unit_label = "Unidades", denominator_label = "Denominador") {
+  reference <- attr(units, "reference")
+  model <- attr(units, "model")
+  grid <- exp(seq(log(max(min(units$denominator) * 0.8, 1)), log(max(units$denominator) * 1.1), length.out = 200))
+  l95 <- planning_funnel_limits(grid, reference, model$model, model$multiplier, 0.95)
+  l998 <- planning_funnel_limits(grid, reference, model$model, model$multiplier, 0.998)
+  units$hover <- paste0("<b>", units$area, "</b><br>", planning_hover_value(units$value, units$lower, units$upper, spec$digits, units$flag),
+                        "<br>", denominator_label, ": ", planning_format_value(units$denominator, 0), "<br>", units$position)
+  units$highlighted <- units$area %in% highlight
+
+  p <- plotly::plot_ly()
+  for (bound in list(list(l998, "Limites de 99,8%", "dot"), list(l95, "Limites de 95%", "dash"))) {
+    p <- plotly::add_lines(p, x = grid, y = bound[[1]]$upper, name = bound[[2]], legendgroup = bound[[2]],
+                           line = list(color = PLANNING_INK$muted, dash = bound[[3]], width = 1), hoverinfo = "skip")
+    p <- plotly::add_lines(p, x = grid, y = bound[[1]]$lower, name = bound[[2]], legendgroup = bound[[2]], showlegend = FALSE,
+                           line = list(color = PLANNING_INK$muted, dash = bound[[3]], width = 1), hoverinfo = "skip")
+  }
+  p <- plotly::add_lines(p, x = range(grid), y = c(reference, reference), name = paste0(benchmark_area, ": ", planning_format_value(reference, spec$digits)),
+                         line = list(color = PLANNING_LEVEL_COLOURS[["Portugal"]], width = 2), hoverinfo = "skip")
+  for (position in names(PLANNING_FUNNEL_COLOURS)) {
+    rows <- units[units$position == position, , drop = FALSE]
+    if (nrow(rows) == 0) next
+    p <- plotly::add_markers(p, data = rows, x = ~denominator, y = ~value, name = position, text = ~hover, hoverinfo = "text",
+                             marker = list(color = PLANNING_FUNNEL_COLOURS[[position]], size = if (grepl("99,8", position)) 12 else 9,
+                                           symbol = if (grepl("99,8", position)) "diamond" else "circle",
+                                           line = list(color = ifelse(rows$highlighted, PLANNING_INK$primary, "#ffffff"),
+                                                       width = ifelse(rows$highlighted, 2.5, 0.5))))
+  }
+  marked <- units[units$highlighted, , drop = FALSE]
+  annotations <- lapply(seq_len(nrow(marked)), function(i) list(
+    x = log10(marked$denominator[[i]]), y = marked$value[[i]], text = marked$area[[i]], showarrow = TRUE, arrowhead = 0,
+    ax = 30, ay = -25, font = list(color = PLANNING_INK$primary, size = 11)
+  ))
+  planning_plotly_layout(
+    p, annotations = annotations,
+    xaxis = list(title = paste0(denominator_label, " (escala logarítmica)"), type = "log"),
+    # The limits of the smallest units run far above the data; the axis
+    # follows the points, and the lines leave through the top.
+    yaxis = list(title = paste0(spec$label, " (", spec$unit, "), ", planning_period_label(spec$id, year)),
+                 range = c(min(0, min(units$value)), max(units$value, reference) * 1.15)),
+    margin = list(b = 90)
+  )
 }

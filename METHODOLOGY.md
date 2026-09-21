@@ -1094,6 +1094,53 @@ bars and dots for cause groups. Each level has a fixed colour from the reference
 categorical palette, in its validated order; direct labels are drawn at line
 ends only up to four series, beyond which the legend carries identity.
 
+### Portugal benchmark, significance and funnel
+
+`PLANNING_PORTUGAL_MUNICIPAL` ("Portugal (soma dos municípios)") is a pseudo-area
+with every municipality as members and no published row, so every path
+(components, life table, I45, I46) builds it as a municipal sum; the I46 alias
+lookup is told never to swap it for INE's national row. The tab's `Portugal`
+option swaps it in for `Portugal` in the comparators, the significance
+benchmark, the ranking, the funnel and the profile. The all-areas export
+carries both rows.
+
+Significance (`planning_add_significance()`) follows PHE Fingertips: higher or
+lower when the whole 95% interval lies above or below the benchmark's value in
+the same period, similar otherwise. It is computed only for `comparable`
+indicators with an interval; counts are never compared. Colours in the ranking
+are a diverging pair (orange above, blue below, grey similar) validated for
+colour-vision deficiency (worst adjacent OKLab distance 16.8); orange rather
+than red because the desirable direction depends on the indicator.
+
+The funnel (`planning_funnel_limits()`) uses exact quantiles of the count under
+the benchmark rate - Poisson for event rates, binomial for the birth
+proportions - interpolated between integers (Spiegelhalter, Stat Med 2005), at
+95% and 99.8%. A first version used the exact interval around the expected
+count, which flagged 136 of 308 municipalities as significantly low on infant
+mortality because a zero count in a small unit fell below it; the quantile
+method puts 275 inside the limits. Only indicators in `PLANNING_FUNNEL_MODELS`
+have a funnel.
+
+### Education by age
+
+`census_education_by_age` (`tools/fetch_census_education_age.R`) holds the 2011
+(`0006350`) and 2021 (`0012364`) census population by five-year age group and
+highest completed level, per municipality; post-secondary counts as secondary,
+as in the historical series. The 2021 table codes municipalities by the bare
+DICO (four characters) and parishes by six. With `education_min_age > 0` each
+level is divided by everyone of that age and over; 1991 and 2001 have no age
+breakdown and stay empty. With 0 (the default, as in the workbook) the
+historical series `0014380` is used unchanged.
+
+### Location profile
+
+`write_planning_profile()` (`R/planning_profile.R`) builds a .docx with
+officer/flextable: the indicators significantly above and below the benchmark,
+the full table on landscape pages, the pyramid, six trends as small multiples,
+the location's ULS ranked on nine event rates (the smallest ULS containing the
+location, even when it is not offered as a comparator for having the same
+municipalities), I45 and the notes.
+
 ### Aggregation
 
 Every area is a ratio of sums. The components (population by broad age group,

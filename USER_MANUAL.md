@@ -968,6 +968,89 @@ Cada nível tem sempre a mesma cor em todos os gráficos: o local a azul, a ULS 
 laranja, a ARS a verde-água, a NUTS III a amarelo, a NUTS II a rosa, o NUTS I a
 verde e Portugal a violeta.
 
+### Portugal: total do INE ou soma dos municípios
+
+A opção **Portugal** escolhe o que representa Portugal em todo o separador
+(comparadores, significância, classificação das ULS, funil e perfil):
+
+- **Total publicado pelo INE**: inclui os acontecimentos de residentes cujo
+  município é desconhecido (0,3% a 0,9% dos óbitos).
+- **Soma dos 308 municípios**: sem esses acontecimentos, como qualquer região,
+  ULS ou município. Compara igual com igual, e é a escolha certa quando se
+  pergunta se um local se afasta do país.
+
+A diferença é pequena (óbitos de 2023: 118.344 no total do INE, 118.328 na soma
+dos municípios; a taxa bruta muda na terceira casa decimal), mas pode decidir um
+teste de significância no limite, sobretudo para as regiões grandes. O Excel de todas as áreas traz as duas linhas.
+
+### Significância face a Portugal
+
+Nas tabelas, cada valor com intervalo de confiança leva uma marca:
+
+| Marca | Significado |
+|---|---|
+| ▲ | o intervalo de 95% fica inteiramente **acima** do valor de Portugal |
+| ▼ | o intervalo de 95% fica inteiramente **abaixo** |
+| = | o intervalo inclui o valor de Portugal: sem diferença demonstrável |
+
+É o critério do PHE Fingertips. Só se aplica a taxas, proporções e esperança de
+vida; as contagens e os índices sem intervalo não levam marca. A marca não diz
+se a diferença é boa ou má: uma esperança de vida acima é boa, uma mortalidade
+acima não. Na classificação das ULS as barras têm a mesma leitura: laranja acima,
+azul abaixo, cinzento sem diferença; a ULS do local tem contorno escuro.
+
+### Funil
+
+O subseparador **Funil** mostra todas as ULS, municípios ou NUTS III de uma vez:
+cada ponto é o valor contra o tamanho do denominador (nados-vivos, população). As
+linhas marcam o que uma unidade desse tamanho mostraria **só por acaso** à volta
+de Portugal: 95% (tracejado) e 99,8% (pontilhado). As unidades pequenas espalham-se
+muito dentro das linhas, as grandes pouco; um ponto fora das linhas afasta-se
+mais do que o acaso explica. Com 308 municípios, cerca de 15 ficariam fora do
+limite de 95% por acaso; fora do de 99,8%, menos de um. Um losango marca os que
+estão fora do limite de 99,8%.
+
+Os limites são os quantis exactos da contagem sob a taxa de Portugal (Poisson
+para taxas de acontecimentos, binomial para proporções), interpolados
+(Spiegelhalter, 2005). Assim, um município pequeno sem nenhum óbito infantil
+nunca aparece como «significativamente baixo». O funil só existe para
+indicadores com um modelo de contagem; para as taxas brutas, a dispersão reflecte
+sobretudo a estrutura etária.
+
+### Escolaridade por idade
+
+A opção **Escolaridade [I24], população** restringe os quatro indicadores de
+escolaridade a quem tem uma idade mínima (15, 20, 25… 75 e mais anos). Com toda
+a população, como no ficheiro de apoio, as crianças contam como «sem nível de
+escolaridade completo», o que faz parecer menos escolarizadas as áreas com mais
+crianças. Com 25 e mais anos, por exemplo, compara-se a escolaridade de adultos.
+
+O INE só publica a escolaridade por idade e município nos Censos de 2011 e 2021;
+com idade mínima, 1991 e 2001 ficam sem valor. A escolha vale para o gráfico, o
+resumo, o Excel do local e o perfil.
+
+### Notas com asterisco
+
+Um `*` no fim do nome de um indicador remete para uma nota, mostrada por baixo do
+gráfico, no fim do resumo, no Excel e no perfil:
+
+- **Ganho médio e trabalhadores por sector [I27, I12]**: Quadros de Pessoal,
+  contados no local de trabalho e não no de residência, sem a Administração
+  Pública nem os trabalhadores por conta própria.
+- **Esperança de vida [I10]**: reproduz o Eurostat e fica cerca de 0,8-0,9 anos
+  acima dos valores do INE, que usa outra metodologia; compare valores da
+  aplicação entre si.
+
+### Perfil do local (Word)
+
+O botão **Perfil do local (Word)** gera um documento editável com: um resumo dos
+indicadores acima e abaixo de Portugal, o quadro de todos os indicadores com os
+comparadores e as marcas de significância, a pirâmide etária, a evolução de seis
+indicadores, a posição da ULS do local entre as ULS do Continente, a mortalidade
+proporcional e as notas de método. Usa as mesmas opções do separador (local,
+comparadores seleccionados, Portugal, escolaridade, último ano). Demora cerca de
+20 segundos.
+
 ### Os subseparadores
 
 - **Indicador** — o gráfico do indicador ao longo dos anos escolhidos e, por

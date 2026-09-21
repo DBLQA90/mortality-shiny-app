@@ -139,9 +139,52 @@ planning_published_areas <- c("Portugal", "Continente")
 # ---------------------------------------------------------
 # Year files are read once per session. The key carries the snapshot root, so a
 # test pointing MORTALITY_SNAPSHOT_DIR elsewhere never sees another root's rows.
+# Portugal as the sum of its 308 municipalities, beside INE's published row.
+# The published row also counts events of residents whose municipality is
+# unknown (0.3-0.9% of deaths), which no region, ULS or municipality can hold;
+# the municipal sum compares like with like. Not in planning_published_areas,
+# so every path treats it as an ordinary municipal sum.
+PLANNING_PORTUGAL_MUNICIPAL <- "Portugal (soma dos municípios)"
+
+# Which Portugal a view compares against: "published" or "municipal".
+planning_portugal_area <- function(mode = "published") {
+  if (identical(mode, "municipal")) PLANNING_PORTUGAL_MUNICIPAL else "Portugal"
+}
+
+# Significance against a benchmark, as PHE Fingertips reports it: an area is
+# higher (lower) when its whole 95% interval lies above (below) the benchmark's
+# value, similar when the interval contains it. Only values with an interval
+# (event rates, proportions, life expectancy) are tested; the benchmark itself
+# is not.
+PLANNING_SIGNIFICANCE_MARKS <- c(Superior = "\u25b2", Inferior = "\u25bc", Semelhante = "=")
+
+planning_significance <- function(lower, upper, benchmark) {
+  out <- rep(NA_character_, length(lower))
+  ok <- !is.na(lower) & !is.na(upper) & !is.na(benchmark)
+  out[ok] <- ifelse(lower[ok] > benchmark[ok], "Superior", ifelse(upper[ok] < benchmark[ok], "Inferior", "Semelhante"))
+  out
+}
+
+planning_add_significance <- function(table, benchmark_area) {
+  if (nrow(table) == 0) return(dplyr::mutate(table, benchmark = numeric(0), significance = character(0)))
+  reference <- table[table$area == benchmark_area, c("indicator", "year", "value"), drop = FALSE]
+  names(reference)[3] <- "benchmark"
+  out <- dplyr::left_join(dplyr::select(table, -dplyr::any_of(c("benchmark", "significance"))), reference, by = c("indicator", "year"))
+  out$significance <- planning_significance(out$lower, out$upper, out$benchmark)
+  out$significance[out$area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL)] <- NA_character_
+  # Absolute counts depend on the size of the area: never compared.
+  out$significance[!out$indicator %in% PLANNING_INDICATORS$id[PLANNING_INDICATORS$comparable]] <- NA_character_
+  out
+}
+
+planning_significance_mark <- function(significance) {
+  mark <- unname(PLANNING_SIGNIFICANCE_MARKS[significance])
+  ifelse(is.na(mark), "", paste0(" ", mark))
+}
+
 # Version of the method, as in the methodological note. Part of the cache key of
 # the all-areas export: raise it whenever a change alters published values.
-PLANNING_METHOD_VERSION <- "1.2"
+PLANNING_METHOD_VERSION <- "1.3"
 
 planning_cache <- new.env(parent = emptyenv())
 
@@ -280,7 +323,7 @@ planning_proportional_years <- function(window = 3L) {
 # be a municipality.
 planning_area_members <- function(area, lookup = get_nuts_lookup()) {
   municipalities <- as.character(lookup$municipality)
-  if (identical(area, "Portugal")) return(sort(unique(municipalities)))
+  if (area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL)) return(sort(unique(municipalities)))
   if (area %in% municipalities) return(area)
   sort(unique(region_members(area, lookup)))
 }
@@ -331,6 +374,21 @@ planning_joint_split <- function(membership, year, block, unreported = NULL) {
   split
 }
 
+# Education by age group (2011 and 2021 censuses only): one column per level
+# and five-year group, 0 standing for "under 15" and 75 for "75 and over", so
+# any "N and over" is a sum of columns.
+PLANNING_EDUCATION_AGES <- c(0L, seq.int(15L, 75L, by = 5L))
+PLANNING_EDUCATION_LEVELS <- c(total = "Total", none = "Nenhum", basic = "Básico", secondary = "Secundário", higher = "Superior")
+planning_education_age_columns <- function() {
+  as.vector(outer(names(PLANNING_EDUCATION_LEVELS), PLANNING_EDUCATION_AGES, function(l, a) paste0("census_edu_", l, "_", a)))
+}
+PLANNING_EDUCATION_IDS <- c("pct_education_none", "pct_education_basic", "pct_education_secondary", "pct_education_higher")
+
+# The minimum ages the education indicators can be restricted to.
+planning_education_age_choices <- function() {
+  c("Toda a população" = 0L, stats::setNames(PLANNING_EDUCATION_AGES[-1], paste0(PLANNING_EDUCATION_AGES[-1], " e mais anos")))
+}
+
 planning_component_columns <- c(
   "pop_total", "pop_0_14", "pop_15_64", "pop_15_plus", "pop_65_plus", "pop_75_plus",
   paste0("pop_f_", seq(15, 45, by = 5)),
@@ -345,6 +403,7 @@ planning_component_columns <- c(
   "earnings_value", "employees_total", "employees_primary", "employees_secondary", "employees_tertiary", "employees_estimated",
   "census_pop", "census_pop_10plus", "census_illiterate",
   "census_education_total", "census_education_basic", "census_education_secondary", "census_education_higher",
+  planning_education_age_columns(),
   "neonatal_deaths", "early_neonatal_deaths", "postneonatal_deaths", "perinatal_deaths"
 )
 
@@ -633,6 +692,18 @@ planning_component_blocks <- function(year) {
       )
   }
 
+  education_age <- read_planning_extra("census_education_by_age", year)
+  if (!is.null(education_age)) {
+    education_age$column <- paste0("census_edu_", names(PLANNING_EDUCATION_LEVELS)[match(education_age$category, PLANNING_EDUCATION_LEVELS)], "_", education_age$age)
+    education_age <- education_age[education_age$column %in% planning_education_age_columns(), , drop = FALSE]
+    wide <- tidyr::pivot_wider(
+      dplyr::summarise(dplyr::group_by(education_age, area, column), value = sum(value, na.rm = TRUE), .groups = "drop"),
+      names_from = column, values_from = value, values_fill = 0
+    )
+    for (column in setdiff(planning_education_age_columns(), names(wide))) wide[[column]] <- 0
+    blocks$census_education_age <- wide
+  }
+
   infant_age <- read_planning_extra("infant_deaths_by_age", year)
   if (!is.null(infant_age)) {
     blocks$infant_age <- infant_age %>%
@@ -654,6 +725,7 @@ planning_column_block <- function(column) {
   if (column %in% c("pop_total", "pop_0_14", "pop_15_64", "pop_15_plus", "pop_65_plus", "pop_75_plus") ||
       startsWith(column, "pop_f_")) return("pop")
   if (startsWith(column, "births_mage_") || startsWith(column, "births_mother_")) return("mother")
+  if (startsWith(column, "census_edu_")) return("census_education_age")
   switch(
     column,
     births = "births", deaths = "deaths", infant_deaths = "infant", rsi = "rsi",
@@ -803,12 +875,13 @@ planning_components <- function(areas, years, lookup = get_nuts_lookup()) {
       # something no municipality has none of.
       own <- values[match(joint_members, municipalities), cols[[1]]]
       missing_own <- stats::setNames(with_population[match(joint_members, municipalities)] & (is.na(own) | own <= 0), joint_members)
-      area_split <- planning_joint_split(membership, year, block, missing_own)
-      if (!any(area_split)) next
-      split[area_split, cols] <- TRUE
+      split[planning_joint_split(membership, year, block, missing_own), cols] <- TRUE
       # A joint municipality's blank is covered by its holder in the areas
       # that keep the pair together.
-      unreported[match(joint_members, municipalities), cols] <- FALSE
+      joint <- PLANNING_JOINT_REPORTING[match(joint_members, PLANNING_JOINT_REPORTING$municipality), ]
+      active <- block != "pop" & (year <= joint$until |
+        (vapply(joint$blocks, function(b) block %in% unlist(b), logical(1)) & missing_own))
+      unreported[match(joint_members[active], municipalities), cols] <- FALSE
     }
     values[is.na(values)] <- 0
     sums <- membership %*% values
@@ -881,7 +954,7 @@ planning_poisson_rate <- function(events, denominator, multiplier) {
 # Population-based indices carry no interval: the population estimates are not
 # a sample of events, and INE publishes no error for them. Event rates get an
 # exact Poisson interval on the count, the denominator treated as fixed.
-planning_compute_indicators <- function(components, ids, undercount_years = integer(0)) {
+planning_compute_indicators <- function(components, ids, undercount_years = integer(0), education_min_age = 0L) {
   keys <- paste(components$area, components$year)
   lag_of <- function(column, k) components[[column]][match(paste(components$area, components$year - k), keys)]
   pooled <- function(column, window) {
@@ -1007,7 +1080,17 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
         denominator <- before
         value <- ratio(numerator, denominator, 100)
       },
-      pct_education_none = , pct_education_basic = , pct_education_secondary = , pct_education_higher = {
+      pct_education_none = , pct_education_basic = , pct_education_secondary = , pct_education_higher = if (education_min_age > 0) {
+        # Restricted to an age: the 2011 and 2021 censuses by age group, level
+        # over everyone of that age. Children, who have not had the time to
+        # complete a level, no longer count as "without education".
+        level <- sub("^pct_education_", "", id)
+        ages <- PLANNING_EDUCATION_AGES[PLANNING_EDUCATION_AGES >= education_min_age]
+        sum_ages <- function(lvl) Reduce(`+`, lapply(ages, function(a) total(paste0("census_edu_", lvl, "_", a))))
+        numerator <- sum_ages(level)
+        denominator <- sum_ages("total")
+        value <- ratio(numerator, denominator, 100)
+      } else {
         # The series counts only people with a completed level, so those with
         # none are the census population less that total.
         column <- switch(id, pct_education_basic = "census_education_basic",
@@ -1057,7 +1140,7 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
   dplyr::bind_rows(lapply(ids, one))
 }
 
-planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup()) {
+planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup(), education_min_age = 0L) {
   years <- as.integer(years)
   areas <- unique(as.character(areas))
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
@@ -1076,7 +1159,7 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   other_ids <- setdiff(ids, life_ids)
   results <- list()
   if (length(other_ids) > 0) {
-    results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount) %>%
+    results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount, education_min_age = as.integer(education_min_age)) %>%
       dplyr::filter(.data$year %in% years)
   }
   if (length(life_ids) > 0) {
@@ -1085,6 +1168,30 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   }
   dplyr::bind_rows(results) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
+}
+
+# Notes attached to an indicator's label with an asterisk wherever it is shown.
+PLANNING_INDICATOR_NOTES <- c(
+  earnings_mean = "Quadros de Pessoal (MTSSS): trabalhadores por conta de outrem, contados no local de trabalho e não no de residência; não incluem a Administração Pública nem os trabalhadores por conta própria. Um concelho com muitos empregos mas poucos residentes (sede de distrito, zona industrial) aparece acima do que os seus residentes ganham; os concelhos-dormitório à volta, abaixo.",
+  life_expectancy = "Tábua de mortalidade abreviada (Chiang II, método do PHE e do Eurostat). Reproduz o Eurostat para Portugal (2017-2019: 81,9 anos na aplicação; 82,0 no Eurostat), mas fica cerca de 0,8-0,9 anos acima dos valores publicados pelo INE, que usa outra metodologia (2007). A ordenação das regiões coincide com a do INE (correlação 0,97): compare valores da aplicação entre si, não com os do INE."
+)
+for (id in c("employees", "pct_employees_primary", "pct_employees_secondary", "pct_employees_tertiary")) {
+  PLANNING_INDICATOR_NOTES[[id]] <- PLANNING_INDICATOR_NOTES[["earnings_mean"]]
+}
+for (id in c("life_expectancy_men", "life_expectancy_women", "life_expectancy_65", "life_expectancy_65_men", "life_expectancy_65_women")) {
+  PLANNING_INDICATOR_NOTES[[id]] <- PLANNING_INDICATOR_NOTES[["life_expectancy"]]
+}
+PLANNING_EDUCATION_NOTE <- "Com idade mínima, só existem os Censos de 2011 e 2021 (o INE não publica a escolaridade por idade e município em 1991 e 2001)."
+
+# Label as displayed: the age restriction of the education indicators, and an
+# asterisk when a note applies.
+planning_indicator_label <- function(id, education_min_age = 0L, ref = TRUE, star = TRUE) {
+  spec <- planning_indicator_spec(id)
+  label <- spec$label
+  if (id %in% PLANNING_EDUCATION_IDS && isTRUE(education_min_age > 0)) label <- paste0(label, " (", education_min_age, " e mais anos)")
+  if (ref) label <- paste0(label, " [", spec$ref, "]")
+  if (star && id %in% names(PLANNING_INDICATOR_NOTES)) label <- paste0(label, " *")
+  label
 }
 
 planning_period_label <- function(id, year) {

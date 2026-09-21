@@ -5167,3 +5167,5 @@
 "2026-09-18T111211","2026-09-18T11:14:11+0100","snapshots/planning_extra/employees_by_sector/year_2021.rds","planning_extra/employees_by_sector",2021,"added",,1240,"value",,2287160,,"fetch_planning_extra.R",,
 "2026-09-18T111211","2026-09-18T11:14:16+0100","snapshots/planning_extra/employees_by_sector/year_2023.rds","planning_extra/employees_by_sector",2023,"added",,1240,"value",,2570047,,"fetch_planning_extra.R",,
 "2026-09-18T111211","2026-09-18T11:14:21+0100","snapshots/planning_extra/employees_by_sector/year_2024.rds","planning_extra/employees_by_sector",2024,"added",,1240,"value",,2613271,,"fetch_planning_extra.R",,
+"2026-09-21T183653","2026-09-21T18:36:53+0100","snapshots/planning_extra/census_education_by_age/year_2011.rds","planning_extra/census_education_by_age",2011,"added",,21700,"value",,10562178,,"fetch_census_education_age.R",,
+"2026-09-21T183653","2026-09-21T18:41:32+0100","snapshots/planning_extra/census_education_by_age/year_2021.rds","planning_extra/census_education_by_age",2021,"added",,21700,"value",,10343066,,"fetch_census_education_age.R",,

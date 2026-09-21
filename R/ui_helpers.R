@@ -830,6 +830,20 @@ planning_tab_ui <- function() {
         selectInput("planning_area", "Local:", choices = local_area, selected = "Portugal"),
         selectInput("planning_indicator", "Indicador:", choices = planning_indicator_choices(), selected = "ageing_index"),
         uiOutput("planningComparatorsUI"),
+        radioButtons(
+          "planning_portugal", "Portugal:",
+          choices = c("Total publicado pelo INE" = "published", "Soma dos 308 municípios" = "municipal"),
+          selected = "published"
+        ),
+        helpText(
+          "O total do INE inclui os acontecimentos de residência desconhecida (0,3-0,9% dos ",
+          "óbitos), que nenhuma região, ULS ou município contém. A soma dos municípios ",
+          "compara igual com igual. Vale para comparadores, significância e funil."
+        ),
+        selectInput(
+          "planning_education_age", "Escolaridade [I24], população:",
+          choices = planning_education_age_choices(), selected = 0L
+        ),
         sliderInput(
           "planning_years", "Anos:",
           min = min(years), max = last, value = c(max(min(years), last - 19L), last), step = 1, sep = ""
@@ -859,13 +873,25 @@ planning_tab_ui <- function() {
               "Todos os indicadores no último período disponível para o local, até ao ",
               "último ano escolhido. As contagens absolutas não têm comparadores."
             ),
-            div(style = "overflow-x:auto;", tableOutput("planningSummaryTable"))
+            div(style = "overflow-x:auto;", tableOutput("planningSummaryTable")),
+            uiOutput("planningSummaryNotes")
           ),
           tabPanel(
             "Comparação entre ULS",
             br(),
             uiOutput("planningRankingNote"),
             plotly::plotlyOutput("planningRankingPlot", height = "820px")
+          ),
+          tabPanel(
+            "Funil",
+            br(),
+            radioButtons(
+              "planning_funnel_units", "Unidades:",
+              choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
+              selected = "ULS", inline = TRUE
+            ),
+            uiOutput("planningFunnelNote"),
+            plotly::plotlyOutput("planningFunnelPlot", height = "560px")
           ),
           tabPanel(
             "Pirâmide etária",
@@ -914,6 +940,14 @@ planning_tab_ui <- function() {
               )
             )
           ),
+          hr(),
+          h4("Perfil do local"),
+          downloadButton("downloadPlanningProfile", "Perfil do local (Word)"),
+          helpText(
+            "Documento Word editável com o retrato do local escolhido face aos comparadores: ",
+            "indicadores-chave com significância face a Portugal, pirâmide etária, evolução, ",
+            "posição entre as ULS, mortalidade proporcional e notas de método."
+          ),
           uiOutput("planningDataDate")
         )
       )
@@ -928,6 +962,14 @@ planning_method_notes <- function() {
       tags$li("Para cada local, a aplicação propõe as áreas que o contêm, uma por nível: ULS, ARS, NUTS III, NUTS II, NUTS I e Portugal. Uma área com exactamente os mesmos municípios do local (por exemplo a ULS Matosinhos para o município de Matosinhos) é omitida, porque repetiria os mesmos valores."),
       tags$li("Só têm comparadores os indicadores que não dependem do tamanho da área: taxas, proporções, índices e valores por habitante. As contagens (população, nados-vivos, óbitos, beneficiários, pensionistas) mostram-se apenas para o local."),
       tags$li("Cada nível tem sempre a mesma cor, e o intervalo de confiança do local aparece como faixa. Os pontos vazios têm uma marca (* ou \u2020).")
+    ),
+    h4("Portugal, significância e funil"),
+    tags$ul(
+      tags$li("Portugal pode ser o total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos), ou a soma dos 308 municípios, que compara igual com igual. A escolha vale para comparadores, significância, classificação das ULS, funil e perfil."),
+      tags$li("\u25b2 / \u25bc / = : o intervalo de confiança de 95% fica inteiramente acima, abaixo ou inclui o valor de Portugal no mesmo período (critério do PHE Fingertips). Só para indicadores comparáveis com intervalo; não diz se a diferença é boa ou má. Na classificação das ULS: laranja acima, azul abaixo, cinzento sem diferença."),
+      tags$li("Funil: cada unidade contra o tamanho do denominador, com os limites do que o acaso produziria à volta de Portugal (95% e 99,8%), calculados pelos quantis exactos da contagem (Poisson ou binomial, Spiegelhalter 2005). Só para taxas de acontecimentos e proporções de nascimentos."),
+      tags$li("Escolaridade com idade mínima: Censos de 2011 e 2021 por grupo etário (o INE não a publica por idade e município em 1991 e 2001). Com toda a população, as crianças contam como sem nível completo."),
+      tags$li("* junto ao nome de um indicador: nota de método. Ganho médio e sectores [I27, I12] contam no local de trabalho, sem Administração Pública nem trabalhadores por conta própria; a esperança de vida [I10] reproduz o Eurostat e fica 0,8-0,9 anos acima do INE.")
     ),
     h4("Como são calculados"),
     tags$ul(

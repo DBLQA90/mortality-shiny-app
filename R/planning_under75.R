@@ -96,6 +96,8 @@ planning_row_alias <- function(area, members, vintage, lookup) {
   }
   candidates <- unique(REGIONAL_ROW_TERRITORIES$region)
   alias <- NA_character_
+  # Asked for as a municipal sum on purpose: never swap it for INE's row.
+  if (identical(area, PLANNING_PORTUGAL_MUNICIPAL)) candidates <- character(0)
   for (candidate in candidates) {
     if (identical(candidate, area)) next
     if (setequal(members, planning_area_members(candidate, lookup))) {

@@ -60,6 +60,8 @@ write_planning_workbook <- function(path,
                                     focus = NULL,
                                     years = NULL,
                                     include_long = TRUE,
+                                    education_min_age = 0L,
+                                    benchmark = "Portugal",
                                     progress = function(value, detail = NULL) invisible(NULL)) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("The openxlsx package is required to write Excel files.", call. = FALSE)
@@ -69,7 +71,9 @@ write_planning_workbook <- function(path,
   years <- if (is.null(years)) all_years else intersect(as.integer(years), all_years)
 
   progress(0.05, "indicadores")
-  table <- planning_indicator_table(areas$area, years, lookup = lookup) %>%
+  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age) %>%
+    planning_add_significance(benchmark) %>%
+    dplyr::filter(.data$area %in% areas$area) %>%
     dplyr::left_join(areas, by = "area")
 
   wb <- openxlsx::createWorkbook()
@@ -82,6 +86,15 @@ write_planning_workbook <- function(path,
   openxlsx::addWorksheet(wb, "Leia-me")
   readme <- c(
     "Indicadores de apoio aos Planos Locais de Saúde",
+    "",
+    paste0("Portugal de referência (comparadores e significância): ",
+           if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "soma dos 308 municípios, sem os acontecimentos de residência desconhecida." else "total publicado pelo INE, que inclui os acontecimentos de residência desconhecida."),
+    if (education_min_age > 0) paste0("Escolaridade [I24]: população com ", education_min_age, " e mais anos (Censos de 2011 e 2021; o INE não publica a escolaridade por idade e município em 1991 e 2001).") else "Escolaridade [I24]: toda a população, como no ficheiro de apoio.",
+    paste0("Significância face a ", benchmark, " (coluna «Face a Portugal» no Resumo e nos Dados): Superior ou Inferior quando o intervalo de confiança de 95% do local fica inteiramente acima ou abaixo do valor de referência no mesmo período; Semelhante quando o inclui. Só para indicadores com intervalo (taxas, proporções, esperança de vida). Não indica se a diferença é boa ou má."),
+    "",
+    "Notas assinaladas com * junto ao nome do indicador",
+    paste("* Ganho médio e trabalhadores por sector [I27, I12]:", PLANNING_INDICATOR_NOTES[["earnings_mean"]]),
+    paste("* Esperança de vida [I10]:", PLANNING_INDICATOR_NOTES[["life_expectancy"]]),
     "",
     paste0("Dados importados do INE até: ", ifelse(is.na(data_date), "desconhecido", data_date)),
     paste0("Ficheiro gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M")),
@@ -129,15 +142,15 @@ write_planning_workbook <- function(path,
   openxlsx::writeData(wb, "Leia-me", data.frame(x = readme), colNames = FALSE)
   openxlsx::addStyle(wb, "Leia-me", title_style, rows = 1, cols = 1)
   openxlsx::addStyle(wb, "Leia-me", openxlsx::createStyle(textDecoration = "bold"),
-                     rows = which(readme %in% c("Como são calculados", "Marcas (valores a cinzento e itálico)", "Mudanças de série", "Folhas", "Esperança de vida à nascença")), cols = 1, gridExpand = TRUE)
+                     rows = which(readme %in% c("Como são calculados", "Marcas (valores a cinzento e itálico)", "Mudanças de série", "Folhas", "Esperança de vida à nascença", "Notas assinaladas com * junto ao nome do indicador", "Lacunas nos dados do INE")), cols = 1, gridExpand = TRUE)
   openxlsx::setColWidths(wb, "Leia-me", cols = 1, widths = 140)
 
   # --- Summary (selection) ----------------------------------------------------
   if (!is.null(focus)) {
     openxlsx::addWorksheet(wb, "Resumo")
-    summary <- planning_latest_summary(table, areas)
+    summary <- planning_latest_summary(table, areas, education_min_age)
     openxlsx::writeData(wb, "Resumo", summary, headerStyle = header_style)
-    openxlsx::setColWidths(wb, "Resumo", cols = seq_len(ncol(summary)), widths = c(16, 55, 8, 22, 12, rep(18, ncol(summary) - 5)))
+    openxlsx::setColWidths(wb, "Resumo", cols = seq_len(ncol(summary)), widths = c(16, 55, 8, 22, 8, 14, rep(18, ncol(summary) - 6)))
     openxlsx::freezePane(wb, "Resumo", firstRow = TRUE)
   }
 
@@ -166,7 +179,7 @@ write_planning_workbook <- function(path,
     names(wide_values) <- c("Nível", "Local", periods)
 
     openxlsx::addWorksheet(wb, sheet)
-    openxlsx::writeData(wb, sheet, paste0(spec$label, " [", spec$ref, "]"), startRow = 1)
+    openxlsx::writeData(wb, sheet, planning_indicator_label(spec$id, education_min_age), startRow = 1)
     openxlsx::addStyle(wb, sheet, title_style, rows = 1, cols = 1)
     notes <- paste0(
       "Unidade: ", spec$unit,
@@ -174,7 +187,8 @@ write_planning_workbook <- function(path,
       if (!isTRUE(spec$comparable)) " Contagem absoluta: depende do tamanho da área." else "",
       if (any(nzchar(unlist(wide_flags)))) " Valores a cinzento e itálico têm uma marca (ver Leia-me)." else ""
     )
-    breaks <- PLANNING_SERIES_BREAKS$note[PLANNING_SERIES_BREAKS$indicator == spec$id]
+    breaks <- c(PLANNING_SERIES_BREAKS$note[PLANNING_SERIES_BREAKS$indicator == spec$id],
+                if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
     openxlsx::writeData(wb, sheet, paste(c(notes, breaks), collapse = " "), startRow = 2)
     openxlsx::addStyle(wb, sheet, note_style, rows = 2, cols = 1)
     openxlsx::writeData(wb, sheet, wide_values, startRow = 4, headerStyle = header_style)
@@ -222,12 +236,13 @@ write_planning_workbook <- function(path,
         Ano = .data$year,
         `Período` = vapply(seq_along(.data$year), function(k) planning_period_label(.data$indicator[[k]], .data$year[[k]]), character(1)),
         Unidade = .data$unit, Valor = .data$value, `IC 95% inferior` = .data$lower, `IC 95% superior` = .data$upper,
-        Numerador = .data$numerator, Denominador = .data$denominator, Marca = .data$flag
+        Numerador = .data$numerator, Denominador = .data$denominator, Marca = .data$flag,
+        `Face a Portugal` = .data$significance
       )
     openxlsx::addWorksheet(wb, "Dados")
     openxlsx::writeData(wb, "Dados", long, headerStyle = header_style)
     openxlsx::freezePane(wb, "Dados", firstRow = TRUE)
-    openxlsx::setColWidths(wb, "Dados", cols = seq_len(ncol(long)), widths = c(11, 36, 50, 10, 6, 11, 22, 12, 14, 14, 12, 12, 7))
+    openxlsx::setColWidths(wb, "Dados", cols = seq_len(ncol(long)), widths = c(11, 36, 50, 10, 6, 11, 22, 12, 14, 14, 12, 12, 7, 14))
   }
 
   # --- Pyramid ---------------------------------------------------------------------
@@ -293,7 +308,7 @@ write_planning_workbook <- function(path,
 
 # The latest year each indicator has for the focus area, with every area's value
 # in that year side by side. Absolute counts are shown for the local area only.
-planning_latest_summary <- function(table, areas) {
+planning_latest_summary <- function(table, areas, education_min_age = 0L) {
   focus <- areas$area[[1]]
   rows <- lapply(PLANNING_INDICATORS$id, function(id) {
     spec <- planning_indicator_spec(id)
@@ -307,9 +322,10 @@ planning_latest_summary <- function(table, areas) {
       if (length(v) == 0) NA_real_ else round(v[[1]], spec$digits)
     }), paste0(areas$area, " (", areas$level, ")"))
     tibble::as_tibble(c(
-      list(Tema = spec$theme, Indicador = paste0(spec$label, " [", spec$ref, "]"),
+      list(Tema = spec$theme, Indicador = planning_indicator_label(id, education_min_age),
            Unidade = spec$unit, `Período` = planning_period_label(id, year),
-           Marca = values$flag[values$area == focus][[1]]),
+           Marca = values$flag[values$area == focus][[1]],
+           `Face a Portugal` = if ("significance" %in% names(values)) values$significance[values$area == focus][[1]] else NA_character_),
       cells
     ))
   })
@@ -320,6 +336,8 @@ planning_latest_summary <- function(table, areas) {
 planning_full_export_areas <- function(lookup = get_nuts_lookup(), health = get_health_lookup()) {
   levels <- planning_area_levels(lookup, health)
   levels %>%
+    # Portugal both as INE's total and as the sum of its municipalities.
+    dplyr::bind_rows(tibble::tibble(area = PLANNING_PORTUGAL_MUNICIPAL, level = "Portugal")) %>%
     dplyr::mutate(order = match(.data$level, c("Portugal", "NUTS I", "NUTS II", "NUTS III", "ARS", "ULS", "Município"))) %>%
     dplyr::arrange(.data$order) %>%
     dplyr::select(area, level)

@@ -913,3 +913,101 @@ test_that("suppressed employment sectors are estimated from the rest of the NUTS
     expect_true(all(tab$flag == "≈"))
   })
 })
+
+test_that("Portugal as the sum of its municipalities leaves out unknown residence", {
+  with_planning_fixture(function(lookup) {
+    tab <- planning_indicator_table(c("Portugal", PLANNING_PORTUGAL_MUNICIPAL), 2022L, ids = c("deaths", "births"), lookup = lookup)
+    get <- function(area, id) tab$value[tab$area == area & tab$indicator == id]
+    # The fixture's Portugal row carries one death and one birth of unknown residence.
+    expect_equal(get("Portugal", "deaths"), 61)
+    expect_equal(get(PLANNING_PORTUGAL_MUNICIPAL, "deaths"), 60)
+    expect_equal(get(PLANNING_PORTUGAL_MUNICIPAL, "births"), 400)
+    expect_equal(planning_portugal_area("municipal"), PLANNING_PORTUGAL_MUNICIPAL)
+    expect_equal(planning_portugal_area("published"), "Portugal")
+  })
+})
+
+test_that("significance is the benchmark against the whole interval, for comparable indicators only", {
+  expect_equal(planning_significance(c(1, 3, 0.5, NA), c(2, 4, 5, 1), c(2.5, 2.5, 2.5, 2.5)),
+               c("Inferior", "Superior", "Semelhante", NA))
+  table <- tibble::tibble(
+    area = c("Portugal", "A", "Portugal", "A"), indicator = c("death_rate", "death_rate", "deaths", "deaths"),
+    year = 2022L, value = c(10, 12, 1000, 50), lower = c(9.9, 11, 990, 40), upper = c(10.1, 13, 1010, 60)
+  )
+  out <- planning_add_significance(table, "Portugal")
+  expect_equal(out$significance[out$area == "A" & out$indicator == "death_rate"], "Superior")
+  # A count is never compared, however far apart.
+  expect_true(is.na(out$significance[out$area == "A" & out$indicator == "deaths"]))
+  expect_true(all(is.na(out$significance[out$area == "Portugal"])))
+  expect_equal(planning_significance_mark(c("Superior", NA)), c(" ▲", ""))
+})
+
+test_that("funnel limits narrow with size and bracket the benchmark", {
+  n <- c(100, 1000, 100000)
+  p <- planning_funnel_limits(n, 3, "poisson", 1000, 0.95)
+  expect_true(all(p$lower < 3 & p$upper > 3))
+  expect_true(all(diff(p$upper - p$lower) < 0))
+  # Close to the normal approximation for a large expected count (300).
+  expect_equal(p$upper[[3]], 3 + 1.96 * sqrt(300) / 100, tolerance = 0.01)
+  # A zero in a small unit is never significantly low.
+  expect_lte(planning_funnel_limits(500, 3, "poisson", 1000, 0.998)$lower, 0)
+  b <- planning_funnel_limits(n, 10, "binomial", 100, 0.998)
+  expect_true(all(b$lower >= 0 & b$upper <= 100 & b$lower < 10 & b$upper > 10))
+  units <- tibble::tibble(area = c("Portugal", "Big", "Small"), value = c(3, 4.5, 4.5), lower = NA, upper = NA,
+                          flag = "", denominator = c(1e6, 1e5, 500), indicator = "infant_rate")
+  data <- planning_funnel_data(units, planning_indicator_spec("infant_rate"), "Portugal")
+  expect_equal(data$position[data$area == "Big"], "Acima do limite de 99,8%")
+  expect_equal(data$position[data$area == "Small"], "Dentro dos limites")
+  expect_null(planning_funnel_data(units, planning_indicator_spec("ageing_index"), "Portugal"))
+})
+
+test_that("education can be restricted to an age, from the census by age group", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    dir.create(file.path(root, "planning_extra", "census_education_by_age"), recursive = TRUE, showWarnings = FALSE)
+    # Alfa, two groups: under 15 (100, all without a level) and 25-29 (50: 5 none, 45 higher).
+    saveRDS(tibble::tibble(
+      year = 2021L, area = "Alfa", age = c(0L, 0L, 25L, 25L, 25L),
+      category = c("Total", "Nenhum", "Total", "Nenhum", "Superior"), value = c(100, 100, 50, 5, 45), source_indicator = "x"
+    ), file.path(root, "planning_extra", "census_education_by_age", "year_2021.rds"))
+    planning_clear_cache()
+    tab <- planning_indicator_table("Alfa", 2021L, ids = c("pct_education_none", "pct_education_higher"), lookup = lookup, education_min_age = 15L)
+    expect_equal(tab$value[tab$indicator == "pct_education_none"], 10)
+    expect_equal(tab$value[tab$indicator == "pct_education_higher"], 90)
+    all_ages <- planning_indicator_table("Alfa", 2021L, ids = "pct_education_none", lookup = lookup, education_min_age = 25L)
+    expect_equal(all_ages$value, 10)
+    expect_match(planning_indicator_label("pct_education_none", 25L), "25 e mais anos")
+  })
+})
+
+test_that("an area holding both of a joint pair keeps its value when nothing else is split", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    env <- environment(planning_joint_split)
+    old <- get("PLANNING_JOINT_REPORTING", envir = env)
+    on.exit(assign("PLANNING_JOINT_REPORTING", old, envir = env), add = TRUE)
+    assign("PLANNING_JOINT_REPORTING", tibble::tribble(~municipality, ~holder, ~until, ~blocks, "Beta", "Alfa", 2000L, list("waste")), envir = env)
+    dir.create(file.path(root, "planning_extra", "waste_collected"), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(tibble::tibble(year = 2022L, area = c("Alfa", "Beta"), category = "Total", value = c(2700, NA), source_indicator = "x"),
+            file.path(root, "planning_extra", "waste_collected", "year_2022.rds"))
+    planning_clear_cache()
+    # Only Norte is asked for: no split area in the request.
+    tab <- planning_indicator_table("Norte", 2022L, ids = "waste_per_capita", lookup = lookup)
+    expect_equal(tab$value, 2700 * 1000 / 5400)
+  })
+})
+
+test_that("the location profile is a Word document", {
+  skip_if_not_installed("officer")
+  skip_if_not_installed("flextable")
+  with_planning_fixture(function(lookup) {
+    path <- tempfile(fileext = ".docx")
+    on.exit(unlink(path), add = TRUE)
+    areas <- tibble::tibble(area = c("Alfa", "Norte"), level = c("Local", "NUTS II"))
+    write_planning_profile(path, areas, lookup = lookup, vintage = "2024", data_date = "2026-09-21")
+    expect_true(file.exists(path) && file.size(path) > 10000)
+    text <- officer::docx_summary(officer::read_docx(path))$text
+    expect_true(any(grepl("Perfil do local: Alfa", text, fixed = TRUE)))
+    expect_true(any(grepl("Esperança de vida", text, fixed = TRUE)))
+  })
+})

@@ -47,6 +47,7 @@ for (app_file in c(
   "R/planning_under75.R",
   "R/planning_export.R",
   "R/planning_charts.R",
+  "R/planning_profile.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/data_access.R",
@@ -4203,10 +4204,27 @@ server <- function(input, output, session) {
     tryCatch(latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))), error = function(e) NA_character_)
   })
 
+  # The education age restricts I24 everywhere in the tab; the label says so.
+  planning_education_age <- reactive({
+    age <- suppressWarnings(as.integer(input$planning_education_age))
+    if (length(age) == 0 || is.na(age)) 0L else age
+  })
+
   planning_spec <- reactive({
     req(input$planning_indicator)
-    planning_indicator_spec(input$planning_indicator)
+    spec <- planning_indicator_spec(input$planning_indicator)
+    spec$label <- planning_indicator_label(spec$id, planning_education_age(), ref = FALSE, star = FALSE)
+    spec
   })
+
+  # Portugal as INE's published total or as the sum of its municipalities, for
+  # every comparator, the significance marks, the ranking and the funnel.
+  planning_benchmark <- reactive(planning_portugal_area(input$planning_portugal %||% "published"))
+
+  planning_swap_portugal <- function(areas) {
+    areas$area[areas$area == "Portugal"] <- planning_benchmark()
+    areas
+  }
 
   planning_location <- reactive({
     req(input$planning_area)
@@ -4262,10 +4280,10 @@ server <- function(input, output, session) {
     } else {
       character(0)
     }
-    dplyr::bind_rows(
+    planning_swap_portugal(dplyr::bind_rows(
       tibble::tibble(area = local, level = "Local"),
       comparators[comparators$area %in% chosen, c("area", "level")]
-    )
+    ))
   })
 
   planning_year_range <- reactive({
@@ -4281,13 +4299,17 @@ server <- function(input, output, session) {
       "Sem dados de «", spec$label, "» nos anos escolhidos. Disponível: ",
       paste(range(planning_indicator_years(spec$id)), collapse = "-"), "."
     )))
-    planning_indicator_table(areas$area, years, ids = spec$id, lookup = active_nuts_lookup())
+    # The benchmark is computed even when not shown, for the significance marks.
+    benchmark <- planning_benchmark()
+    table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(),
+                                      education_min_age = planning_education_age())
+    planning_add_significance(table, benchmark)
   })
 
   output$planningIndicatorHeader <- renderUI({
     spec <- planning_spec()
     tagList(
-      h4(paste0(spec$label, " [", spec$ref, "]")),
+      h4(planning_indicator_label(spec$id, planning_education_age())),
       helpText(paste0(
         "Unidade: ", spec$unit, ". ",
         if (spec$window > 1) "Cada valor soma três anos e é identificado pelo último. " else "",
@@ -4300,6 +4322,7 @@ server <- function(input, output, session) {
     spec <- planning_spec()
     series <- planning_series()
     validate(need(any(!is.na(series$value)), "Sem valores para este local nos anos escolhidos."))
+    series <- series[series$area %in% planning_areas()$area, , drop = FALSE]
     if (isTRUE(spec$comparable)) {
       planning_trend_chart(series, spec, planning_areas())
     } else {
@@ -4314,11 +4337,13 @@ server <- function(input, output, session) {
     if (any(grepl("\\*", series$flag))) notes <- c(notes, "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.")
     if (any(grepl("\u2020", series$flag))) notes <- c(notes, "\u2020 triénio com anos em que os óbitos com menos de 1 ano por município estão incompletos no INE (1995-2001): valor subestimado.")
     if (any(grepl("\u2021", series$flag))) notes <- c(notes, "\u2021 mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.")
-    if (spec$id %in% life_expectancy_ids) {
-      notes <- c(notes, paste(
-        "Tábua de mortalidade abreviada por triénio (método de Chiang, como o Eurostat e o PHE).",
-        "Fica cerca de 0,8-0,9 anos acima dos valores publicados pelo INE, que usa outra metodologia;",
-        "a ordenação das regiões coincide. Compare valores da aplicação entre si, não com os do INE."
+    if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III.")
+    if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) notes <- c(notes, paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
+    if (spec$id %in% PLANNING_EDUCATION_IDS && planning_education_age() > 0) notes <- c(notes, PLANNING_EDUCATION_NOTE)
+    if (any(!is.na(series$significance))) {
+      notes <- c(notes, paste0(
+        "\u25b2 / \u25bc / = : intervalo de confiança de 95% inteiramente acima, abaixo ou a incluir o valor de ",
+        planning_benchmark(), " no mesmo período (sem juízo sobre qual o sentido desejável)."
       ))
     }
     breaks <- PLANNING_SERIES_BREAKS[PLANNING_SERIES_BREAKS$indicator == spec$id & PLANNING_SERIES_BREAKS$year %in% planning_year_range(), , drop = FALSE]
@@ -4335,23 +4360,38 @@ server <- function(input, output, session) {
   planning_all_indicators <- reactive({
     areas <- planning_areas_all_comparators()
     last <- max(planning_year_range())
-    years <- seq.int(max(1991L, last - 4L), last)
-    planning_indicator_table(areas$area, years, lookup = active_nuts_lookup())
+    # Back to the last census, so the census indicators appear in the summary.
+    years <- seq.int(max(1991L, min(last - 4L, 10L * (last %/% 10L) + 1L)), last)
+    benchmark <- planning_benchmark()
+    table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(),
+                                      education_min_age = planning_education_age())
+    planning_add_significance(table, benchmark)
   })
 
   # The summary shows every checked comparator whatever the indicator in view.
   planning_areas_all_comparators <- reactive({
     comparators <- planning_available_comparators()
     chosen <- intersect(planning_comparator_state$selected, comparators$area)
-    dplyr::bind_rows(
+    planning_swap_portugal(dplyr::bind_rows(
       tibble::tibble(area = planning_location(), level = "Local"),
       comparators[comparators$area %in% chosen, c("area", "level")]
-    )
+    ))
   })
 
   output$planningSummaryTable <- renderTable({
-    planning_summary_display(planning_all_indicators(), planning_areas_all_comparators())
+    planning_summary_display(planning_all_indicators(), planning_areas_all_comparators(), planning_education_age())
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$planningSummaryNotes <- renderUI({
+    table <- planning_all_indicators()
+    shown <- unique(table$indicator[table$area == planning_location() & !is.na(table$value)])
+    notes <- unique(PLANNING_INDICATOR_NOTES[intersect(names(PLANNING_INDICATOR_NOTES), shown)])
+    helpText(HTML(paste(htmltools::htmlEscape(c(
+      paste0("\u25b2 / \u25bc / = : intervalo de confiança de 95% acima, abaixo ou a incluir o valor de ", planning_benchmark(),
+             ". Só para os indicadores com intervalo (taxas, proporções, esperança de vida)."),
+      paste("*", notes)
+    )), collapse = "<br>")))
+  })
 
   planning_ranking_year <- reactive({
     spec <- planning_spec()
@@ -4379,10 +4419,57 @@ server <- function(input, output, session) {
     validate(need(isTRUE(spec$comparable), "Sem comparação para contagens absolutas."))
     year <- planning_ranking_year()
     units <- planning_uls_units()
-    ranking <- planning_indicator_table(c("Portugal", units), year, ids = spec$id, lookup = active_nuts_lookup())
+    benchmark <- planning_benchmark()
+    ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(),
+                                        education_min_age = planning_education_age())
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
-    planning_ranking_chart(ranking, spec, year, highlight = highlight)
+    planning_ranking_chart(ranking, spec, year, highlight = highlight, benchmark_area = benchmark)
+  })
+
+  planning_funnel <- reactive({
+    spec <- planning_spec()
+    model <- PLANNING_FUNNEL_MODELS[PLANNING_FUNNEL_MODELS$id == spec$id, , drop = FALSE]
+    validate(need(nrow(model) == 1, paste0(
+      "O funil aplica-se às taxas de acontecimentos e às proporções de nascimentos, que têm um modelo de contagem ",
+      "(Poisson ou binomial). Escolha, por exemplo, a mortalidade infantil, a natalidade ou os nascimentos pré-termo."
+    )))
+    year <- planning_ranking_year()
+    kind <- input$planning_funnel_units %||% "ULS"
+    lookup <- active_nuts_lookup()
+    units <- if (identical(kind, "ULS")) {
+      planning_uls_units()
+    } else {
+      levels <- planning_area_levels(lookup)
+      levels$area[levels$level == kind]
+    }
+    benchmark <- planning_benchmark()
+    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup)
+    data <- planning_funnel_data(table, spec, benchmark)
+    validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
+    list(data = data, year = year, kind = kind, model = model)
+  })
+
+  output$planningFunnelNote <- renderUI({
+    funnel <- planning_funnel()
+    counts <- table(funnel$data$position)
+    outside <- sum(counts[names(counts) != "Dentro dos limites"])
+    helpText(paste0(
+      "Cada ponto é uma unidade (", nrow(funnel$data), ") em ", planning_period_label(planning_spec()$id, funnel$year),
+      ": o valor contra a dimensão do denominador. As linhas marcam o que uma unidade desse tamanho mostraria só por acaso ",
+      "à volta de ", planning_benchmark(), " (95%: tracejado; 99,8%: pontilhado). Fora dos limites: ", outside,
+      ". Com 20 unidades, uma fora do limite de 95% é esperada por acaso; fora do de 99,8%, quase nunca. ",
+      "Contorno escuro: o local e a sua ULS.",
+      if (planning_spec()$id %in% c("birth_rate", "death_rate")) " As taxas brutas dependem da estrutura etária: uma população mais velha tem mais óbitos e menos nascimentos, e a dispersão no funil reflecte sobretudo isso." else ""
+    ))
+  })
+
+  output$planningFunnelPlot <- plotly::renderPlotly({
+    funnel <- planning_funnel()
+    local <- planning_location()
+    highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level %in% c("ULS", funnel$kind)])
+    planning_funnel_chart(funnel$data, planning_spec(), funnel$year, planning_benchmark(), highlight = highlight,
+                          denominator_label = funnel$model$denominator_label)
   })
 
   planning_pyramid_year <- reactive({
@@ -4399,7 +4486,7 @@ server <- function(input, output, session) {
     own <- planning_pyramid(local, year, lookup)
     validate(need(nrow(own) > 0, "Sem população para este local."))
     comparators <- planning_areas_all_comparators()
-    comparator <- if (nrow(comparators) > 1) comparators$area[[2]] else if (!identical(local, "Portugal")) "Portugal" else NULL
+    comparator <- if (nrow(comparators) > 1) comparators$area[[2]] else if (!identical(local, "Portugal")) planning_benchmark() else NULL
     other <- if (is.null(comparator)) NULL else planning_pyramid(comparator, year, lookup)
     planning_pyramid_chart(own, other, paste0(local, " ", year), if (is.null(comparator)) NULL else paste0(comparator, " ", year))
   })
@@ -4475,6 +4562,24 @@ server <- function(input, output, session) {
           file, areas,
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           focus = planning_location(), years = planning_year_range(),
+          education_min_age = planning_education_age(), benchmark = planning_benchmark(),
+          progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
+        )
+      })
+    }
+  )
+
+  output$downloadPlanningProfile <- downloadHandler(
+    filename = function() {
+      paste0("perfil_", gsub("[^A-Za-z0-9]+", "_", iconv(planning_location(), to = "ASCII//TRANSLIT")), "_", Sys.Date(), ".docx")
+    },
+    content = function(file) {
+      shiny::withProgress(message = "A preparar o perfil...", value = 0, {
+        write_planning_profile(
+          file, planning_areas_all_comparators(),
+          lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
+          benchmark = planning_benchmark(), education_min_age = planning_education_age(),
+          last_year = max(planning_year_range()),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
       })

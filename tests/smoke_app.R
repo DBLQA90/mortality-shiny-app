@@ -177,4 +177,28 @@ testServer(app, {
   session$setInputs(planning_area = "ULS Guarda", planning_indicator = "ageing_index", planning_years = c(2020, 2025))
   ranking <- tryCatch(output$planningRankingPlot, error = function(e) e)
   cat("   ULS ranking chart:", if (inherits(ranking, "error")) conditionMessage(ranking) else "OK", "\n")
+
+  # Portugal as the municipal sum replaces the published row everywhere.
+  session$setInputs(planning_area = "Matosinhos", planning_indicator = "infant_rate", planning_years = c(2015, 2025),
+                    planning_portugal = "municipal")
+  session$setInputs(planning_comparators = planning_available_comparators()$area)
+  shown <- planning_areas()$area
+  cat("   municipal Portugal in comparators:", "Portugal (soma dos municípios)" %in% shown && !"Portugal" %in% shown, "\n")
+  series <- tryCatch(planning_series(), error = function(e) e)
+  cat("   significance marks:", if (inherits(series, "error")) conditionMessage(series) else paste(names(table(series$significance)), table(series$significance), sep = "=", collapse = " "), "\n")
+  funnel <- tryCatch(output$planningFunnelPlot, error = function(e) e)
+  cat("   funnel (ULS):", if (inherits(funnel, "error")) conditionMessage(funnel) else "OK", "\n")
+  session$setInputs(planning_funnel_units = "Município")
+  funnel <- tryCatch(planning_funnel(), error = function(e) e)
+  cat("   funnel (municipalities):", if (inherits(funnel, "error")) conditionMessage(funnel) else paste(nrow(funnel$data), "points"), "\n")
+  session$setInputs(planning_indicator = "ageing_index")
+  funnel <- tryCatch(planning_funnel(), error = function(e) e)
+  cat("   funnel for an index refuses:", inherits(funnel, "error"), "\n")
+  session$setInputs(planning_indicator = "pct_education_none", planning_education_age = "25")
+  header <- tryCatch(output$planningIndicatorHeader, error = function(e) e)
+  cat("   education header:", if (inherits(header, "error")) conditionMessage(header) else grepl("25 e mais anos", as.character(header$html)), "\n")
+  summary <- tryCatch(output$planningSummaryTable, error = function(e) e)
+  cat("   summary table:", if (inherits(summary, "error")) conditionMessage(summary) else "OK", "\n")
+  profile <- tryCatch(output$downloadPlanningProfile, error = function(e) e)
+  cat("   profile download:", if (inherits(profile, "error")) conditionMessage(profile) else if (file.exists(profile)) paste(file.size(profile), "bytes") else "missing", "\n")
 }, session = MockShinySession$new())
