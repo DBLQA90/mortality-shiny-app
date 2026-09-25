@@ -1183,16 +1183,29 @@ and all causes, by sex.
 
 Deaths by age and cause per municipality are incomplete at INE (97.9% of
 circulatory deaths in the municipal bands in 2023; 65% of suicides in 2014),
-while the national row and the municipal all-ages totals are complete. Each
-municipality and cause is completed to its total (death_totals), and the
-missing deaths are spread with the national gap profile - Portugal's row by age
-less the municipal sum - rather than the municipality's own profile. The gap is
-concentrated at young ages (INE suppresses small cells), and the own-profile
-version read 2012-2014 premature mortality of the municipal sum at 338.8
-against Portugal's 350.5; with the gap profile the two agree (350.5), and Norte
-2022-2024 deaths under 75 reproduce INE's regional row exactly (33,155).
-Alentejo 2014-2016 is 2% off INE's composed row. Values with more than 2% of
-their deaths spread carry `‡`. The regional rows INE publishes by age could
+while the national row and the municipal all-ages totals are complete.
+`planning_complete_by_age()` (shared by the standardised module and the life
+table) fills the gap against both margins at once: what each municipality is
+missing, and in which age bands the country is missing deaths. The missing
+deaths start where the municipality's own population puts them (its population
+by age at the national age-specific rates, less what it records) and are then
+fitted to both margins by twenty proportional passes.
+
+Each margin alone fails. The municipality's own recorded profile made the
+municipal sum read 338.8 for 2012-2014 premature mortality against Portugal's
+350.5. The national gap profile, which INE's suppression of small cells skews
+young, gave Alvito 19 deaths under 5 in 1997 - a rate 40 times the national one
+- and pushed its standardised rate above its own crude rate. Fitted to both, the
+municipal sum reproduces Portugal (350.48 against 350.49), Norte's deaths under
+75 reproduce INE's regional row exactly (33,155), and Alvito's childhood rate is
+no longer absurd.
+
+Values with more than 2% of their deaths spread carry `‡`; above 25% life
+expectancy and the standardised indicators are withheld, because the age
+distribution would be more assumption than measurement (1.6% of municipal
+triennia, nearly all before 1999 and around 2014; municipal life expectancy
+then ranges 65.1-85.5 rather than 56.4-86.4). The counts themselves, which do
+not depend on the ages, are kept. The regional rows INE publishes by age could
 replace the municipal sums for NUTS areas; not done yet.
 
 ### Primary care from the SNS Transparency portal

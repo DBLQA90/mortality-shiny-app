@@ -1033,7 +1033,7 @@ planning_method_notes <- function() {
       tags$li("Taxas padronizadas: População Padrão Europeia de 2013, por 100.000 habitantes; intervalo de Dobson. Prematura: antes dos 75 anos."),
       tags$li("Evitável por prevenção e por cuidados de saúde: listas Eurostat/OCDE de 2019 adaptadas à lista sucinta do INE, antes dos 75 anos. É um limite inferior: seis causas (cerca de 18% dos óbitos antes dos 75) ficam de fora."),
       tags$li("Anos potenciais de vida perdidos: anos que faltavam até aos 70 em cada óbito, por 100.000 residentes com menos de 70 anos."),
-      tags$li("Os óbitos por idade e causa de cada município estão incompletos no INE; são completados até ao total de todas as idades, e os que faltam distribuídos pelas idades com o perfil dos que faltam no país, de modo que a soma dos municípios reproduz Portugal por idade. \u2021 quando mais de 2% foram redistribuídos.")
+      tags$li("Os óbitos por idade e causa de cada município estão incompletos no INE; são completados até ao total de todas as idades. Os que faltam são colocados onde a população do próprio município os torna prováveis (população por idade às taxas nacionais) e depois ajustados para que a soma dos municípios reproduza também as idades em falta no país. \u2021 quando mais de 2% foram redistribuídos; acima de 25%, a esperança de vida e as taxas padronizadas não são apresentadas.")
     ),
     h4("Cuidados de saúde primários e mortalidade semanal"),
     tags$ul(

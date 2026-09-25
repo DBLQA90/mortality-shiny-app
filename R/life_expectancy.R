@@ -183,16 +183,12 @@ life_year_block <- function(year, municipalities) {
       total[rows$area] <- rows$deaths
     }
     recorded_sum <- rowSums(recorded)
-    national_profile <- recorded["Portugal", ] / max(sum(recorded["Portugal", ]), 1)
-
-    # Spread each area's unrecorded deaths over ages in proportion to its
-    # recorded ones (the national profile when none were recorded).
-    missing <- pmax(ifelse(is.na(total), recorded_sum, total) - recorded_sum, 0)
-    profile <- recorded / ifelse(recorded_sum > 0, recorded_sum, 1)
-    if (any(recorded_sum == 0)) {
-      profile[recorded_sum == 0, ] <- matrix(national_profile, nrow = sum(recorded_sum == 0), ncol = length(bands), byrow = TRUE)
-    }
-    completed <- recorded + profile * missing
+    # Deaths without a published age, spread over the ages where the
+    # municipality's own population and the country's missing ages both put
+    # them; see planning_complete_by_age() in R/planning_standardised.R.
+    filled <- planning_complete_by_age(recorded, population, total, labels)
+    completed <- filled$deaths
+    missing <- filled$spread
 
     infant_deaths <- stats::setNames(rep(0, length(labels)), labels)
     if (!is.null(infant)) {
@@ -283,6 +279,12 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
         reason <- vapply(tables, `[[`, character(1), "reason")
         too_wide <- !is.na(se) & z * se > 10
         reason[too_wide] <- "intervalo de confiança superior a 20 anos"
+        # Where most deaths have no published age the life table would be
+        # mostly assumption: municipalities before 1999 and around 2014.
+        spread_share <- ifelse(total_deaths > 0, spread / total_deaths, 0)
+        withheld <- spread_share > PLANNING_SPREAD_SUPPRESS
+        reason[withheld] <- "mais de 25% dos óbitos do triénio sem idade publicada por município"
+        value[withheld] <- NA_real_
         value[too_wide | !is.finite(value)] <- NA_real_
         # Deaths up to 1998 sit with the parent of Odivelas, Trofa and Vizela.
         joint <- Reduce(`|`, lapply(window, function(y) planning_joint_split(membership, y, "deaths")))
@@ -297,7 +299,7 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
           upper = ifelse(is.na(value), NA_real_, value + z * se),
           numerator = unname(total_deaths),
           denominator = unname(rowSums(person_years)),
-          flag = unname(ifelse(total_deaths > 0 & spread / total_deaths > LIFE_REDISTRIBUTED_FLAG, "‡", "")),
+          flag = unname(ifelse(!is.na(value) & total_deaths > 0 & spread / total_deaths > LIFE_REDISTRIBUTED_FLAG, "‡", "")),
           reason = reason
         )
       }

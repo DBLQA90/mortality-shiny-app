@@ -526,9 +526,11 @@ test_that("life expectancy for areas pools three years and spreads unrecorded ag
       deaths <- pop %>%
         dplyr::mutate(cause = "Todas as causas de morte", deaths = pop * 2 * rates[match(age_band, age_levels)]) %>%
         dplyr::select(year, area, sex, cause, age_band, deaths)
-      # Beta publishes no ages at all in 2021: its deaths come only as a total.
+      # Beta publishes half its 2021 deaths without an age (a sixth of the
+      # triennium's, under the quarter that withholds the value).
       recorded <- deaths
-      recorded$deaths[recorded$area == "Beta" & recorded$year == 2021] <- 0
+      recorded$deaths[recorded$area == "Beta" & recorded$year == 2021] <-
+        recorded$deaths[recorded$area == "Beta" & recorded$year == 2021] / 2
       dir <- file.path(root, "deaths", "0008206", paste0("year_", year))
       dir.create(dir, recursive = TRUE, showWarnings = FALSE)
       saveRDS(recorded, file.path(dir, "cause_todas_as_causas_de_morte.rds"))
@@ -548,7 +550,8 @@ test_that("life expectancy for areas pools three years and spreads unrecorded ag
     # Same age-specific rates everywhere, so the same life expectancy.
     hm <- table[table$indicator == "life_expectancy", ]
     expect_equal(hm$value[hm$area == "Alfa"], hm$value[hm$area == "Norte"], tolerance = 1e-6)
-    # Beta's unrecorded 2021 ages were spread back: its value matches too, and is flagged.
+    # Beta's unrecorded 2021 ages were spread back over the ages its own
+    # population and the national gap imply: its value matches too, and is flagged.
     expect_equal(hm$value[hm$area == "Beta"], hm$value[hm$area == "Alfa"], tolerance = 1e-6)
     expect_equal(hm$flag[hm$area == "Beta"], "‡")
     expect_equal(hm$flag[hm$area == "Alfa"], "")
@@ -1223,4 +1226,43 @@ test_that("the six ULS that share a municipality read whole or by parish weights
     got <- planning_indicator_table(unit, year, ids = "deaths", lookup = lookup, mode = "parish")$value
     expect_equal(got, own + whole)
   }
+})
+
+test_that("life expectancy and standardised rates are withheld where most deaths have no age", {
+  with_planning_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    rates <- c(0.001, 0.0001, 0.0001, 0.0002, 0.0004, 0.0005, 0.0006, 0.0008, 0.001, 0.0015,
+               0.0025, 0.004, 0.006, 0.01, 0.016, 0.028, 0.05, 0.14)
+    for (year in 2020:2022) {
+      pop <- readRDS(file.path(root, "population", paste0("year_", year, ".rds")))
+      pop$pop <- pop$pop * 10
+      saveRDS(pop, file.path(root, "population", paste0("year_", year, ".rds")))
+      pop <- pop[pop$area %in% c("Alfa", "Beta", "Portugal"), ]
+      deaths <- pop %>%
+        dplyr::mutate(cause = "Todas as causas de morte", deaths = pop * 2 * rates[match(age_band, age_levels)]) %>%
+        dplyr::select(year, area, sex, cause, age_band, deaths)
+      # Beta publishes no ages at all in 2021 and 2022: two thirds of the
+      # triennium, far beyond the quarter the rule allows.
+      recorded <- deaths
+      recorded$deaths[recorded$area == "Beta" & recorded$year %in% c(2021, 2022)] <- 0
+      dir <- file.path(root, "deaths", "0008206", paste0("year_", year))
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      saveRDS(recorded, file.path(dir, "cause_todas_as_causas_de_morte.rds"))
+      totals <- deaths %>%
+        dplyr::group_by(year, area, sex, cause) %>%
+        dplyr::summarise(deaths = sum(deaths), .groups = "drop") %>%
+        dplyr::mutate(source_indicator = "0008206")
+      saveRDS(totals, file.path(root, "death_totals", "0008206", paste0("year_", year, ".rds")))
+    }
+    planning_clear_cache()
+
+    table <- planning_indicator_table(c("Alfa", "Beta"), 2022L, ids = c("life_expectancy", "dsr_all", "deaths"), lookup = lookup)
+    got <- function(area, id) table$value[table$area == area & table$indicator == id]
+    expect_true(is.finite(got("Alfa", "life_expectancy")))
+    expect_true(is.na(got("Beta", "life_expectancy")))
+    expect_true(is.na(got("Beta", "dsr_all")))
+    # The count itself does not depend on the ages, so it stays.
+    expect_true(is.finite(got("Beta", "deaths")))
+    expect_equal(table$flag[table$area == "Beta" & table$indicator == "life_expectancy"], "")
+  })
 })

@@ -51,7 +51,60 @@ STANDARDISED_INDICATORS <- tibble::tribble(
 standardised_ids <- STANDARDISED_INDICATORS$id
 
 PLANNING_YPLL_CUTOFF <- 70
+# Deaths without a published age: flagged above 2%, and withheld above 25%,
+# where the age distribution would be more assumption than measurement (1.6%
+# of municipal triennia, nearly all before 1999 and around 2014).
 PLANNING_SPREAD_FLAG <- 0.02
+PLANNING_SPREAD_SUPPRESS <- 0.25
+
+# Fill in the deaths a municipality has without a published age.
+#
+# Two things are known and both must hold. Each municipality knows how many
+# deaths it is missing (its complete all-ages total less what its bands hold),
+# and the country knows in which age bands they are missing (the national row
+# by age less the sum of the municipal rows). Neither margin alone gives a
+# usable answer: each municipality's own recorded profile reproduces neither
+# (2012-2014 premature mortality of the municipal sum read 338.8 against
+# Portugal's 350.5), and the national gap profile, which INE's suppression of
+# small cells skews young, gave Alvito 19 deaths under 5 in 1997 - a rate 40
+# times the national one. So the missing deaths start where the municipality's
+# own population makes them likely (its population by age at the national
+# age-specific rates, less what it records) and are then fitted to both
+# margins by a few proportional passes.
+planning_complete_by_age <- function(recorded, population, total, labels, iterations = 20L) {
+  bands <- colnames(recorded)
+  recorded_sum <- rowSums(recorded)
+  missing <- pmax(ifelse(is.na(total), recorded_sum, total) - recorded_sum, 0)
+  municipal <- !labels %in% planning_published_areas
+  national <- recorded["Portugal", ]
+  gap <- pmax(national - colSums(recorded[municipal, , drop = FALSE]), 0)
+  national_rate <- ifelse(population["Portugal", ] > 0, national / population["Portugal", ], 0)
+  fallback <- if (sum(gap) > 0) gap / sum(gap) else if (sum(national) > 0) national / sum(national) else rep(1 / length(bands), length(bands))
+
+  expected <- population * matrix(national_rate, length(labels), length(bands), byrow = TRUE)
+  deficit <- pmax(expected - recorded, 0)
+  deficit_sum <- rowSums(deficit)
+  profile <- deficit / ifelse(deficit_sum > 0, deficit_sum, 1)
+  if (any(deficit_sum <= 0)) profile[deficit_sum <= 0, ] <- matrix(fallback, sum(deficit_sum <= 0), length(bands), byrow = TRUE)
+
+  allocation <- profile[municipal, , drop = FALSE] * missing[municipal]
+  target_bands <- if (sum(gap) > 0) gap / sum(gap) * sum(missing[municipal]) else NULL
+  if (!is.null(target_bands) && sum(allocation) > 0) {
+    for (pass in seq_len(iterations)) {
+      columns <- colSums(allocation)
+      allocation <- allocation * matrix(ifelse(columns > 0, target_bands / columns, 1), nrow(allocation), length(bands), byrow = TRUE)
+      rows_now <- rowSums(allocation)
+      allocation <- allocation * ifelse(rows_now > 0, missing[municipal] / rows_now, 1)
+    }
+  }
+  completed <- recorded
+  completed[municipal, ] <- recorded[municipal, , drop = FALSE] + allocation
+  # The published rows are complete by age; top them up proportionally if not.
+  published <- which(!municipal)
+  own <- recorded[published, , drop = FALSE] / pmax(recorded_sum[published], 1)
+  completed[published, ] <- recorded[published, , drop = FALSE] + own * missing[published]
+  list(deaths = completed, spread = missing)
+}
 
 planning_death_cause_file <- function(year, cause) {
   for (indicator in c("0013166", "0008206")) {
@@ -107,6 +160,7 @@ planning_cause_age_block <- function(year, municipalities) {
   }
 
   by_sex <- lapply(c("HM", "H", "M"), function(sex) {
+    population <- matrix_of(pop, "pop", sex)
     complete_cause <- function(cause) {
       recorded <- matrix_of(frames[[cause]], "deaths", sex)
       total <- stats::setNames(rep(NA_real_, length(labels)), labels)
@@ -114,26 +168,7 @@ planning_cause_age_block <- function(year, municipalities) {
         rows <- totals[totals$sex == sex & totals$cause == cause & totals$area %in% labels, , drop = FALSE]
         total[rows$area] <- rows$deaths
       }
-      recorded_sum <- rowSums(recorded)
-      missing <- pmax(ifelse(is.na(total), recorded_sum, total) - recorded_sum, 0)
-      # The missing deaths are not a proportional sample: INE leaves out small
-      # cells, mostly at young ages. Their age profile is known, though - the
-      # national row by age less the sum of the municipal rows - and spreading
-      # with it makes the municipal sum reproduce Portugal's row by age. (With
-      # each municipality's own profile, 2012-2014 premature mortality of the
-      # municipal sum read 338.8 against Portugal's 350.5.)
-      municipal <- !labels %in% planning_published_areas
-      gap <- pmax(recorded["Portugal", ] - colSums(recorded[municipal, , drop = FALSE]), 0)
-      national <- recorded["Portugal", ]
-      profile_missing <- if (sum(gap) > 0) gap / sum(gap) else if (sum(national) > 0) national / sum(national) else rep(1 / length(bands), length(bands))
-      completed <- recorded
-      completed[municipal, ] <- recorded[municipal, , drop = FALSE] +
-        outer(missing[municipal], profile_missing)
-      # The published rows are complete by age; top them up proportionally if not.
-      published <- which(!municipal)
-      own <- recorded[published, , drop = FALSE] / pmax(recorded_sum[published], 1)
-      completed[published, ] <- recorded[published, , drop = FALSE] + own * missing[published]
-      list(deaths = completed, spread = missing)
+      planning_complete_by_age(recorded, population, total, labels)
     }
     completed <- lapply(stats::setNames(causes, causes), complete_cause)
     deaths <- array(0, c(length(labels), length(bands), length(measures) + 1L),
@@ -157,7 +192,7 @@ planning_cause_age_block <- function(year, municipalities) {
         infant_deaths[intersect(names(agg), labels)] <- agg[intersect(names(agg), labels)]
       }
     }
-    list(deaths = deaths, spread = spread, population = matrix_of(pop, "pop", sex), infant = infant_deaths,
+    list(deaths = deaths, spread = spread, population = population, infant = infant_deaths,
          has_row = rowSums(matrix_of(frames[[planning_all_causes]], "deaths", sex)) > 0)
   })
   names(by_sex) <- c("HM", "H", "M")
@@ -299,6 +334,9 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
         spread_share <- pool$spread[idx, if (spec$measure %in% colnames(pool$spread)) spec$measure else "all"] /
           pmax(rowSums(d)[idx], 1)
         flag <- ifelse(is.finite(value) & spread_share > PLANNING_SPREAD_FLAG, "‡", "")
+        withheld <- !is.na(spread_share) & spread_share > PLANNING_SPREAD_SUPPRESS
+        value[withheld] <- lower[withheld] <- upper_ci[withheld] <- NA_real_
+        flag[withheld] <- ""
         joint <- pool$joint[idx]
         value[joint] <- lower[joint] <- upper_ci[joint] <- NA_real_
       }
@@ -334,6 +372,7 @@ planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_looku
     all_ages <- planning_dsr(d, py)
     under75 <- planning_dsr(d, py, upper <= 75)
     spread_share <- pool$spread[, m] / pmax(observed, 1)
+    withheld <- !is.na(spread_share[idx]) & spread_share[idx] > PLANNING_SPREAD_SUPPRESS
     out <- tibble::tibble(
       area = areas, code = m, group = unname(labels[[m]]), period = paste0(end_year - 2L, "-", end_year), end_year = as.integer(end_year),
       observed = unname(observed[idx]), expected = unname(expected[idx]),
@@ -342,8 +381,9 @@ planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_looku
       smr_upper = ifelse(expected > 0, ci$upper / expected * 100, NA_real_)[idx],
       dsr = all_ages$value[idx], dsr_lower = all_ages$lower[idx], dsr_upper = all_ages$upper[idx],
       dsr75 = under75$value[idx], dsr75_lower = under75$lower[idx], dsr75_upper = under75$upper[idx],
-      flag = ifelse(spread_share[idx] > PLANNING_SPREAD_FLAG, "‡", "")
+      flag = ifelse(spread_share[idx] > PLANNING_SPREAD_FLAG & !withheld, "‡", "")
     )
+    out[withheld, setdiff(names(out), c("area", "code", "group", "period", "end_year", "flag"))] <- NA_real_
     joint <- pool$joint[idx]
     out[joint, setdiff(names(out), c("area", "code", "group", "period", "end_year", "flag"))] <- NA_real_
     out$significance <- planning_significance(out$smr_lower, out$smr_upper, rep(100, nrow(out)))

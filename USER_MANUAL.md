@@ -1108,6 +1108,12 @@ causas e para todas as causas, os óbitos observados e esperados, a SMR com o
 seu intervalo e as taxas padronizadas (todas as idades e antes dos 75), para
 ambos os sexos, homens ou mulheres.
 
+**Quando o valor não é apresentado.** Se mais de um quarto dos óbitos do
+triénio não tiver idade publicada, a esperança de vida e as taxas padronizadas
+não são mostradas: seriam mais suposição do que medida. Acontece em cerca de
+1,6% dos triénios municipais, quase todos antes de 1999 e à volta de 2014. As
+contagens, que não dependem da idade, mantêm-se.
+
 **Como se lidam os óbitos sem idade.** O INE publica os óbitos por idade e causa
 de cada município incompletos: em 2023 os grupos etários municipais têm 97,9%
 dos óbitos por doenças do aparelho circulatório, e em 2014 só 65% dos
