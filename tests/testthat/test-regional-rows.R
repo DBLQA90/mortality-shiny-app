@@ -268,3 +268,81 @@ test_that("standalone municipalities are flagged, regions are not", {
   expect_null(municipal_age_detail_warning("Beja", lk, "Todas as causas de morte", 2019))
   expect_null(municipal_age_detail_warning(c("Norte", "Portugal"), lk, "C1", 2014))
 })
+
+# --- INE's regional rows inside the standardised module -------------------
+
+# A snapshot root holding both the regional rows and one municipal death file,
+# which is what tells planning_death_indicator() which edition a year is on.
+with_regional_snapshot <- function(rows, year, indicator, code) {
+  root <- tempfile("rrs")
+  dir.create(file.path(root, "regional_deaths", indicator), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(rows, file.path(root, "regional_deaths", indicator, paste0("year_", year, ".rds")))
+  dir.create(file.path(root, "deaths", indicator, paste0("year_", year)), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(rr_frame(year, planning_all_causes),
+          file.path(root, "deaths", indicator, paste0("year_", year), "cause_todas_as_causas_de_morte.rds"))
+  rm(list = ls(.regional_rows_cache), envir = .regional_rows_cache)
+  rm(list = ls(planning_cache), envir = planning_cache)
+  on.exit(rm(list = ls(planning_cache), envir = planning_cache), add = TRUE)
+  withr::with_envvar(c(MORTALITY_SNAPSHOT_DIR = root), code)
+}
+
+# Deaths by band and measure for a handful of municipalities, in the shape
+# planning_cause_age_block() returns.
+rr_block <- function(municipalities, per_band = 1) {
+  measures <- c(names(planning_standardised_measures()), "avoidable")
+  deaths <- array(0, c(length(municipalities), length(age_levels), length(measures)),
+                  dimnames = list(municipalities, age_levels, measures))
+  deaths[, c("0 - 4 anos", "60 - 64 anos"), "all"] <- per_band
+  list(deaths = deaths)
+}
+
+test_that("the NUTS vintage is recovered from the lookup itself", {
+  skip_if_not(file.exists("../../data/nuts_lookup_2013.rds"), "lookups not built")
+  expect_equal(planning_lookup_vintage(get_nuts_lookup("2024")), "2024")
+  expect_equal(planning_lookup_vintage(get_nuts_lookup("2013")), "2013")
+})
+
+test_that("a region's own rows replace the sum of its municipalities", {
+  year <- 2014L
+  plan <- regional_row_plan("Centro", "2024", year)
+  ovt <- regional_row_plan("Oeste e Vale do Tejo", "2024", year)
+  codes <- split_list(plan$codes)
+  rows <- dplyr::bind_rows(lapply(union(codes, split_list(ovt$codes)), function(code)
+    regional(year, code, cause = planning_all_causes, deaths = 10)))
+
+  with_regional_snapshot(rows, year, plan$indicator, {
+    block <- rr_block(c("Sertã", "Vila de Rei"), per_band = 3)
+    total <- planning_regional_area_deaths("Centro", year, "HM", block, "2024")
+    # Every code in the plan, plus the two municipalities it has to add.
+    expect_equal(unname(total["0 - 4 anos", "all"]), 10 * length(codes) + 6)
+    expect_equal(unname(total["30 - 34 anos", "all"]), 0)
+    # Measures with no rows of their own stay at zero rather than going missing.
+    expect_equal(unname(total["0 - 4 anos", "preventable"]), 0)
+
+    # Oeste e Vale do Tejo takes the same two municipalities away.
+    expect_equal(
+      unname(planning_regional_area_deaths("Oeste e Vale do Tejo", year, "HM", block, "2024")["0 - 4 anos", "all"]),
+      10 * length(split_list(ovt$codes)) - 6
+    )
+
+    # Life expectancy asks for the all-cause vector from its own matrix.
+    life_block <- list(deaths = rr_block(c("Sertã", "Vila de Rei"), per_band = 3)$deaths[, , "all"])
+    expect_equal(unname(planning_regional_area_deaths("Centro", year, "HM", life_block, "2024", measure = "all")[["0 - 4 anos"]]),
+                 10 * length(codes) + 6)
+
+    # Portugal and Continente keep their published rows; a municipality has none.
+    expect_null(planning_regional_area_deaths("Portugal", year, "HM", block, "2024"))
+    expect_null(planning_regional_area_deaths("Beja", year, "HM", block, "2024"))
+  })
+})
+
+test_that("rows from another edition than the year's deaths are not used", {
+  year <- 2014L
+  plan <- regional_row_plan("Norte", "2024", year)
+  rows <- regional(year, "11", cause = planning_all_causes, deaths = 10)
+  # The year's municipal deaths are on 0013166, the plan on 0008206: no substitution.
+  with_regional_snapshot(rows, year, "0013166", {
+    expect_equal(plan$indicator, "0008206")
+    expect_null(planning_regional_area_deaths("Norte", year, "HM", rr_block("Braga"), "2024"))
+  })
+})

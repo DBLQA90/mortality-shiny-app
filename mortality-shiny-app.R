@@ -4590,7 +4590,7 @@ server <- function(input, output, session) {
         "observados com os que o local teria com as taxas por idade de ", view$benchmark, " no mesmo triénio (", view$benchmark, " = 100). ",
         "Ponto cheio: o local, laranja acima e azul abaixo de ", view$benchmark, " com significância, cinzento sem diferença; círculos: os comparadores. Escala logarítmica, para que 50 e 200 fiquem à mesma distância de 100."
       ),
-      "Taxas padronizadas: População Padrão Europeia de 2013, por 100.000 habitantes; a de menos de 75 anos é a mortalidade prematura. \u2021 mais de 2% dos óbitos sem idade publicada por município foram redistribuídos."
+      "Taxas padronizadas: População Padrão Europeia de 2013, por 100.000 habitantes; a de menos de 75 anos é a mortalidade prematura. \u2021 mais de 2% dos óbitos sem idade publicada por município foram redistribuídos; as regiões usam as linhas por idade do próprio INE."
     )), collapse = "<br>")))
   })
 

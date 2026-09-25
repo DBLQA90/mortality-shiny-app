@@ -207,7 +207,8 @@ life_year_block <- function(year, municipalities) {
 }
 
 # Life expectancy for `areas` over the triennia ending in `end_years`, by sex.
-planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
+planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup(),
+                                           mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup)) {
   wanted <- LIFE_INDICATORS[LIFE_INDICATORS$id %in% ids, , drop = FALSE]
   sexes <- unique(wanted$sex)
   # 0/1 here: the parish weights are applied per age band below, and applying
@@ -247,7 +248,15 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
           }
           summed
         }
-        deaths <- deaths + sum_areas(block$deaths, block$has_row, target = planning_parish_weights(areas, municipalities, "mortality", mode, window[[j]]))
+        # Where INE publishes the area's own rows by age, they replace the sum
+        # of its municipalities: the bands of a regional row add up to its
+        # total, so none of its deaths has to be spread over ages.
+        from_rows <- stats::setNames(lapply(areas, function(area) {
+          planning_regional_area_deaths(area, window[[j]], sex, block, vintage, lookup, measure = "all")
+        }), areas)
+        summed <- sum_areas(block$deaths, block$has_row, target = planning_parish_weights(areas, municipalities, "mortality", mode, window[[j]]))
+        for (area in areas) if (!is.null(from_rows[[area]])) summed[match(area, areas), ] <- from_rows[[area]]
+        deaths <- deaths + summed
         mid <- (block$population + before$population) / 2
         person_years <- person_years + sum_areas(mid, block$has_population & before$has_population)
         spread_vec <- planning_weighted_sum(membership, block$spread, "mortality", mode, window[[j]])
@@ -257,6 +266,7 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
           if (isTRUE(block$has_row[[area]])) spread_vec[i] <- block$spread[[area]]
           if (block$infant[[area]] > 0) infant_vec[i] <- block$infant[[area]]
         }
+        for (area in areas) if (!is.null(from_rows[[area]])) spread_vec[match(area, areas)] <- 0
         spread <- spread + spread_vec
         infant <- infant + infant_vec
       }
