@@ -368,7 +368,13 @@ planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark,
   units <- planning_uls_units("units")
   # The smallest ULS holding every municipality of the location (a ULS with
   # the same municipalities is not offered as a comparator, but ranks here).
+  # A municipality divided between ULS takes the exact group instead of an
+  # arbitrary one of them.
   members <- planning_area_members(local, lookup)
+  parishes <- planning_parish_lookup()
+  if (!is.null(parishes) && any(members %in% parishes$municipality)) {
+    units <- planning_uls_units("groups")
+  }
   holding <- Filter(function(u) all(members %in% planning_area_members(u, lookup)), units)
   if (length(holding) == 0) return(NULL)
   unit <- holding[[which.min(vapply(holding, function(u) length(planning_area_members(u, lookup)), integer(1)))]]

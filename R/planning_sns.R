@@ -7,8 +7,11 @@
 # What the source is, and what that implies:
 #
 #   Unit      the ULS primary-care area, from January 2024 (ACES before, not
-#             used here: ACES do not map one-to-one onto ULS). The five ULS of
-#             Lisboa and Porto are summed into the app's two exact groups.
+#             used here: ACES do not map one-to-one onto ULS). The portal
+#             reports every ULS separately, including the six that share a
+#             municipality - its units follow the parishes, so they do not
+#             overlap and the 39 add up to the Continente. An area made of
+#             whole ULS (an ARS, a group, the Continente) is their sum.
 #             No data for the autonomous regions.
 #   Base      people registered in primary care ("inscritos"), not residents.
 #   Months    several indicators accumulate over a cycle and reset: blood
@@ -49,18 +52,13 @@ SNS_CYCLE_LABELS <- c(
 
 planning_sns_choices <- function() stats::setNames(SNS_INDICATORS$id, SNS_INDICATORS$label)
 
-# The portal's unit label -> the app's ULS unit (or exact group).
+# The portal's unit label -> the app's ULS name, where the two differ in
+# spelling only.
 SNS_UNIT_RENAMES <- c(
   "ULS Gaia/Espinho" = "ULS Vila Nova de Gaia/Espinho",
   "ULS Póvoa Varzim/Vila Conde" = "ULS Póvoa de Varzim/Vila do Conde",
   "ULS Póvoa Varzim/Vila do Conde" = "ULS Póvoa de Varzim/Vila do Conde",
-  "ULS Trás-os-Montes Alto Douro" = "ULS Trás-os-Montes e Alto Douro",
-  "ULS Loures/Odivelas" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
-  "ULS Santa Maria" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
-  "ULS São José" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
-  "ULS Lisboa Ocidental" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
-  "ULS Santo António" = "ULS Santo António + São João",
-  "ULS São João" = "ULS Santo António + São João"
+  "ULS Trás-os-Montes Alto Douro" = "ULS Trás-os-Montes e Alto Douro"
 )
 
 planning_sns_unit <- function(label) {
@@ -79,7 +77,7 @@ planning_sns_available <- function() {
 planning_sns_components <- function() {
   key <- paste(infant_snapshot_root(), "sns", sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
-  units <- planning_uls_units()
+  units <- planning_uls_units("units")
   out <- list()
   for (dataset in unique(SNS_INDICATORS$dataset)) {
     path <- file.path(planning_sns_dir(), paste0(dataset, ".rds"))
@@ -115,10 +113,12 @@ planning_sns_components <- function() {
 }
 
 # The app ULS units an area is made of, or NULL when the area does not line up
-# with whole ULS. Municipalities read their ULS; Portugal reads the Continente
-# (the portal has no autonomous regions).
+# with whole ULS. A municipality reads the ULS that serves it - the six that
+# share one read all the ULS serving it, since the portal cannot say which of
+# a municipality's users belong to which. Portugal reads the Continente (the
+# portal has no autonomous regions).
 planning_sns_area_units <- function(area, lookup = get_nuts_lookup()) {
-  units <- planning_uls_units()
+  units <- planning_uls_units("units")
   if (area %in% units) return(list(units = area, label = area, note = NULL))
   if (area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente")) {
     return(list(units = units, label = "Continente", note = if (area != "Continente") "Os dados do SNS cobrem apenas o Continente." else NULL))
@@ -129,8 +129,13 @@ planning_sns_area_units <- function(area, lookup = get_nuts_lookup()) {
   if (length(members) == 1) {
     holding <- Filter(function(u) members %in% unit_members[[u]], units)
     if (length(holding) == 0) return(NULL)
-    unit <- holding[[which.min(vapply(holding, function(u) length(unit_members[[u]]), integer(1)))]]
-    return(list(units = unit, label = unit, note = paste0("Os dados do SNS são por ULS: ", area, " mostra ", unit, ".")))
+    if (length(holding) > 1) {
+      # A municipality divided between ULS: all of them serve it.
+      return(list(units = holding, label = paste(holding, collapse = " + "),
+                  note = paste0(area, " está repartido por ", length(holding), " ULS ao nível da freguesia; os dados do SNS são por ULS, pelo que se somam todas.")))
+    }
+    return(list(units = holding, label = holding[[1]],
+                note = paste0("Os dados do SNS são por ULS: ", area, " mostra ", holding[[1]], ".")))
   }
   inside <- units[vapply(units, function(u) all(unit_members[[u]] %in% members), logical(1))]
   covered <- unique(unlist(unit_members[inside]))
@@ -139,9 +144,21 @@ planning_sns_area_units <- function(area, lookup = get_nuts_lookup()) {
 }
 
 # Values for labelled sets of units: `sets` is a named list of unit vectors.
-planning_sns_table <- function(sets, ids = sns_ids) {
+planning_sns_table <- function(sets, ids = sns_ids, lookup = get_nuts_lookup()) {
   components <- planning_sns_components()
   if (nrow(components) == 0) return(tibble::tibble())
+  # A set may name an area rather than ULS (a group, an ARS): expand it, so a
+  # caller never gets an empty answer for an area the portal does cover.
+  known <- unique(components$unit)
+  sets <- lapply(sets, function(units) {
+    unknown <- setdiff(units, known)
+    if (length(unknown) == 0) return(units)
+    expanded <- unlist(lapply(unknown, function(a) {
+      resolved <- planning_sns_area_units(a, lookup)
+      if (is.null(resolved)) character(0) else resolved$units
+    }))
+    unique(c(intersect(units, known), expanded))
+  })
   components <- components[components$indicator %in% ids, , drop = FALSE]
   latest <- tapply(components$period, components$indicator, max)
   dplyr::bind_rows(lapply(names(sets), function(label) {
@@ -178,11 +195,11 @@ planning_sns_sets <- function(areas, lookup = get_nuts_lookup()) {
     if (is.null(resolved)) next
     if (any(vapply(sets, function(s) setequal(s, resolved$units), logical(1)))) next
     sets[[resolved$label]] <- resolved$units
-    levels[[resolved$label]] <- if (identical(resolved$label, "Continente")) "Portugal" else if (resolved$label %in% planning_uls_units()) "ULS" else areas$level[[i]]
+    levels[[resolved$label]] <- if (identical(resolved$label, "Continente")) "Portugal" else if (resolved$label %in% planning_uls_units("units")) "ULS" else areas$level[[i]]
     if (!is.null(resolved$note)) notes <- c(notes, resolved$note)
   }
   if (!"Continente" %in% names(sets)) {
-    sets[["Continente"]] <- planning_uls_units()
+    sets[["Continente"]] <- planning_uls_units("units")
     levels[["Continente"]] <- "Portugal"
   }
   levels[[names(sets)[[1]]]] <- "Local"

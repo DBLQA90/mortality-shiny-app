@@ -990,8 +990,8 @@ planning_tab_ui <- function() {
               downloadButton("downloadPlanningFullXLSX", "Todas as áreas"),
               helpText(
                 "Portugal, NUTS I, II e III, ARS, ULS e os 308 municípios, todos os ",
-                "indicadores e anos, uma folha por indicador. Pode demorar cerca de ",
-                "um minuto e meio a gerar da primeira vez."
+                "indicadores e anos, uma folha por indicador. Demora cerca de dois ",
+                "minutos a gerar da primeira vez; depois é reutilizado."
               )
             )
           ),

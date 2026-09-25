@@ -4426,8 +4426,13 @@ server <- function(input, output, session) {
     helpText(if (isTRUE(spec$comparable)) {
       paste0(
         "Todas as ULS do Continente em ", planning_period_label(spec$id, planning_ranking_year()),
-        " (o último período disponível até ao ano escolhido). A azul, a ULS do local; a tracejado, Portugal. ",
-        "As cinco ULS que partilham municípios aparecem nos dois agrupamentos exactos."
+        " (o último período disponível até ao ano escolhido). Contorno escuro: a ULS do local; a tracejado, ", planning_benchmark(), ". ",
+        "Laranja acima e azul abaixo com significância, cinzento sem diferença. ",
+        if (identical(planning_split_mode(), "whole")) {
+          "As seis ULS que partilham Lisboa, Loures ou Porto levam o município inteiro: os seus valores sobrepõem-se e não devem ser somados."
+        } else {
+          "As seis ULS que partilham Lisboa, Loures ou Porto estão repartidas pelas freguesias."
+        }
       )
     } else {
       "As contagens absolutas não se comparam entre ULS de tamanhos diferentes. Escolha uma taxa, proporção ou índice."
@@ -4480,6 +4485,7 @@ server <- function(input, output, session) {
       "à volta de ", planning_benchmark(), " (95%: tracejado; 99,8%: pontilhado). Fora dos limites: ", outside,
       ". Com 20 unidades, uma fora do limite de 95% é esperada por acaso; fora do de 99,8%, quase nunca. ",
       "Contorno escuro: o local e a sua ULS.",
+      if (identical(planning_split_mode(), "whole") && identical(input$planning_funnel_units %||% "ULS", "ULS")) " As seis ULS que partilham Lisboa, Loures ou Porto levam o município inteiro, pelo que se sobrepõem." else "",
       if (planning_spec()$id %in% c("birth_rate", "death_rate")) " As taxas brutas dependem da estrutura etária: uma população mais velha tem mais óbitos e menos nascimentos, e a dispersão no funil reflecte sobretudo isso." else ""
     ))
   })
@@ -4610,7 +4616,8 @@ server <- function(input, output, session) {
     )))
     spec <- as.list(SNS_INDICATORS[SNS_INDICATORS$id == (input$planning_sns_indicator %||% "sns_no_gp"), ])
     table <- planning_sns_table(resolved$sets, spec$id)
-    ranking <- planning_sns_table(c(stats::setNames(as.list(planning_uls_units()), planning_uls_units()), list(Continente = planning_uls_units())), spec$id)
+    every_uls <- planning_uls_units("units")
+    ranking <- planning_sns_table(c(stats::setNames(as.list(every_uls), every_uls), list(Continente = every_uls)), spec$id)
     list(spec = spec, table = table, ranking = ranking, levels = resolved$levels, notes = resolved$notes)
   })
 
@@ -4685,7 +4692,8 @@ server <- function(input, output, session) {
              ". Os dados das últimas semanas são provisórios e crescem com os registos em atraso."),
       paste0("Esperados: taxas de mortalidade semanais por idade (<65, 65-74, 75-84, 85+) dos anos de base, aplicadas à população do ano, ",
              "com intervalo de previsão de 95%. Anos de base: até cinco anteriores, desde 2023 - depois do excesso da COVID-19 (2020-2022) e na série de ",
-             "população revista pelo INE a partir de 2021. 2024 não tem anos de base."),
+             "população revista pelo INE a partir de 2021. 2024 não tem anos de base, e com menos de três anos de base ",
+             "mostra-se o valor esperado sem intervalo (dois anos não chegam para estimar a variação entre anos)."),
       view$region$note
     )), collapse = "<br>")))
   })
@@ -4703,7 +4711,8 @@ server <- function(input, output, session) {
       Semanas = paste0("1-", .data$last_week),
       `Óbitos` = planning_format_value(.data$observed, 0),
       Esperados = planning_format_value(.data$expected, 0),
-      Excesso = paste0(planning_format_value(.data$excess, 0), " (", planning_format_value(.data$excess_lower, 0), " a ", planning_format_value(.data$excess_upper, 0), ")"),
+      Excesso = ifelse(is.na(.data$multiplier), planning_format_value(.data$excess, 0),
+                       paste0(planning_format_value(.data$excess, 0), " (", planning_format_value(.data$excess_lower, 0), " a ", planning_format_value(.data$excess_upper, 0), ")")),
       `Excesso (%)` = planning_format_value(.data$excess_pct, 1),
       `Anos de base` = .data$baseline
     )

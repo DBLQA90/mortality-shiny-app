@@ -159,12 +159,18 @@ life_year_block <- function(year, municipalities) {
   labels <- unique(c(municipalities, planning_published_areas))
   bands <- age_levels
   by_sex <- lapply(c("HM", "H", "M"), function(sex) {
+    # Fill by index rather than aggregate(), which sorts.
     matrix_of <- function(frame, value) {
       out <- matrix(0, length(labels), length(bands), dimnames = list(labels, bands))
       rows <- frame[frame$sex == sex & frame$area %in% labels & frame$age_band %in% bands, , drop = FALSE]
-      if (nrow(rows) > 0) {
-        agg <- stats::aggregate(rows[[value]], by = list(area = rows$area, band = rows$age_band), FUN = sum)
-        out[cbind(match(agg$area, labels), match(agg$band, bands))] <- agg$x
+      if (nrow(rows) == 0) return(out)
+      index <- (match(as.character(rows$age_band), bands) - 1L) * length(labels) + match(rows$area, labels)
+      values <- rows[[value]]
+      if (anyDuplicated(index)) {
+        summed <- rowsum(values, index, reorder = FALSE)
+        out[as.integer(rownames(summed))] <- summed[, 1]
+      } else {
+        out[index] <- values
       }
       out
     }

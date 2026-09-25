@@ -1092,11 +1092,13 @@ test_that("years of potential life lost weight each death to 70", {
   })
 })
 
-test_that("SNS units map onto the app's ULS, with the Lisboa and Porto groups summed", {
+test_that("SNS units map onto the app's ULS, one by one", {
   expect_equal(planning_sns_unit("Área dos CSP da ULS Gaia / Espinho"), "ULS Vila Nova de Gaia/Espinho")
   expect_equal(planning_sns_unit("CSP da ULS Póvoa Varzim / Vila Conde"), "ULS Póvoa de Varzim/Vila do Conde")
-  expect_equal(planning_sns_unit("CSP da ULS São José"), "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José")
-  expect_equal(planning_sns_unit("CSP da ULS Lisboa Ocidental"), "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José")
+  # The portal reports every ULS separately, including those that share a
+  # municipality: its units follow the parishes and do not overlap.
+  expect_equal(planning_sns_unit("CSP da ULS São José"), "ULS São José")
+  expect_equal(planning_sns_unit("CSP da ULS Lisboa Ocidental"), "ULS Lisboa Ocidental")
   expect_equal(planning_sns_unit("Área dos CSP da ULS Guarda"), "ULS Guarda")
 })
 
@@ -1115,7 +1117,7 @@ test_that("SNS proportions are rebuilt as numerators and denominators, and compa
     ) %>% dplyr::mutate(dataset = "rastreios-oncologicos")
     saveRDS(sns, file.path(root, "sns", "rastreios-oncologicos.rds"))
     planning_clear_cache()
-    group <- "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José"
+    group <- c("ULS Santa Maria", "ULS São José", "ULS Lisboa Ocidental")
     # The other screenings' fields are absent here: skipped, with a warning.
     expect_warning(t <- planning_sns_table(list(grupo = group), "sns_mammography"), "skipped")
     expect_equal(t$denominator, rep(250, 3))

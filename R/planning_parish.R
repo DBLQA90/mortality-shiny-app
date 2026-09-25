@@ -148,6 +148,10 @@ planning_parish_shares <- function() {
     share_of(both[both$lower >= 15 & both$lower < 65, , drop = FALSE], "15_64"),
     share_of(both[both$lower >= 65, , drop = FALSE], "65_plus"),
     share_of(rows[rows$sex == "M" & rows$lower >= 15 & rows$lower < 50, , drop = FALSE], "female_15_49"),
+    # Women by age group, for the fertility index's denominators.
+    dplyr::bind_rows(lapply(seq(15, 45, by = 5), function(a) {
+      share_of(rows[rows$sex == "M" & rows$lower == a, , drop = FALSE], paste0("f", a))
+    })),
     share_of(weighted, "mortality"),
     # One basis per census age group, for values that carry an age band.
     dplyr::bind_rows(lapply(ages, function(a) share_of(both[both$lower == a, , drop = FALSE], as.character(a))))
@@ -211,7 +215,7 @@ planning_weight_basis <- function(column) {
   if (identical(column, "pop_15_64")) return("15_64")
   if (identical(column, "pop_65_plus")) return("65_plus")
   if (identical(column, "pop_75_plus")) return("75")
-  if (startsWith(column, "pop_f_")) return("female_15_49")
+  if (startsWith(column, "pop_f_")) return(paste0("f", sub("^pop_f_", "", column)))
   if (startsWith(column, "births") || column %in% c("infant_deaths", "neonatal_deaths", "early_neonatal_deaths",
                                                     "postneonatal_deaths", "perinatal_deaths")) return("female_15_49")
   if (identical(column, "deaths")) return("mortality")

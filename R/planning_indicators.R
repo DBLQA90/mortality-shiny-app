@@ -331,7 +331,23 @@ planning_proportional_years <- function(window = 3L) {
 # Municipalities an area is built from. Portugal is every municipality; a
 # region or health unit uses its lookup membership; anything else is taken to
 # be a municipality.
+# Cached: resolving an area costs a scan and a sort of the lookup, and the
+# standardised module asks for every area once per triennium.
+planning_lookup_key <- function(lookup) {
+  vintage <- attr(lookup, "vintage")
+  if (!is.null(vintage)) return(as.character(vintage))
+  paste(nrow(lookup), lookup$municipality[[1]], utils::tail(lookup$municipality, 1))
+}
+
 planning_area_members <- function(area, lookup = get_nuts_lookup()) {
+  key <- paste("members", planning_lookup_key(lookup), area, sep = "|")
+  if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
+  value <- planning_area_members_uncached(area, lookup)
+  assign(key, value, envir = planning_cache)
+  value
+}
+
+planning_area_members_uncached <- function(area, lookup = get_nuts_lookup()) {
   municipalities <- as.character(lookup$municipality)
   if (area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL)) return(sort(unique(municipalities)))
   # A ULS that shares a municipality serves every municipality it touches; the
@@ -846,10 +862,18 @@ planning_estimate_suppressed_sectors <- function(employees, lookup = get_nuts_lo
 planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE, basis = "total", year = NULL) {
   areas <- unique(as.character(areas))
   municipalities <- sort(unique(as.character(lookup$municipality)))
-  membership <- matrix(0, length(areas), length(municipalities), dimnames = list(areas, municipalities))
-  for (i in seq_along(areas)) {
-    members <- intersect(planning_area_members(areas[[i]], lookup), municipalities)
-    if (length(members) > 0) membership[i, members] <- 1
+  # The 0/1 matrix depends only on the areas; the weights are applied on top.
+  key <- paste("membership", planning_lookup_key(lookup), paste(areas, collapse = "|"), sep = "|")
+  membership <- if (exists(key, envir = planning_cache, inherits = FALSE)) {
+    get(key, envir = planning_cache, inherits = FALSE)
+  } else {
+    built <- matrix(0, length(areas), length(municipalities), dimnames = list(areas, municipalities))
+    for (i in seq_along(areas)) {
+      members <- intersect(planning_area_members(areas[[i]], lookup), municipalities)
+      if (length(members) > 0) built[i, members] <- 1
+    }
+    assign(key, built, envir = planning_cache)
+    built
   }
   # In the parish reading, the six ULS that share a municipality take the
   # share of it their parishes hold in the census.
@@ -1396,7 +1420,10 @@ planning_area_levels <- function(lookup = get_nuts_lookup(), health = get_health
     nuts("nuts2", "NUTS II"),
     nuts("nuts3", "NUTS III"),
     health_units("ARS", "ARS"),
-    health_units(c("ULS", "ULS (grupo)"), "ULS"),
+    # The ULS that share a municipality are listed too: the tab reads them
+    # whole or by parish weights. Summing every ULS of the list therefore
+    # double counts Lisboa, Loures and Porto in the whole reading.
+    health_units(c("ULS", "ULS (grupo)", "ULS (partilhada)"), "ULS"),
     tibble::tibble(area = sort(unique(as.character(lookup$municipality))), level = "Município")
   ) %>%
     dplyr::distinct(area, .keep_all = TRUE)
@@ -1427,8 +1454,13 @@ planning_comparators <- function(area, lookup = get_nuts_lookup(), health = get_
   }, logical(1))
 
   found <- candidates[keep, , drop = FALSE]
-  found <- found[order(match(found$level, PLANNING_LEVELS)), , drop = FALSE]
-  # One per level; drop a unit whose municipalities equal a nearer comparator's.
+  # One per level, the smallest that contains the area - except that a
+  # municipality divided between ULS takes the exact group rather than one of
+  # the ULS that serve part of it, which would be an arbitrary pick.
+  shared <- length(intersect(members, planning_parish_lookup()$municipality)) > 0
+  size <- vapply(found$area, function(a) length(planning_area_members(a, lookup)), integer(1))
+  group <- if (shared) grepl(" + ", found$area, fixed = TRUE) else rep(FALSE, nrow(found))
+  found <- found[order(match(found$level, PLANNING_LEVELS), !group, size), , drop = FALSE]
   found <- found[!duplicated(found$level), , drop = FALSE]
   sets <- lapply(found$area, planning_area_members, lookup = lookup)
   # Portugal always stays: it reads INE's national row, which also counts

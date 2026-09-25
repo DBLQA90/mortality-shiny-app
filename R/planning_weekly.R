@@ -22,8 +22,13 @@
 #             weekly counts of 2018-2020 (0010112, NUTS 2013, only for regions
 #             whose counts agree between the editions within 0.5% in
 #             2021-2024) are kept for the observed series.
-#   Band      95% prediction interval: the between-year variability of the
-#             baseline rates (at least Poisson), for a new year.
+#   Band      95% prediction interval from the spread between the baseline
+#             years (never narrower than Poisson), with Student's t for the
+#             few years available - with three baseline years the multiplier
+#             is 4.3, not 1.96, which is what makes the band honest. With two
+#             baseline years the spread cannot be estimated usefully (t would
+#             be 12.7, a band of about 20%), so the expected deaths are shown
+#             without an interval.
 #
 # Deaths of unknown age (0.01%) are left out on both sides.
 
@@ -33,6 +38,9 @@ WEEKLY_AGE_GROUPS <- c(
 WEEKLY_EXCLUDED_YEARS <- 2020:2022
 WEEKLY_FIRST_BASELINE_YEAR <- 2023L
 WEEKLY_BASELINE_YEARS <- 5L
+# Below this many baseline years the expected deaths are shown without an
+# interval: two years give no usable estimate of the spread between years.
+WEEKLY_INTERVAL_YEARS <- 3L
 
 weekly_age_group <- function(band) {
   lower <- suppressWarnings(as.integer(sub("^(\\d+).*$", "\\1", band)))
@@ -126,7 +134,12 @@ planning_weekly_population <- function(region, years, lookup = get_nuts_lookup()
 }
 
 # Observed and expected weekly deaths for one region and age selection, for
-# the years in `years`. Expected is NA when fewer than two baseline years exist.
+# the years in `years`. Expected is NA when fewer than two baseline years
+# exist. Each baseline year is first turned into the deaths it would give at
+# this year's population, and the spread between those years is what the
+# intervals are built from - weekly, cumulative and for the year to date, each
+# at its own level, because a hard flu season lifts a whole winter at once and
+# adding weekly variances would understate the spread of a total.
 planning_weekly_excess <- function(region, years, age = "all", lookup = get_nuts_lookup()) {
   data <- planning_weekly_data()
   if (is.null(data)) return(tibble::tibble())
@@ -143,27 +156,49 @@ planning_weekly_excess <- function(region, years, age = "all", lookup = get_nuts
     if (nrow(observed) == 0) return(NULL)
     baseline_years <- utils::tail(setdiff(have[have < year & have >= max(year - 8L, WEEKLY_FIRST_BASELINE_YEAR)], WEEKLY_EXCLUDED_YEARS), WEEKLY_BASELINE_YEARS)
     weeks <- sort(unique(observed$week))
-    target_pop <- pop[pop$year == year, c("group", "pop")]
-    per_group <- lapply(groups, function(g) {
-      obs <- observed[observed$group == g, , drop = FALSE]
-      base <- rows[rows$group == g & rows$year %in% baseline_years, , drop = FALSE]
-      p <- target_pop$pop[target_pop$group == g]
+    target_pop <- stats::setNames(pop$pop[pop$year == year], pop$group[pop$year == year])
+    observed_total <- vapply(weeks, function(w) sum(observed$deaths[observed$week == w], na.rm = TRUE), numeric(1))
+
+    empty <- tibble::tibble(
+      region = region, age = age, year = as.integer(year), week = weeks, observed = observed_total,
+      expected = NA_real_, lower = NA_real_, upper = NA_real_, variance = NA_real_,
+      cumulative_expected = NA_real_, cumulative_variance = NA_real_, multiplier = NA_real_,
+      baseline = paste(baseline_years, collapse = ", "), baseline_n = length(baseline_years)
+    )
+    if (length(baseline_years) < 2 || length(target_pop) == 0) return(empty)
+
+    # Deaths each baseline year would give at this year's population, week by
+    # week: one row per baseline year, one column per week.
+    per_year <- t(vapply(baseline_years, function(b) {
       vapply(weeks, function(w) {
-        # Week 53 exists only in some years: it borrows week 52.
-        r <- base$rate[base$week == min(w, 52L)]
-        o <- obs$deaths[obs$week == w]
-        if (length(r) < 2 || length(p) == 0) return(c(if (length(o)) o else NA_real_, NA_real_, NA_real_))
-        expected <- mean(r) * p
-        variance <- max(stats::var(r) * p^2, expected) * (1 + 1 / length(r))
-        c(if (length(o)) o else NA_real_, expected, variance)
-      }, numeric(3))
-    })
-    parts <- Reduce(`+`, per_group)
+        sum(vapply(groups, function(g) {
+          # Week 53 exists only in some years: it borrows week 52.
+          rate <- rows$rate[rows$year == b & rows$group == g & rows$week == min(w, 52L)]
+          if (length(rate) == 0 || is.na(target_pop[[g]])) 0 else rate[[1]] * target_pop[[g]]
+        }, numeric(1)))
+      }, numeric(1))
+    }, numeric(length(weeks))))
+    if (!is.matrix(per_year)) per_year <- matrix(per_year, nrow = length(baseline_years))
+    cumulative <- t(apply(per_year, 1, cumsum))
+    if (!is.matrix(cumulative)) cumulative <- matrix(cumulative, nrow = length(baseline_years))
+
+    spread <- function(values, mean_value) {
+      # A prediction interval for one more year: the spread between the
+      # baseline years, never narrower than Poisson.
+      pmax(apply(values, 2, stats::var) * (1 + 1 / nrow(values)), mean_value)
+    }
+    # Few baseline years: Student's t, not 1.96; under three, no interval.
+    multiplier <- if (length(baseline_years) >= WEEKLY_INTERVAL_YEARS) stats::qt(0.975, df = length(baseline_years) - 1L) else NA_real_
+    expected <- colMeans(per_year)
+    variance <- spread(per_year, expected)
+    cumulative_expected <- colMeans(cumulative)
+    cumulative_variance <- spread(cumulative, cumulative_expected)
+
     tibble::tibble(
-      region = region, age = age, year = as.integer(year), week = weeks,
-      observed = parts[1, ], expected = parts[2, ],
-      lower = pmax(parts[2, ] - 1.96 * sqrt(parts[3, ]), 0), upper = parts[2, ] + 1.96 * sqrt(parts[3, ]),
-      variance = parts[3, ], baseline = paste(baseline_years, collapse = ", "), baseline_n = length(baseline_years)
+      region = region, age = age, year = as.integer(year), week = weeks, observed = observed_total,
+      expected = expected, lower = pmax(expected - multiplier * sqrt(variance), 0), upper = expected + multiplier * sqrt(variance),
+      variance = variance, cumulative_expected = cumulative_expected, cumulative_variance = cumulative_variance,
+      multiplier = multiplier, baseline = paste(baseline_years, collapse = ", "), baseline_n = length(baseline_years)
     )
   }))
 }
@@ -177,11 +212,15 @@ planning_weekly_summary <- function(excess) {
     dplyr::group_by(.data$region, .data$age, .data$year, .data$baseline) %>%
     dplyr::summarise(
       weeks = dplyr::n(), last_week = max(.data$week),
-      observed = sum(.data$observed), expected = sum(.data$expected), sd = sqrt(sum(.data$variance)), .groups = "drop"
+      observed = sum(.data$observed), expected = sum(.data$expected),
+      # The interval of the total comes from the baseline years' own totals,
+      # not from adding up weekly variances.
+      sd = sqrt(.data$cumulative_variance[which.max(.data$week)]),
+      multiplier = dplyr::first(.data$multiplier), .groups = "drop"
     ) %>%
     dplyr::mutate(
       excess = .data$observed - .data$expected,
-      excess_lower = .data$excess - 1.96 * .data$sd, excess_upper = .data$excess + 1.96 * .data$sd,
+      excess_lower = .data$excess - .data$multiplier * .data$sd, excess_upper = .data$excess + .data$multiplier * .data$sd,
       excess_pct = .data$excess / .data$expected * 100
     )
 }

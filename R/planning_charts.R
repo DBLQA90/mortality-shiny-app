@@ -628,7 +628,7 @@ planning_iso_week_date <- function(year, week) {
 # Observed weekly deaths against the expected band.
 planning_weekly_chart <- function(excess, region) {
   excess$date <- planning_iso_week_date(excess$year, excess$week)
-  band <- excess[!is.na(excess$expected), , drop = FALSE]
+  band <- excess[!is.na(excess$expected) & !is.na(excess$lower), , drop = FALSE]
   hover <- paste0("<b>Semana ", excess$week, " de ", excess$year, "</b><br>Óbitos: ", planning_format_value(excess$observed, 0),
                   ifelse(is.na(excess$expected), "", paste0("<br>Esperados: ", planning_format_value(excess$expected, 0),
                                                             " (", planning_format_value(excess$lower, 0), " - ", planning_format_value(excess$upper, 0), ")")))
@@ -658,14 +658,17 @@ planning_weekly_cumulative_chart <- function(excess) {
   for (i in seq_along(years)) {
     r <- rows[rows$year == years[[i]], , drop = FALSE]
     r <- r[order(r$week), , drop = FALSE]
-    cum <- cumsum(r$observed - r$expected)
-    sd <- sqrt(cumsum(r$variance))
+    cum <- cumsum(r$observed) - r$cumulative_expected
+    sd <- sqrt(r$cumulative_variance)
     colour <- palette[[(i - 1L) %% length(palette) + 1L]]
-    p <- plotly::add_ribbons(p, x = r$week, ymin = cum - 1.96 * sd, ymax = cum + 1.96 * sd, name = paste(years[[i]], "IC 95%"),
-                             showlegend = FALSE, fillcolor = grDevices::adjustcolor(colour, alpha.f = 0.15), line = list(width = 0), hoverinfo = "skip")
+    band <- r$multiplier[[1]] * sd
+    if (!is.na(r$multiplier[[1]])) {
+      p <- plotly::add_ribbons(p, x = r$week, ymin = cum - band, ymax = cum + band, name = paste(years[[i]], "IC 95%"),
+                               showlegend = FALSE, fillcolor = grDevices::adjustcolor(colour, alpha.f = 0.15), line = list(width = 0), hoverinfo = "skip")
+    }
     p <- plotly::add_lines(p, x = r$week, y = cum, name = as.character(years[[i]]), line = list(color = colour, width = 2),
                            text = paste0("<b>", years[[i]], ", semana ", r$week, "</b><br>Excesso acumulado: ", planning_format_value(cum, 0),
-                                         " (", planning_format_value(cum - 1.96 * sd, 0), " a ", planning_format_value(cum + 1.96 * sd, 0), ")"),
+                                         ifelse(is.na(band), "", paste0(" (", planning_format_value(cum - band, 0), " a ", planning_format_value(cum + band, 0), ")"))),
                            hoverinfo = "text")
   }
   planning_plotly_layout(
