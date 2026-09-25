@@ -42,6 +42,7 @@ for (app_file in c(
   "R/metrics.R",
   "R/standardisation.R",
   "R/avoidable.R",
+  "R/planning_parish.R",
   "R/planning_indicators.R",
   "R/life_expectancy.R",
   "R/planning_under75.R",
@@ -4220,6 +4221,12 @@ server <- function(input, output, session) {
     spec
   })
 
+  # Whole municipality or parish weights for the six ULS that share one.
+  planning_split_mode <- reactive({
+    mode <- input$planning_split_mode %||% PLANNING_DEFAULT_SPLIT_MODE
+    if (identical(mode, "parish") && !planning_parish_available()) PLANNING_DEFAULT_SPLIT_MODE else mode
+  })
+
   # Portugal as INE's published total or as the sum of its municipalities, for
   # every comparator, the significance marks, the ranking and the funnel.
   planning_benchmark <- reactive(planning_portugal_area(input$planning_portugal %||% "published"))
@@ -4305,7 +4312,7 @@ server <- function(input, output, session) {
     # The benchmark is computed even when not shown, for the significance marks.
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode())
     planning_add_significance(table, benchmark)
   })
 
@@ -4343,6 +4350,16 @@ server <- function(input, output, session) {
     if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III.")
     if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) notes <- c(notes, paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
     if (spec$id %in% PLANNING_EDUCATION_IDS && planning_education_age() > 0) notes <- c(notes, PLANNING_EDUCATION_NOTE)
+    if (any(planning_areas()$area %in% planning_parish_units())) {
+      notes <- c(notes, if (identical(planning_split_mode(), "parish")) {
+        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): valores repartidos pela população das freguesias nos Censos de 2021, ",
+               "por grupo etário. As partes somam o município; assume-se que as quotas de 2021 se mantêm e que, dentro de cada município e idade, ",
+               "as freguesias de cada ULS se comportam como as restantes.")
+      } else {
+        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): leva o município inteiro, como no ficheiro de apoio. ",
+               "Nada é estimado, mas estas ULS sobrepõem-se: somá-las conta Lisboa, Loures e Porto mais do que uma vez.")
+      })
+    }
     if (any(!is.na(series$significance))) {
       notes <- c(notes, paste0(
         "\u25b2 / \u25bc / = : intervalo de confiança de 95% inteiramente acima, abaixo ou a incluir o valor de ",
@@ -4367,7 +4384,7 @@ server <- function(input, output, session) {
     years <- seq.int(max(1991L, min(last - 4L, 10L * (last %/% 10L) + 1L)), last)
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode())
     planning_add_significance(table, benchmark)
   })
 
@@ -4421,10 +4438,10 @@ server <- function(input, output, session) {
     spec <- planning_spec()
     validate(need(isTRUE(spec$comparable), "Sem comparação para contagens absolutas."))
     year <- planning_ranking_year()
-    units <- planning_uls_units()
+    units <- planning_uls_units("units")
     benchmark <- planning_benchmark()
     ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                        education_min_age = planning_education_age())
+                                        education_min_age = planning_education_age(), mode = planning_split_mode())
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
     planning_ranking_chart(ranking, spec, year, highlight = highlight, benchmark_area = benchmark)
@@ -4441,13 +4458,13 @@ server <- function(input, output, session) {
     kind <- input$planning_funnel_units %||% "ULS"
     lookup <- active_nuts_lookup()
     units <- if (identical(kind, "ULS")) {
-      planning_uls_units()
+      planning_uls_units("units")
     } else {
       levels <- planning_area_levels(lookup)
       levels$area[levels$level == kind]
     }
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark)
+    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark, mode = planning_split_mode())
     data <- planning_funnel_data(table, spec, benchmark)
     validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
     list(data = data, year = year, kind = kind, model = model)
@@ -4502,9 +4519,9 @@ server <- function(input, output, session) {
     end_year <- max(available)
     areas <- planning_areas_all_comparators()$area
     table <- if (under75) {
-      planning_under75_table(areas, end_year, lookup = active_nuts_lookup(), vintage = active_nuts_vintage())
+      planning_under75_table(areas, end_year, lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), mode = planning_split_mode())
     } else {
-      planning_proportional_table(areas, end_year, lookup = active_nuts_lookup())
+      planning_proportional_table(areas, end_year, lookup = active_nuts_lookup(), mode = planning_split_mode())
     }
     list(end_year = end_year, under75 = under75, table = table)
   })
@@ -4553,7 +4570,7 @@ server <- function(input, output, session) {
     areas <- planning_areas_all_comparators()
     benchmark <- planning_benchmark()
     sex <- input$planning_cause_sex %||% "HM"
-    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex)
+    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex, mode = planning_split_mode())
     validate(need(nrow(table) > 0 && any(is.finite(table$smr[table$area == areas$area[[1]]])), "Sem valores para este local neste triénio."))
     list(table = table, end_year = end_year, areas = areas, benchmark = benchmark, sex = sex)
   })
@@ -4716,7 +4733,7 @@ server <- function(input, output, session) {
           file, areas,
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           focus = planning_location(), years = planning_year_range(),
-          education_min_age = planning_education_age(), benchmark = planning_benchmark(),
+          education_min_age = planning_education_age(), benchmark = planning_benchmark(), mode = planning_split_mode(),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
       })
@@ -4732,7 +4749,7 @@ server <- function(input, output, session) {
         write_planning_profile(
           file, planning_areas_all_comparators(),
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
-          benchmark = planning_benchmark(), education_min_age = planning_education_age(),
+          benchmark = planning_benchmark(), education_min_age = planning_education_age(), mode = planning_split_mode(),
           last_year = max(planning_year_range()),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )

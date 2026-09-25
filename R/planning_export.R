@@ -64,6 +64,7 @@ write_planning_workbook <- function(path,
                                     include_long = TRUE,
                                     education_min_age = 0L,
                                     benchmark = "Portugal",
+                                    mode = PLANNING_DEFAULT_SPLIT_MODE,
                                     progress = function(value, detail = NULL) invisible(NULL)) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("The openxlsx package is required to write Excel files.", call. = FALSE)
@@ -73,7 +74,7 @@ write_planning_workbook <- function(path,
   years <- if (is.null(years)) all_years else intersect(as.integer(years), all_years)
 
   progress(0.05, "indicadores")
-  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark) %>%
+  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode) %>%
     planning_add_significance(benchmark) %>%
     dplyr::filter(.data$area %in% areas$area) %>%
     dplyr::left_join(areas, by = "area")
@@ -89,6 +90,8 @@ write_planning_workbook <- function(path,
   readme <- c(
     "Indicadores de apoio aos Planos Locais de Saúde",
     "",
+    paste0("ULS que partilham um município (Lisboa, Loures, Porto): ",
+           if (identical(mode, "parish")) "repartidas pela população das freguesias nos Censos de 2021, por grupo etário; as partes somam o município e o país." else "cada ULS leva o município inteiro; as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez."),
     paste0("Portugal de referência (comparadores e significância): ",
            if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "soma dos 308 municípios, sem os acontecimentos de residência desconhecida." else "total publicado pelo INE, que inclui os acontecimentos de residência desconhecida."),
     if (education_min_age > 0) paste0("Escolaridade [I24]: população com ", education_min_age, " e mais anos (Censos de 2011 e 2021; o INE não publica a escolaridade por idade e município em 1991 e 2001).") else "Escolaridade [I24]: toda a população, como no ficheiro de apoio.",
@@ -272,7 +275,7 @@ write_planning_workbook <- function(path,
   proportional_years <- planning_proportional_years()
   proportional_years <- proportional_years[proportional_years <= max(years) & proportional_years >= min(years)]
   if (length(proportional_years) > 0) {
-    proportional <- planning_proportional_table(areas$area, proportional_years, lookup = lookup) %>%
+    proportional <- planning_proportional_table(areas$area, proportional_years, lookup = lookup, mode = mode) %>%
       dplyr::left_join(areas, by = "area") %>%
       dplyr::transmute(
         `Nível` = .data$level, Local = .data$area, `Triénio` = .data$period, `Código` = .data$code,
@@ -290,7 +293,7 @@ write_planning_workbook <- function(path,
   under75_years <- under75_years[under75_years <= max(years) & under75_years >= min(years)]
   if (length(under75_years) > 0) {
     progress(0.95, "mortalidade proporcional < 75 anos")
-    under75 <- planning_under75_table(areas$area, under75_years, lookup = lookup, vintage = vintage) %>%
+    under75 <- planning_under75_table(areas$area, under75_years, lookup = lookup, vintage = vintage, mode = mode) %>%
       dplyr::left_join(areas, by = "area") %>%
       dplyr::transmute(
         `Nível` = .data$level, Local = .data$area, `Triénio` = .data$period, `Código` = .data$code,
@@ -311,7 +314,7 @@ write_planning_workbook <- function(path,
   if (length(cause_years) > 0) {
     progress(0.96, "mortalidade por causa")
     causes <- dplyr::bind_rows(lapply(cause_years, function(y) {
-      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark)
+      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark, mode = mode)
     })) %>%
       dplyr::filter(.data$area %in% areas$area) %>%
       dplyr::left_join(areas, by = "area") %>%

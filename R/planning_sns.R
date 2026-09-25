@@ -55,9 +55,10 @@ SNS_UNIT_RENAMES <- c(
   "ULS Póvoa Varzim/Vila Conde" = "ULS Póvoa de Varzim/Vila do Conde",
   "ULS Póvoa Varzim/Vila do Conde" = "ULS Póvoa de Varzim/Vila do Conde",
   "ULS Trás-os-Montes Alto Douro" = "ULS Trás-os-Montes e Alto Douro",
-  "ULS Loures/Odivelas" = "ULS Loures/Odivelas + Santa Maria + São José",
-  "ULS Santa Maria" = "ULS Loures/Odivelas + Santa Maria + São José",
-  "ULS São José" = "ULS Loures/Odivelas + Santa Maria + São José",
+  "ULS Loures/Odivelas" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
+  "ULS Santa Maria" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
+  "ULS São José" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
+  "ULS Lisboa Ocidental" = "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José",
   "ULS Santo António" = "ULS Santo António + São João",
   "ULS São João" = "ULS Santo António + São João"
 )

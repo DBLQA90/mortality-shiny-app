@@ -322,6 +322,10 @@ Deaths by cause indicators:
 - `0008206`
 - `0013166`
 
+Parish-level census population (2021, indicator `0012364`) for the ULS that
+share a municipality: `tools/fetch_census_parish.R`, with the assignment in
+`data-raw/uls_parish.csv` and `tools/build_uls_parish.R`.
+
 Weekly deaths by NUTS III and age: `0012100` (NUTS 2024, from 2021) and
 `0010112` (NUTS 2013, 2018-2024), fetched by `tools/fetch_weekly_deaths.R`.
 

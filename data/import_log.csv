@@ -5176,3 +5176,7 @@
 "2026-09-21T223324","2026-09-21T22:33:35+0100","snapshots/sns/diabetes.rds","sns/diabetes",,"added",,28612,"value",,103666960.91812,,"fetch_sns.R",,
 "2026-09-21T223324","2026-09-21T22:33:39+0100","snapshots/sns/hipertensao.rds","sns/hipertensao",,"added",,14290,"value",,38116750.26704,,"fetch_sns.R",,
 "2026-09-21T223324","2026-09-21T22:33:52+0100","snapshots/sns/saude-da-mulher-e-crianca.rds","sns/saude-da-mulher-e-crianca",,"added",,28612,"value",,7016360.32237,,"fetch_sns.R",,
+"2026-09-25T094159","2026-09-25T09:41:59+0100","snapshots/census_parish/year_2021.rds","census_parish",2021,"added",,86576,"pop",,10343066,,"fetch_census_parish.R",,
+"2026-09-25T094348","2026-09-25T09:43:48+0100","uls_parish.rds","uls_parish",,"added",,41,,,,,"build_uls_parish.R",,
+"2026-09-25T095117","2026-09-25T09:51:17+0100","uls_lookup.rds","uls_lookup",,"replaced",556,567,,,,"archive/2026-09-25T095117/uls_lookup.rds","build_uls_lookup.R",,
+"2026-09-25T095155","2026-09-25T09:51:55+0100","uls_lookup.rds","uls_lookup",,"replaced",567,570,,,,"archive/2026-09-25T095155/uls_lookup.rds","build_uls_lookup.R",,

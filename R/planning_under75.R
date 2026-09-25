@@ -175,7 +175,7 @@ planning_under75_area_year <- function(area, year, members, vintage, lookup) {
 # planning_proportional_table() returns, plus a flag for areas whose municipal
 # sums cover a year INE published incompletely.
 planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
-                                   lookup = get_nuts_lookup(), vintage = default_nuts_vintage()) {
+                                   lookup = get_nuts_lookup(), vintage = default_nuts_vintage(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
   areas <- unique(as.character(areas))
   members <- stats::setNames(lapply(areas, planning_area_members, lookup = lookup), areas)
   codes <- c("C00", PLANNING_CAUSE_GROUPS$code, "Outras")
@@ -184,12 +184,12 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
   # Municipal sums for every area at once, one matrix product per year; the
   # areas INE publishes a row for are then overwritten one by one (about thirty
   # of them).
-  membership <- planning_membership_matrix(areas, lookup)
+  membership <- planning_membership_matrix(areas, lookup, mode, "mortality")
   municipalities <- colnames(membership)
   causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
 
   municipal_year <- function(year) {
-    key <- paste(infant_snapshot_root(), "under75sum", year, paste(areas, collapse = "|"), sep = "|")
+    key <- paste(infant_snapshot_root(), "under75sum", year, mode, paste(areas, collapse = "|"), sep = "|")
     if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
     block <- planning_under75_year(year)
     values <- matrix(0, length(municipalities), length(causes), dimnames = list(municipalities, causes))

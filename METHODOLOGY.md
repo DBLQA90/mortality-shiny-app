@@ -1094,6 +1094,35 @@ bars and dots for cause groups. Each level has a fixed colour from the reference
 categorical palette, in its validated order; direct labels are drawn at line
 ends only up to four series, beyond which the legend carries identity.
 
+### ULS that share a municipality: whole or parish weights
+
+Lisboa, Loures and Porto are divided between ULS at parish level, so six ULS
+cannot be built from whole municipalities. `data-raw/uls_parish.csv` records the
+assignment (Decreto-Lei n.º 102/2023, which defines each ULS by the ACES it
+integrates, plus those ACES' parish lists); `tools/build_uls_parish.R` matches
+it to INE's parish names and fails unless each municipality is covered exactly
+once. The decree puts three Lisboa parishes (Ajuda, Alcântara, Belém) in ULS
+Lisboa Ocidental, which the support workbook does not record;
+`tools/build_uls_lookup.R` now adds that pair before deriving the exact groups,
+so the Lisboa group is `ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria +
+São José` (six municipalities). The lookup keeps those ULS individually as
+`ULS (partilhada)`, beside the groups.
+
+`R/planning_parish.R` provides the two readings (`PLANNING_SPLIT_MODES`):
+`whole`, where each ULS takes every municipality it serves (nothing estimated,
+but the six overlap: in 2024 they sum to 18,186 deaths and 1.8 million people
+more than the Continente), and `parish`, where each shared municipality is
+divided by the parishes' census share. Weights come from the 2021 census by
+parish, age group and sex (`tools/fetch_census_parish.R`, indicator `0012364`):
+age-group shares for anything with an age, women 15-49 for births and
+birth-based rates, an expected-deaths share (the parishes' census age structure
+weighted by national age-specific death rates) for deaths and infant deaths,
+and the total population otherwise. `planning_membership_matrix()` takes a mode
+and a basis and returns fractional weights; `planning_components()` multiplies
+each column with the matrix of its own basis, and `planning_band_product()`
+does the same per age band for life expectancy and the standardised module. In
+the parish reading the 39 ULS sum exactly to the Continente in every component.
+
 ### Portugal benchmark, significance and funnel
 
 `PLANNING_PORTUGAL_MUNICIPAL` ("Portugal (soma dos municípios)") is a pseudo-area

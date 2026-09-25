@@ -212,6 +212,22 @@ testServer(app, {
   session$setInputs(planning_cause_sex = "M")
   cause <- tryCatch(planning_cause_view(), error = function(e) e)
   cat("   cause view (women):", if (inherits(cause, "error")) conditionMessage(cause) else paste(nrow(cause$table), "rows"), "\n")
+  # A ULS that shares a municipality, read whole and by parish weights.
+  session$setInputs(planning_area = "ULS São José", planning_indicator = "pop_total", planning_years = c(2020, 2025),
+                    planning_split_mode = "whole")
+  whole <- tryCatch(planning_series(), error = function(e) e)
+  session$setInputs(planning_split_mode = "parish")
+  parish <- tryCatch(planning_series(), error = function(e) e)
+  if (!inherits(whole, "error") && !inherits(parish, "error")) {
+    last <- function(x) x$value[x$area == "ULS São José" & x$year == max(x$year)]
+    cat(sprintf("   ULS São José population: whole %s, parish %s (%.0f%% of the whole)\n",
+                format(last(whole), big.mark = " "), format(round(last(parish)), big.mark = " "), last(parish) / last(whole) * 100))
+  } else {
+    cat("   split ULS:", conditionMessage(if (inherits(whole, "error")) whole else parish), "\n")
+  }
+  notes <- tryCatch(output$planningIndicatorNotes, error = function(e) e)
+  session$setInputs(planning_split_mode = "whole")
+
   session$setInputs(planning_area = "Matosinhos", planning_sns_indicator = "sns_mammography")
   sns <- tryCatch(planning_sns_view(), error = function(e) e)
   cat("   SNS view:", if (inherits(sns, "error")) conditionMessage(sns) else paste(paste(names(sns$levels), collapse = ", "), "| periods", length(unique(sns$table$period))), "\n")

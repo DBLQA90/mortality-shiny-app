@@ -18,12 +18,12 @@
 #
 # Split municipalities
 # --------------------
-# Three municipalities are divided between two ULS at parish level: Lisboa
-# (Santa Maria, São José), Loures (Loures/Odivelas, São José) and Porto (Santo
-# António, São João). Nothing below municipality level exists in the app's data,
-# so the five ULS that touch them cannot be built individually. The smallest
-# unions of those ULS that contain only whole municipalities are exact, and are
-# offered instead:
+# Three municipalities are divided between ULS at parish level: Lisboa (Santa
+# Maria, São José and - per Decreto-Lei n.º 102/2023, though not in this
+# workbook - Lisboa Ocidental), Loures (Loures/Odivelas, São José) and Porto
+# (Santo António, São João). Those ULS are written out individually, marked
+# "ULS (partilhada)", and also as the smallest unions that contain only whole
+# municipalities:
 #
 #   ULS Santo António + São João                  Gondomar, Maia, Porto, Valongo
 #   ULS Loures/Odivelas + São José + Santa Maria  Lisboa, Loures, Mafra, Odivelas
@@ -86,6 +86,22 @@ mapping <- mapping %>%
   select(-municipality) %>%
   inner_join(nuts %>% select(municipality_code, municipality), by = "municipality_code")
 
+# The workbook does not record that three Lisboa parishes belong to ULS Lisboa
+# Ocidental (Decreto-Lei n.º 102/2023, ACES Lisboa Ocidental e Oeiras), so the
+# parish table adds any ULS-municipality pair it is missing. Without it the
+# "exact" group for Lisboa would leave that ULS out and still hold all of
+# Lisboa.
+parish_path <- "data/uls_parish.rds"
+if (file.exists(parish_path)) {
+  parish <- readRDS(parish_path) %>% distinct(uls = .data$unit, municipality = .data$municipality)
+  extra <- anti_join(parish, mapping, by = c("uls", "municipality"))
+  if (nrow(extra) > 0) {
+    message("  From the parish table: ", paste(paste0(extra$uls, " <- ", extra$municipality), collapse = "; "))
+    ars_of <- mapping %>% distinct(uls, ars)
+    mapping <- bind_rows(mapping, extra %>% left_join(ars_of, by = "uls"))
+  }
+}
+
 split <- mapping %>% count(municipality) %>% filter(n > 1) %>% pull(municipality)
 
 # Smallest unions of ULS containing only whole municipalities.
@@ -113,6 +129,14 @@ units <- bind_rows(
     filter(!uls %in% touching) %>%
     distinct(unit = uls, municipality, ars) %>%
     mutate(kind = "ULS"),
+  # The ULS that share a municipality, each with every municipality it serves.
+  # Summing them counts the shared ones once per ULS, so they are marked and
+  # the app offers them beside the exact groups, under the reading the user
+  # chooses (whole municipality or parish weights; R/planning_parish.R).
+  mapping %>%
+    filter(uls %in% touching) %>%
+    distinct(unit = uls, municipality, ars) %>%
+    mutate(kind = "ULS (partilhada)"),
   bind_rows(lapply(groups, function(group) {
     mapping %>%
       filter(uls %in% group) %>%

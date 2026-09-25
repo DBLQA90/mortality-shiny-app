@@ -171,7 +171,11 @@ test_that("the cause groups are chapter-level rubrics INE publishes", {
 
 test_that("health units for the ranking are the ULS and groups, not ARS", {
   units <- planning_uls_units()
-  expect_equal(length(units), 36)
+  # 33 ULS of whole municipalities plus the two exact groups; the six ULS that
+  # share a municipality are listed individually only in the "units" view.
+  expect_equal(length(units), 35)
+  expect_equal(length(planning_uls_units("units")), 39)
+  expect_false(any(grepl("\\+", planning_uls_units("units"))))
   expect_false(any(grepl("^ARS ", units)))
   # Together they cover every municipality of the mainland exactly once; the
   # islands have their own regional health services and no ULS.
@@ -1091,7 +1095,8 @@ test_that("years of potential life lost weight each death to 70", {
 test_that("SNS units map onto the app's ULS, with the Lisboa and Porto groups summed", {
   expect_equal(planning_sns_unit("Área dos CSP da ULS Gaia / Espinho"), "ULS Vila Nova de Gaia/Espinho")
   expect_equal(planning_sns_unit("CSP da ULS Póvoa Varzim / Vila Conde"), "ULS Póvoa de Varzim/Vila do Conde")
-  expect_equal(planning_sns_unit("CSP da ULS São José"), "ULS Loures/Odivelas + Santa Maria + São José")
+  expect_equal(planning_sns_unit("CSP da ULS São José"), "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José")
+  expect_equal(planning_sns_unit("CSP da ULS Lisboa Ocidental"), "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José")
   expect_equal(planning_sns_unit("Área dos CSP da ULS Guarda"), "ULS Guarda")
 })
 
@@ -1099,7 +1104,7 @@ test_that("SNS proportions are rebuilt as numerators and denominators, and compa
   with_planning_fixture(function(lookup) {
     root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
     dir.create(file.path(root, "sns"), recursive = TRUE, showWarnings = FALSE)
-    units <- c("Área dos CSP da ULS Santa Maria", "Área dos CSP da ULS São José", "Área dos CSP da ULS Loures / Odivelas")
+    units <- c("Área dos CSP da ULS Santa Maria", "Área dos CSP da ULS São José", "Área dos CSP da ULS Lisboa Ocidental")
     rows <- tidyr::expand_grid(period = c("2024-11", "2024-12", "2025-01"), unit = units)
     # Screened women: 50, 30 and 20 of 100, 100 and 50 eligible.
     counts <- c(50, 30, 20); eligible <- c(100, 100, 50)
@@ -1110,7 +1115,7 @@ test_that("SNS proportions are rebuilt as numerators and denominators, and compa
     ) %>% dplyr::mutate(dataset = "rastreios-oncologicos")
     saveRDS(sns, file.path(root, "sns", "rastreios-oncologicos.rds"))
     planning_clear_cache()
-    group <- "ULS Loures/Odivelas + Santa Maria + São José"
+    group <- "ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José"
     # The other screenings' fields are absent here: skipped, with a warning.
     expect_warning(t <- planning_sns_table(list(grupo = group), "sns_mammography"), "skipped")
     expect_equal(t$denominator, rep(250, 3))
@@ -1149,4 +1154,53 @@ test_that("weekly expected deaths come from baseline rates, leaving out the pand
     # 2024 has only one baseline year: no expected value.
     expect_true(all(is.na(planning_weekly_excess("Norte", 2024L, "85plus", lookup)$expected)))
   })
+})
+
+test_that("the six ULS that share a municipality read whole or by parish weights", {
+  skip_if_not(file.exists("../../data/uls_parish.rds"), "parish lookup not built")
+  skip_if_not(file.exists("../../data/snapshots/census_parish/year_2021.rds"), "census parishes not fetched")
+  # The engine reads snapshots relative to the app directory; point it at the
+  # repository's own data for this test.
+  old <- Sys.getenv("MORTALITY_SNAPSHOT_DIR", unset = NA)
+  Sys.setenv(MORTALITY_SNAPSHOT_DIR = normalizePath("../../data/snapshots"))
+  planning_clear_cache()
+  on.exit({
+    if (is.na(old)) Sys.unsetenv("MORTALITY_SNAPSHOT_DIR") else Sys.setenv(MORTALITY_SNAPSHOT_DIR = old)
+    planning_clear_cache()
+  }, add = TRUE)
+
+  lookup <- get_nuts_lookup("2024")
+  units <- planning_parish_units()
+  expect_setequal(units, c("ULS Lisboa Ocidental", "ULS Loures/Odivelas", "ULS Santa Maria",
+                           "ULS Santo António", "ULS São João", "ULS São José"))
+  shares <- planning_parish_shares()
+  # Every basis splits each shared municipality into shares that add to one.
+  totals <- shares %>% dplyr::group_by(.data$municipality, .data$basis) %>% dplyr::summarise(total = sum(.data$weight), .groups = "drop")
+  expect_true(all(abs(totals$total - 1) < 1e-9))
+  expect_setequal(unique(shares$municipality), c("Lisboa", "Loures", "Porto"))
+
+  year <- max(intersect(planning_indicator_years("pop_total"), planning_indicator_years("deaths")))
+  all_uls <- planning_uls_units("units")
+  whole <- planning_indicator_table(c(all_uls, "Continente"), year, ids = c("pop_total", "deaths"), lookup = lookup, mode = "whole")
+  parish <- planning_indicator_table(c(all_uls, "Continente"), year, ids = c("pop_total", "deaths"), lookup = lookup, mode = "parish")
+  sum_of <- function(table, id) sum(table$value[table$indicator == id & table$area != "Continente"], na.rm = TRUE)
+  continente <- function(table, id) table$value[table$indicator == id & table$area == "Continente"]
+  # Whole municipalities overlap; parish weights add up to the country.
+  expect_gt(sum_of(whole, "pop_total"), continente(whole, "pop_total"))
+  expect_equal(sum_of(parish, "pop_total"), continente(parish, "pop_total"))
+  expect_equal(sum_of(parish, "deaths"), continente(parish, "deaths"))
+
+  # A ULS that shares nothing is untouched by the choice.
+  matosinhos <- lapply(c("whole", "parish"), function(m) {
+    planning_indicator_table("ULS Matosinhos", year, ids = "pop_total", lookup = lookup, mode = m)$value
+  })
+  expect_equal(matosinhos[[1]], matosinhos[[2]])
+  # The exact group does not depend on it either.
+  group <- lapply(c("whole", "parish"), function(m) {
+    planning_indicator_table("ULS Santo António + São João", year, ids = "pop_total", lookup = lookup, mode = m)$value
+  })
+  expect_equal(group[[1]], group[[2]])
+  # Porto's two ULS split it, so each is smaller than under the whole reading.
+  porto <- planning_indicator_table(c("ULS Santo António", "ULS São João"), year, ids = "pop_total", lookup = lookup, mode = "parish")
+  expect_equal(sum(porto$value), group[[1]])
 })

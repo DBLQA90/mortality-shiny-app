@@ -968,6 +968,42 @@ Cada nível tem sempre a mesma cor em todos os gráficos: o local a azul, a ULS 
 laranja, a ARS a verde-água, a NUTS III a amarelo, a NUTS II a rosa, o NUTS I a
 verde e Portugal a violeta.
 
+### ULS que partilham um município
+
+Lisboa, Loures e Porto estão repartidos por ULS **ao nível da freguesia**
+(Decreto-Lei n.º 102/2023): Lisboa entre a ULS Santa Maria (8 freguesias), a ULS
+São José (13) e a ULS Lisboa Ocidental (Ajuda, Alcântara e Belém); Loures entre
+a ULS São José (as quatro freguesias a oriente, do centro de saúde de Sacavém) e
+a ULS Loures/Odivelas (as outras seis); o Porto entre a ULS Santo António (as
+quatro freguesias ocidentais) e a ULS São João (Bonfim, Campanhã e Paranhos).
+
+Estas seis ULS podem ser lidas de duas maneiras, à escolha:
+
+| Opção | O que faz | Quando usar |
+|---|---|---|
+| **Município inteiro** | cada ULS leva o município todo | decisões de serviço: a ULS não pode recusar residentes do município que serve. Nada é estimado |
+| **Ponderação por freguesias (Censos 2021)** | cada município é repartido pela população das suas freguesias no Censo, por grupo etário | comparar ULS entre si, ou somar sem duplicar: as partes somam o município e o país |
+
+Com **município inteiro** as seis ULS sobrepõem-se: em 2024, somá-las a todas dá
+mais 18.186 óbitos e 1,8 milhões de habitantes do que o Continente, porque
+Lisboa, Loures e Porto entram mais do que uma vez. A ULS São José, por exemplo,
+tem 895 mil habitantes desta forma e 474 mil (53%) com as freguesias.
+
+A ponderação usa a quota de população das freguesias de cada ULS **por grupo
+etário**, e, quando o indicador não tem idade, a população que lhe corresponde:
+mulheres dos 15 aos 49 anos para os nascimentos, os óbitos esperados (a
+estrutura etária das freguesias pesada pelas taxas de mortalidade nacionais por
+idade) para os óbitos, e a população total nos restantes. Assume-se que as
+quotas de 2021 se mantêm e que, dentro de cada município e idade, as freguesias
+de uma ULS se comportam como as das outras — não há dados anuais por freguesia
+que permitam fazer melhor (o INE publica por freguesia apenas os Censos e as
+contagens anuais de nados-vivos e óbitos, sem idade).
+
+Os **agrupamentos exactos** (ULS Santo António + São João, e ULS Lisboa
+Ocidental + Loures/Odivelas + Santa Maria + São José) continuam disponíveis e
+não dependem da escolha: contêm só municípios inteiros e não assumem nada. A
+escolha vale para todo o separador, incluindo o Excel e o perfil.
+
 ### Portugal: total do INE ou soma dos municípios
 
 A opção **Portugal** escolhe o que representa Portugal em todo o separador

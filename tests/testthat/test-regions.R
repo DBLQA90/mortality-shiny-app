@@ -393,21 +393,25 @@ test_that("the ULS lookup partitions the mainland exactly", {
   nuts <- readRDS("../../data/nuts_lookup_2024.rds")
   mainland <- sort(nuts$municipality[nuts$nuts1 == "Continente"])
 
-  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS"]), 34)
+  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS"]), 33)
   expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS (grupo)"]), 2)
+  # The ULS that share a municipality at parish level, listed individually too.
+  expect_equal(dplyr::n_distinct(health$unit[health$kind == "ULS (partilhada)"]), 6)
   expect_equal(dplyr::n_distinct(health$unit[health$kind == "ARS"]), 5)
 
-  # The 34 ULS and 2 groups cover every mainland municipality exactly once, and
-  # so do the five ARS. A municipality counted twice would double its deaths in
-  # any ARS or ULS total.
-  uls_level <- health[health$kind != "ARS", ]
+  # The 33 ULS of whole municipalities and the 2 groups cover every mainland
+  # municipality exactly once, and so do the five ARS. A municipality counted
+  # twice would double its deaths in any ARS or ULS total.
+  uls_level <- health[health$kind %in% c("ULS", "ULS (grupo)"), ]
   expect_equal(sort(uls_level$municipality), mainland)
   expect_equal(sort(health$municipality[health$kind == "ARS"]), mainland)
 
-  # The split municipalities appear only inside a group.
+  # A split municipality appears in a group and in each ULS that serves part
+  # of it, never in a ULS of whole municipalities.
   split <- attr(health, "split_municipalities")
   expect_setequal(split, c("Lisboa", "Loures", "Porto"))
-  expect_true(all(health$kind[health$municipality %in% split & health$kind != "ARS"] == "ULS (grupo)"))
+  expect_setequal(unique(health$kind[health$municipality %in% split & health$kind != "ARS"]),
+                  c("ULS (grupo)", "ULS (partilhada)"))
 
   # Every ULS sits inside one ARS.
   per_unit <- uls_level %>% dplyr::group_by(unit) %>% dplyr::summarise(n = dplyr::n_distinct(ars), .groups = "drop")
@@ -420,8 +424,9 @@ test_that("ULS and ARS are selectable and resolve to their municipalities", {
 
   choices <- area_choices_for("2024", nuts)
   expect_true(all(c("ARS Norte", "ULS Matosinhos", "ULS Santo António + São João") %in% choices))
-  # The five split ULS are not offered on their own.
-  expect_false(any(c("ULS Santo António", "ULS São José", "ULS Santa Maria") %in% choices))
+  # The ULS that share a municipality are offered individually as well: the
+  # planning tab reads them whole or by parish weights, as the user chooses.
+  expect_true(all(c("ULS Santo António", "ULS São José", "ULS Santa Maria", "ULS Lisboa Ocidental") %in% choices))
 
   expect_equal(region_municipalities("ULS Matosinhos", nuts), "Matosinhos")
   expect_setequal(region_municipalities("ULS Santo António + São João", nuts), c("Gondomar", "Maia", "Porto", "Valongo"))

@@ -205,10 +205,10 @@ life_year_block <- function(year, municipalities) {
 }
 
 # Life expectancy for `areas` over the triennia ending in `end_years`, by sex.
-planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup()) {
+planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
   wanted <- LIFE_INDICATORS[LIFE_INDICATORS$id %in% ids, , drop = FALSE]
   sexes <- unique(wanted$sex)
-  membership <- planning_membership_matrix(areas, lookup)
+  membership <- planning_membership_matrix(areas, lookup, mode)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   available <- life_expectancy_years()
@@ -237,7 +237,7 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
         block <- blocks[[j]][[sex]]
         before <- if (is.null(previous[[j]])) block else previous[[j]][[sex]]
         sum_areas <- function(values, own_ok) {
-          summed <- membership %*% values[municipalities, , drop = FALSE]
+          summed <- planning_band_product(membership, values, mode)
           for (area in intersect(areas, planning_published_areas)) {
             if (isTRUE(own_ok[[area]])) summed[area, ] <- values[area, ]
           }
@@ -246,8 +246,8 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
         deaths <- deaths + sum_areas(block$deaths, block$has_row)
         mid <- (block$population + before$population) / 2
         person_years <- person_years + sum_areas(mid, block$has_population & before$has_population)
-        spread_vec <- as.numeric(membership %*% block$spread[municipalities])
-        infant_vec <- as.numeric(membership %*% block$infant[municipalities])
+        spread_vec <- planning_weighted_sum(membership, block$spread, "mortality", mode)
+        infant_vec <- planning_weighted_sum(membership, block$infant, "female_15_49", mode)
         for (area in intersect(areas, planning_published_areas)) {
           i <- match(area, areas)
           if (isTRUE(block$has_row[[area]])) spread_vec[i] <- block$spread[[area]]

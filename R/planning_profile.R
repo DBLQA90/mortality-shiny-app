@@ -43,6 +43,7 @@ write_planning_profile <- function(path,
                                    data_date = NA_character_,
                                    benchmark = "Portugal",
                                    education_min_age = 0L,
+                                   mode = PLANNING_DEFAULT_SPLIT_MODE,
                                    last_year = NULL,
                                    progress = function(value, detail = NULL) invisible(NULL)) {
   for (pkg in c("officer", "flextable", "ggplot2")) {
@@ -57,7 +58,7 @@ write_planning_profile <- function(path,
   years <- sort(unique(c(years, utils::tail(census, 1))))
 
   progress(0.1, "indicadores")
-  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark) %>%
+  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode) %>%
     planning_add_significance(benchmark)
   summary <- planning_profile_summary(table, areas, education_min_age)
 
@@ -130,7 +131,7 @@ write_planning_profile <- function(path,
 
   # 5. Among the ULS -----------------------------------------------------------------
   progress(0.7, "posição entre as ULS")
-  ranked <- planning_profile_ranking(local, areas, lookup, last_year, benchmark)
+  ranked <- planning_profile_ranking(local, areas, lookup, last_year, benchmark, mode)
   if (!is.null(ranked)) {
     doc <- officer::body_add_par(doc, paste0("Posição de ", ranked$unit, " entre as ULS do Continente"), style = "heading 2")
     ft <- flextable::flextable(ranked$table)
@@ -149,7 +150,7 @@ write_planning_profile <- function(path,
   if (length(cause_years) > 0) {
     progress(0.75, "mortalidade por causa")
     end_year <- max(cause_years)
-    causes <- planning_cause_standardised(c(local, benchmark), end_year, lookup = lookup, benchmark = benchmark)
+    causes <- planning_cause_standardised(c(local, benchmark), end_year, lookup = lookup, benchmark = benchmark, mode = mode)
     own <- causes[causes$area == local & is.finite(causes$smr), , drop = FALSE]
     if (nrow(own) > 0) {
       doc <- officer::body_add_par(doc, paste0("Mortalidade padronizada por causa, ", end_year - 2L, "-", end_year), style = "heading 2")
@@ -250,7 +251,7 @@ write_planning_profile <- function(path,
   proportional_years <- proportional_years[proportional_years <= last_year]
   if (length(proportional_years) > 0) {
     end_year <- max(proportional_years)
-    prop <- planning_proportional_table(c(local, benchmark), end_year, lookup = lookup)
+    prop <- planning_proportional_table(c(local, benchmark), end_year, lookup = lookup, mode = mode)
     if (nrow(prop) > 0 && any(!is.na(prop$share[prop$area == local]))) {
       doc <- officer::body_add_par(doc, paste0("Mortalidade proporcional, todas as idades, ", end_year - 2L, "-", end_year, " [I45]"), style = "heading 2")
       doc <- planning_profile_add_plot(doc, planning_profile_proportional(prop, local, benchmark), width = 6.5, height = 4)
@@ -261,6 +262,7 @@ write_planning_profile <- function(path,
   doc <- officer::body_add_par(doc, "Notas", style = "heading 2")
   notes <- c(
     "Cada área é a soma dos seus municípios e cada indicador a razão dessas somas. As ULS e ARS usam a composição actual, aplicada a todos os anos.",
+    if (identical(mode, "parish")) "ULS que partilham um município (Lisboa, Loures, Porto): repartidas pela população das freguesias nos Censos de 2021, por grupo etário." else "ULS que partilham um município (Lisboa, Loures, Porto): cada ULS leva o município inteiro, pelo que as seis se sobrepõem.",
     if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "Portugal: soma dos 308 municípios, sem os acontecimentos de residência desconhecida (compara igual com igual)." else "Portugal: total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos).",
     "Significância: um valor está acima (abaixo) de Portugal quando todo o seu intervalo de confiança de 95% fica acima (abaixo) do valor de Portugal no mesmo período, como no PHE Fingertips. Só para taxas, proporções e esperança de vida.",
     paste("* Ganho médio e trabalhadores por sector:", PLANNING_INDICATOR_NOTES[["earnings_mean"]]),
@@ -362,8 +364,8 @@ planning_profile_trends <- function(table, areas) {
 
 # The location's ULS (the location itself when it is one) ranked among all ULS
 # on the event rates. NULL when the location has no single ULS.
-planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark) {
-  units <- planning_uls_units()
+planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark, mode = PLANNING_DEFAULT_SPLIT_MODE) {
+  units <- planning_uls_units("units")
   # The smallest ULS holding every municipality of the location (a ULS with
   # the same municipalities is not offered as a comparator, but ranks here).
   members <- planning_area_members(local, lookup)
@@ -375,7 +377,7 @@ planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark)
     years <- years[years <= last_year]
     if (length(years) == 0) return(NULL)
     year <- max(years)
-    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark) %>% planning_add_significance(benchmark)
+    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark, mode = mode) %>% planning_add_significance(benchmark)
     ranked <- t[t$area %in% units & !is.na(t$value), , drop = FALSE]
     ranked <- ranked[order(-ranked$value), , drop = FALSE]
     position <- match(unit, ranked$area)

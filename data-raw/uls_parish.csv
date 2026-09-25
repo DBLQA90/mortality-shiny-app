@@ -1,0 +1,62 @@
+# Parishes of the municipalities that the ULS reform split, and the ULS each
+# belongs to. Only these three municipalities are divided; every other
+# municipality belongs whole to one ULS (data/uls_lookup.rds).
+#
+# Source: Decreto-Lei n.º 102/2023, de 7 de novembro, which defines each ULS by
+# the ACES it integrates, plus the parish composition of those ACES:
+#   ULS Santa Maria      = ACES Lisboa Norte (+ Centro de Saúde de Mafra)
+#   ULS São José         = ACES Lisboa Central + Centro de Saúde de Sacavém (Loures)
+#   ULS Lisboa Ocidental = ACES Lisboa Ocidental e Oeiras (+ ACES Cascais)
+#   ULS Loures-Odivelas  = ACES Loures-Odivelas except the Centro de Saúde de Sacavém
+#   ULS Santo António    = ACES Grande Porto V - Porto Ocidental (+ Gondomar)
+#   ULS São João         = ACES Grande Porto VI - Porto Oriental (+ Maia, Valongo)
+# Parish lists: ULS Santa Maria (8 Lisboa parishes) and ULS São José (13 Lisboa
+# and 4 Loures parishes) as published by the ULS; the remaining 3 Lisboa
+# parishes are the ACES Lisboa Ocidental e Oeiras area; Porto Ocidental /
+# Oriental as published by the ACES.
+#
+# The assignment of the four eastern Loures parishes to ULS São José was
+# contested locally in December 2023; if it is revised, edit this file and run
+# tools/build_uls_parish.R.
+municipality,parish,uls
+Lisboa,Alvalade,ULS Santa Maria
+Lisboa,Avenidas Novas,ULS Santa Maria
+Lisboa,Benfica,ULS Santa Maria
+Lisboa,Campolide,ULS Santa Maria
+Lisboa,Carnide,ULS Santa Maria
+Lisboa,Lumiar,ULS Santa Maria
+Lisboa,São Domingos de Benfica,ULS Santa Maria
+Lisboa,Santa Clara,ULS Santa Maria
+Lisboa,Areeiro,ULS São José
+Lisboa,Arroios,ULS São José
+Lisboa,Beato,ULS São José
+Lisboa,Campo de Ourique,ULS São José
+Lisboa,Estrela,ULS São José
+Lisboa,Marvila,ULS São José
+Lisboa,Misericórdia,ULS São José
+Lisboa,Olivais,ULS São José
+Lisboa,Parque das Nações,ULS São José
+Lisboa,Penha de França,ULS São José
+Lisboa,Santa Maria Maior,ULS São José
+Lisboa,Santo António,ULS São José
+Lisboa,São Vicente,ULS São José
+Lisboa,Ajuda,ULS Lisboa Ocidental
+Lisboa,Alcântara,ULS Lisboa Ocidental
+Lisboa,Belém,ULS Lisboa Ocidental
+Loures,Camarate; Unhos e Apelação,ULS São José
+Loures,Moscavide e Portela,ULS São José
+Loures,Sacavém e Prior Velho,ULS São José
+Loures,Santa Iria de Azoia; São João da Talha e Bobadela,ULS São José
+Loures,Bucelas,ULS Loures/Odivelas
+Loures,Fanhões,ULS Loures/Odivelas
+Loures,Loures,ULS Loures/Odivelas
+Loures,Lousa,ULS Loures/Odivelas
+Loures,Santo Antão e São Julião do Tojal,ULS Loures/Odivelas
+Loures,Santo António dos Cavaleiros e Frielas,ULS Loures/Odivelas
+Porto,Aldoar; Foz do Douro e Nevogilde,ULS Santo António
+Porto,Cedofeita; Santo Ildefonso; Sé; Miragaia; São Nicolau e Vitória,ULS Santo António
+Porto,Lordelo do Ouro e Massarelos,ULS Santo António
+Porto,Ramalde,ULS Santo António
+Porto,Bonfim,ULS São João
+Porto,Campanhã,ULS São João
+Porto,Paranhos,ULS São João

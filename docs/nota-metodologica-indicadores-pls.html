@@ -159,6 +159,7 @@
       <li><a href="#ev">Esperança de vida à nascença</a></li>
       <li><a href="#u75">Mortalidade proporcional &lt; 75 anos</a></li>
       <li><a href="#incerteza">Intervalos e marcas</a></li>
+      <li><a href="#partilhadas">ULS que partilham um município</a></li>
       <li><a href="#comparacao">Comparação com Portugal</a></li>
       <li><a href="#padronizada">Mortalidade padronizada e evitável</a></li>
       <li><a href="#recentes">Cuidados primários e mortalidade semanal</a></li>
@@ -176,7 +177,7 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.5</li>
+          <li><b>Versão</b> 1.6</li>
           <li><b>Data</b> 21 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
@@ -413,6 +414,18 @@ e(0)  = Σ L(x) / l(0)</div>
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section>
+        <h2 id="partilhadas"><span class="n">8-B</span>ULS que partilham um município</h2>
+        <p>Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. O <a href="https://files.diariodarepublica.pt/1s/2023/11/21500/0000400020.pdf">Decreto-Lei n.º 102/2023</a> define cada ULS pelos ACES que integra, e as freguesias seguem a composição desses ACES: Lisboa divide-se entre a ULS Santa Maria (ACES Lisboa Norte, 8 freguesias), a ULS São José (ACES Lisboa Central, 13) e a ULS Lisboa Ocidental (ACES Lisboa Ocidental e Oeiras: Ajuda, Alcântara e Belém); Loures entre a ULS São José (as quatro freguesias do centro de saúde de Sacavém) e a ULS Loures/Odivelas; o Porto entre a ULS Santo António (ACES Porto Ocidental) e a ULS São João (ACES Porto Oriental). O ficheiro de apoio não regista as três freguesias de Lisboa na ULS Lisboa Ocidental.</p>
+        <p>A aplicação oferece duas leituras destas seis ULS, à escolha do utilizador:</p>
+        <ul>
+          <li><strong>Município inteiro</strong> — cada ULS leva o município todo. Nada é estimado e corresponde à realidade das decisões (a ULS não pode excluir residentes do município que serve), mas as seis sobrepõem-se: em 2024 somam mais 18.186 óbitos e 1,8 milhões de habitantes do que o Continente.</li>
+          <li><strong>Ponderação por freguesias</strong> — cada município repartido pela quota de população das freguesias de cada ULS nos Censos de 2021, por grupo etário. As partes somam o município e o país exactamente.</li>
+        </ul>
+        <p>Quando o indicador não tem idade, usa-se a população que lhe corresponde: mulheres dos 15 aos 49 anos nos nascimentos e nas taxas por nado-vivo, os óbitos esperados (estrutura etária das freguesias pesada pelas taxas de mortalidade nacionais por idade) nos óbitos, e a população total nos restantes. A ponderação assume que as quotas de 2021 se mantêm e que, dentro de cada município e grupo etário, as freguesias de uma ULS se comportam como as das outras: o INE publica por freguesia apenas os Censos e as contagens anuais de nados-vivos e óbitos, sem idade, e não há estimativas anuais de população por freguesia.</p>
+        <p>Os agrupamentos exactos de ULS — ULS Santo António + São João, e ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José — contêm apenas municípios inteiros, não dependem da escolha e não assumem nada.</p>
       </section>
 
       <section>

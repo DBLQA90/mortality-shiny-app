@@ -831,6 +831,30 @@ planning_tab_ui <- function() {
         selectInput("planning_indicator", "Indicador:", choices = planning_indicator_choices(), selected = "ageing_index"),
         uiOutput("planningComparatorsUI"),
         radioButtons(
+          "planning_split_mode", "ULS que partilham um município:",
+          choices = PLANNING_SPLIT_MODES, selected = PLANNING_DEFAULT_SPLIT_MODE
+        ),
+        helpText(
+          "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
+          "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas ",
+          "as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
+          "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
+          "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
+          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha."
+        ),
+        radioButtons(
+          "planning_split_mode", "ULS que partilham um município:",
+          choices = PLANNING_SPLIT_MODES, selected = PLANNING_DEFAULT_SPLIT_MODE
+        ),
+        helpText(
+          "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
+          "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas as seis ",
+          "ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
+          "«Ponderação por freguesias»: cada município é repartido pela população das suas freguesias ",
+          "nos Censos de 2021, por grupo etário — as partes somam o país, assumindo que as quotas se mantêm. ",
+          "Os agrupamentos exactos de ULS não dependem desta escolha."
+        ),
+        radioButtons(
           "planning_portugal", "Portugal:",
           choices = c("Total publicado pelo INE" = "published", "Soma dos 308 municípios" = "municipal"),
           selected = "published"
@@ -996,6 +1020,7 @@ planning_method_notes <- function() {
     ),
     h4("Portugal, significância e funil"),
     tags$ul(
+      tags$li("ULS que partilham um município: Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia (Decreto-Lei n.º 102/2023). «Município inteiro» dá a cada ULS o município todo, sem estimar nada, mas as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez (em 2024, mais 18.186 óbitos do que o Continente). «Ponderação por freguesias» reparte cada município pela população das suas freguesias nos Censos de 2021, por grupo etário: as partes somam o município e o país, assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha e não assumem nada."),
       tags$li("Portugal pode ser o total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos), ou a soma dos 308 municípios, que compara igual com igual. A escolha vale para comparadores, significância, classificação das ULS, funil e perfil."),
       tags$li("\u25b2 / \u25bc / = : o intervalo de confiança de 95% fica inteiramente acima, abaixo ou inclui o valor de Portugal no mesmo período (critério do PHE Fingertips). Só para indicadores comparáveis com intervalo; não diz se a diferença é boa ou má. Na classificação das ULS: laranja acima, azul abaixo, cinzento sem diferença."),
       tags$li("Funil: cada unidade contra o tamanho do denominador, com os limites do que o acaso produziria à volta de Portugal (95% e 99,8%), calculados pelos quantis exactos da contagem (Poisson ou binomial, Spiegelhalter 2005). Só para taxas de acontecimentos e proporções de nascimentos."),

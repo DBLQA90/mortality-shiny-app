@@ -193,7 +193,7 @@ planning_significance_mark <- function(significance) {
 
 # Version of the method, as in the methodological note. Part of the cache key of
 # the all-areas export: raise it whenever a change alters published values.
-PLANNING_METHOD_VERSION <- "1.5"
+PLANNING_METHOD_VERSION <- "1.6"
 
 planning_cache <- new.env(parent = emptyenv())
 
@@ -334,6 +334,11 @@ planning_proportional_years <- function(window = 3L) {
 planning_area_members <- function(area, lookup = get_nuts_lookup()) {
   municipalities <- as.character(lookup$municipality)
   if (area %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL)) return(sort(unique(municipalities)))
+  # A ULS that shares a municipality serves every municipality it touches; the
+  # parish weights decide how much of each it takes (R/planning_parish.R).
+  if (area %in% planning_parish_units()) {
+    return(sort(unique(c(planning_parish_members(area), intersect(region_members(area, lookup), municipalities)))))
+  }
   if (area %in% municipalities) return(area)
   sort(unique(region_members(area, lookup)))
 }
@@ -838,13 +843,18 @@ planning_estimate_suppressed_sectors <- function(employees, lookup = get_nuts_lo
 # Membership of each area in the municipalities of the lookup, as a 0/1 matrix
 # (areas x municipalities). Summing components over any set of areas is then one
 # matrix product per year, which is what lets an export cover every area.
-planning_membership_matrix <- function(areas, lookup = get_nuts_lookup()) {
+planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE, basis = "total") {
   areas <- unique(as.character(areas))
   municipalities <- sort(unique(as.character(lookup$municipality)))
   membership <- matrix(0, length(areas), length(municipalities), dimnames = list(areas, municipalities))
   for (i in seq_along(areas)) {
     members <- intersect(planning_area_members(areas[[i]], lookup), municipalities)
     if (length(members) > 0) membership[i, members] <- 1
+  }
+  # In the parish reading, the six ULS that share a municipality take the
+  # share of it their parishes hold in the census.
+  if (identical(mode, "parish") && any(areas %in% planning_parish_units())) {
+    membership <- membership * planning_parish_weights(areas, municipalities, basis, mode)
   }
   membership
 }
@@ -853,8 +863,8 @@ planning_membership_matrix <- function(areas, lookup = get_nuts_lookup()) {
 # published row where the year's file has one; everything else is the sum of
 # its municipalities. `members_found` counts members with a population row, so
 # partial coverage is visible rather than read as a small area.
-planning_components <- function(areas, years, lookup = get_nuts_lookup()) {
-  membership <- planning_membership_matrix(areas, lookup)
+planning_components <- function(areas, years, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
+  membership <- planning_membership_matrix(areas, lookup, mode)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   columns <- planning_component_columns
@@ -894,7 +904,16 @@ planning_components <- function(areas, years, lookup = get_nuts_lookup()) {
       unreported[match(joint_members[active], municipalities), cols] <- FALSE
     }
     values[is.na(values)] <- 0
-    sums <- membership %*% values
+    # Each column is summed with the weights of its own basis: population by
+    # age group, births by women of childbearing age, deaths by the expected
+    # deaths of the parishes (see R/planning_parish.R). Outside the parish
+    # reading every basis is the same 0/1 membership.
+    bases <- vapply(columns, planning_weight_basis, character(1))
+    sums <- matrix(0, length(areas), length(columns), dimnames = list(areas, columns))
+    for (basis in unique(bases)) {
+      pick <- bases == basis
+      sums[, pick] <- planning_membership_matrix(areas, lookup, mode, basis) %*% values[, pick, drop = FALSE]
+    }
     sums[(membership %*% unreported) > 0 | split] <- NA
     colnames(sums) <- columns
 
@@ -1151,14 +1170,14 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
 }
 
 planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup(), education_min_age = 0L,
-                                     benchmark = "Portugal") {
+                                     benchmark = "Portugal", mode = PLANNING_DEFAULT_SPLIT_MODE) {
   years <- as.integer(years)
   areas <- unique(as.character(areas))
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
   # One year earlier than the widest window: the fertility index needs the
   # previous year's population for its mid-year denominator.
   component_years <- seq.int(min(years) - max_window, max(years))
-  components <- if (length(setdiff(ids, c(life_expectancy_ids, standardised_ids))) > 0) planning_components(areas, component_years, lookup) else NULL
+  components <- if (length(setdiff(ids, c(life_expectancy_ids, standardised_ids))) > 0) planning_components(areas, component_years, lookup, mode) else NULL
 
   undercount <- if (any(c("infant_rate") %in% ids)) {
     infant_undercount_years(component_years, municipalities = lookup$municipality)
@@ -1175,12 +1194,12 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
       dplyr::filter(.data$year %in% years)
   }
   if (length(life_ids) > 0) {
-    results$life <- planning_life_expectancy_table(areas, years, ids = life_ids, lookup = lookup) %>%
+    results$life <- planning_life_expectancy_table(areas, years, ids = life_ids, lookup = lookup, mode = mode) %>%
       dplyr::select(-dplyr::any_of("reason"))
   }
   if (length(standard_ids) > 0) {
     # The SMR is against the benchmark's rates, so it follows the Portugal choice.
-    results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark)
+    results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark, mode = mode)
   }
   dplyr::bind_rows(results) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
@@ -1253,14 +1272,14 @@ planning_year_causes <- function(year, sex = "HM") {
   table
 }
 
-planning_proportional <- function(area, end_year, window = 3L, sex = "HM", lookup = get_nuts_lookup()) {
+planning_proportional <- function(area, end_year, window = 3L, sex = "HM", lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
   years <- seq.int(as.integer(end_year) - window + 1L, as.integer(end_year))
   members <- planning_area_members(area, lookup)
   causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
 
   frames <- lapply(years, planning_year_causes, sex = sex)
   if (any(vapply(frames, is.null, logical(1)))) return(tibble::tibble())
-  membership <- planning_membership_matrix(area, lookup)
+  membership <- planning_membership_matrix(area, lookup, mode, "mortality")
   if (any(vapply(years, function(y) planning_joint_split(membership, y, "deaths")[[1]], logical(1)))) return(tibble::tibble())
 
   pooled <- dplyr::bind_rows(lapply(frames, function(frame) {
@@ -1269,9 +1288,10 @@ planning_proportional <- function(area, end_year, window = 3L, sex = "HM", looku
     } else {
       frame[frame$area %in% members, , drop = FALSE]
     }
+    rows$weight <- if (area %in% planning_published_areas && area %in% frame$area) 1 else membership[1, rows$area]
     rows
   }))
-  counts <- vapply(causes, function(cause) sum(pooled$deaths[pooled$cause == cause]), numeric(1))
+  counts <- vapply(causes, function(cause) sum(pooled$deaths[pooled$cause == cause] * pooled$weight[pooled$cause == cause]), numeric(1))
 
   total <- counts[[1]]
   groups <- counts[-1]
@@ -1333,10 +1353,17 @@ planning_pyramid <- function(area, year, lookup = get_nuts_lookup()) {
 # Every ULS (and the grouped units covering the split municipalities) for one
 # indicator and year, so a unit can be read against the others and against
 # Portugal. ARS are left out: they are sums of the same units.
-planning_uls_units <- function() {
+# The ULS to show together. "groups" (the default) keeps the exact unions for
+# the ULS that share a municipality and leaves the individual ones out, so a
+# sum over the list is the country exactly. "units" lists those ULS
+# individually instead - what a ranking or a funnel compares - which under the
+# whole-municipality reading counts Lisboa, Loures and Porto once per ULS.
+planning_uls_units <- function(which = c("groups", "units")) {
+  which <- match.arg(which)
   lookup <- get_health_lookup()
   if (is.null(lookup) || nrow(lookup) == 0) return(character(0))
-  sort(unique(as.character(lookup$unit[lookup$kind != "ARS"])))
+  keep <- if (identical(which, "groups")) c("ULS", "ULS (grupo)") else c("ULS", "ULS (partilhada)")
+  sort(unique(as.character(lookup$unit[lookup$kind %in% keep])))
 }
 
 # ---------------------------------------------------------
@@ -1419,8 +1446,8 @@ planning_comparators <- function(area, lookup = get_nuts_lookup(), health = get_
 # ---------------------------------------------------------
 # The same figures as planning_proportional(), for every area and triennium in
 # one pass: the cause counts are summed with the membership matrix.
-planning_proportional_table <- function(areas, end_years, window = 3L, sex = "HM", lookup = get_nuts_lookup()) {
-  membership <- planning_membership_matrix(areas, lookup)
+planning_proportional_table <- function(areas, end_years, window = 3L, sex = "HM", lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
+  membership <- planning_membership_matrix(areas, lookup, mode, "mortality")
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
