@@ -416,10 +416,38 @@ Requests` and then refuses connections for hours.
 | `sns` | Primary-care indicators per ULS from the SNS Transparency portal |
 | `parish` | Births and deaths by parish, for the ULS that share a municipality |
 | `current` | `weekly`, `sns`, `deaths`, `population`, `deathtotals` and `infant`: what the scheduled refresh runs |
+| `validation` | INE's own municipal indicators, which the regression check compares against |
 | `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
 | `inventory` | Rebuilds the snapshot manifest |
 | `fixareas` | Explicit only: re-runs the completed Lisboa/Calheta/Lagoa repair of old death chunks |
 | `nuts2` | Explicit only. **Do not run**: five region names denote two or three NUTS levels at once, so those rows are double- or triple-counted; see [METHODOLOGY.md](METHODOLOGY.md) |
+
+### Regression check
+
+INE revises published series without notice, and a revision that moves a
+municipality's death rate looks exactly like a bug until someone compares. So
+every refresh ends with `tools/regression_check.R`, which recomputes the numbers
+the app has been validated on - its 308 municipal values against INE's own
+published indicators, the ULS and ARS partitions of the Continente, Portugal's
+published row against the sum of its municipalities, the identities that must
+hold in every area and year, the standardised rates and life expectancy, the
+parish split, the SNS and weekly-deaths modules, and both exports - and compares
+them with `data/regression_baseline.csv`.
+
+```sh
+Rscript tools/regression_check.R            # 0 nothing moved, 1 a value moved, 2 an invariant failed
+Rscript tools/regression_check.R --quick    # skips the all-areas sweep and the exports (~15 s)
+Rscript tools/regression_check.R --update   # record the current values as the baseline
+```
+
+The report names every measure that moved, with its old and new value. When the
+move is a genuine INE revision, `--update` records it and the commit diff shows
+exactly what changed. The baseline is measured on fixed years, so a new year of
+data does not read as a regression; moving them means refetching
+`tools/fetch_validation_refs.R` and re-recording. The scheduled refresh writes
+the report to `~/.local/state/mortality-refresh/latest-regression.txt` and exits
+non-zero when something moved, so `systemctl --user status
+mortality-refresh.service` shows it.
 
 ### Data versions
 
@@ -466,11 +494,14 @@ mortality only, and refused for everything else with an explanatory message.
   `0013332` but carry no cause dimension. All rates work for 2024.
 - **The population series changes basis at 2021**, by about 1.7%. See
   [METHODOLOGY.md](METHODOLOGY.md); the app warns when a series crosses it.
-- Regional totals are municipal sums and do not match INE's published regional
-  figures, nor do they add up to the national total: the national row includes
-  deaths INE cannot assign to a municipality, about 0.3-1.0% depending on year.
-  `MORTALITY_REGION_MODE=original` restores INE's own rows, but historical
-  chunks carry them only for `Norte` and `Alentejo`.
+- Regional totals in the mortality tabs are municipal sums and do not match
+  INE's published regional figures, nor do they add up to the national total:
+  the national row includes deaths INE cannot assign to a municipality, about
+  0.3-1.0% depending on year. `MORTALITY_REGION_MODE=original` restores INE's
+  own rows, but historical chunks carry them only for `Norte` and `Alentejo`.
+  The planning tab's standardised rates and life expectancy do use INE's
+  regional rows by age wherever they exist, so those areas need no
+  redistribution of deaths without a published age.
 - Selecting overlapping areas (for example a region and one of its own
   municipalities) sums them and double-counts. The app warns but does not block.
 

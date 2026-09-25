@@ -1205,8 +1205,22 @@ expectancy and the standardised indicators are withheld, because the age
 distribution would be more assumption than measurement (1.6% of municipal
 triennia, nearly all before 1999 and around 2014; municipal life expectancy
 then ranges 65.1-85.5 rather than 56.4-86.4). The counts themselves, which do
-not depend on the ages, are kept. The regional rows INE publishes by age could
-replace the municipal sums for NUTS areas; not done yet.
+not depend on the ages, are kept.
+
+**None of this applies to an area INE publishes a row for.** Where the territory
+has a row of its own - every NUTS region in every year except the two Lisbon
+regions before 2022, and the ULS that coincide with one - the standardised
+module and life expectancy read the deaths by age from that row instead of
+summing municipalities (`planning_regional_row_parts()`, on the plan in
+`R/regional_rows.R`, with the two composed territories still adding or
+subtracting Sertã and Vila de Rei). Regional bands sum to regional totals, so
+those areas have nothing to redistribute: no `‡`, no withholding. Against the
+municipal sums for 2019 and 2024 the all-cause totals agree to within one death
+and deaths under 75 to 0.4%, while the leaf avoidable causes come out up to 7.5%
+higher - the municipal suppression the regional rows do not carry. Life
+expectancy by sex moves up to 0.25 years in the regions that had most deaths
+without a published age (Açores, Alentejo). Portugal and the Continente were
+already read from their published rows and are unchanged.
 
 ### Primary care from the SNS Transparency portal
 
@@ -1536,6 +1550,36 @@ later are omitted. Checked against the history: on 2026-09-01 Lisboa has 37,208
 births in 2001 (before the fix) and Portugal's 2022 population is 10,929,704
 (revised); on 2026-08-15 births are absent and the 2022 population is 10,516,621
 (before the revision).
+
+## Regression Check
+
+The validation in this document is only worth what it is worth on the current
+data. INE revises series quietly, and a revision that moves a municipality's
+death rate is indistinguishable from a bug until someone recomputes. So
+`tools/regression_check.R` turns the audits into 119 measures and compares them
+with `data/regression_baseline.csv` after every scheduled refresh
+(`tools/scheduled_refresh.sh`).
+
+Two kinds. **Invariants** must hold whatever the data says: the ULS and ARS
+partitions of the Continente, the shares that add to 100, neonatal plus
+post-neonatal equal to infant mortality, Portugal's SMR against itself equal to
+100, no percentage above 100, no non-finite value, the only negative indicator
+being the census population change, the regions carrying no redistribution flag,
+the parish mode summing exactly to the Continente, and both exports being
+written. **Tracked values** are compared within a tolerance: the largest and
+95th-percentile difference against INE's own published municipal indicators
+(`tools/fetch_validation_refs.R`, nine indicators over 308 municipalities),
+Portugal's published row against the sum of its municipalities per component and
+year, the standardised rates, life expectancy, YPLL and Norte's published
+premature deaths, the cause-group coverage, the overlap of the whole-municipality
+ULS mode, the SNS and weekly-deaths series, and the ranges of life expectancy,
+fertility and purchasing power.
+
+The baseline is measured on fixed years, so a new year of data is not read as a
+regression; the years move only when the reference indicators are refetched and
+the baseline re-recorded with `--update`, which makes the change reviewable as a
+commit diff. The check exits 1 when a tracked value moved and 2 when an
+invariant failed, and the refresh carries that status.
 
 ## RDS Snapshot Source
 

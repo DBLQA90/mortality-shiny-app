@@ -15,6 +15,8 @@
 #   parish         births and deaths by parish, for the ULS that share a
 #                  municipality (0012450/0012542 and earlier editions)
 #   sns            primary-care indicators from the SNS Transparency portal
+#   validation     INE's own municipal indicators, which tools/regression_check.R
+#                  compares the app's values against
 #   current        weekly + sns + the latest deaths and population: what the
 #                  scheduled refresh runs (tools/scheduled_refresh.sh)
 #   ambiguous      report municipalities INE labels ambiguously (Calheta, Lagoa)
@@ -395,6 +397,11 @@ task_infant <- function() {
   invisible(TRUE)
 }
 
+task_validation <- function() {
+  say("== Task: INE reference indicators for validation ==")
+  invisible(run_builder("fetch_validation_refs.R", label = "municipal reference indicators"))
+}
+
 task_inventory <- function() {
   say("== Task: rebuild inventory ==")
   invisible(run_builder("update_snapshot_inventory.R", label = "snapshot inventory"))
@@ -416,6 +423,7 @@ if (task %in% c("all", "current", "deathtotals")) if (have_time(10)) task_death_
 if (task %in% c("all", "regional")) if (have_time(5)) task_regional()
 if (task %in% c("all", "current", "infant")) if (have_time(10)) task_infant()
 if (task %in% c("all", "planning")) if (have_time(10)) task_planning()
+if (task %in% c("all", "validation")) if (have_time(5)) task_validation()
 if (task %in% c("all", "ambiguous")) if (have_time(5)) task_ambiguous()
 # Not part of "all": regions are built by summing municipalities, so INE's own
 # regional rows are needed only to reproduce a published regional figure via

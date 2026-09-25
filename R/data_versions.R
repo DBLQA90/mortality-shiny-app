@@ -59,7 +59,7 @@ relpath_dataset <- function(relpath) {
   parts <- strsplit(relpath, "/", fixed = TRUE)
   vapply(parts, function(p) {
     if (length(p) >= 2 && identical(p[[1]], "snapshots")) {
-      if (p[[2]] %in% c("planning_extra", "sns", "weekly_deaths") && length(p) >= 3) return(paste0(p[[2]], "/", sub("\\.rds$", "", p[[3]])))
+      if (p[[2]] %in% c("planning_extra", "sns", "weekly_deaths", "validation") && length(p) >= 3) return(paste0(p[[2]], "/", sub("\\.rds$", "", p[[3]])))
       return(sub("\\.rds$", "", p[[2]]))
     }
     sub("\\.rds$", "", p[[length(p)]])
@@ -431,7 +431,8 @@ DATASET_LABELS <- c(
   "nuts_lookup_2024" = "Municípios por região (NUTS 2024)",
   "uls_lookup" = "Municípios por ULS e ARS",
   "snapshot_inventory" = "Inventário dos ficheiros",
-  "ambiguous_areas" = "Relatório de nomes ambíguos"
+  "ambiguous_areas" = "Relatório de nomes ambíguos",
+  "validation/ine_municipal_refs" = "Indicadores municipais publicados pelo INE, para validação"
 )
 
 dataset_label <- function(dataset) {
