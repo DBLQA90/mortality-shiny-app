@@ -208,7 +208,9 @@ life_year_block <- function(year, municipalities) {
 planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATORS$id, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
   wanted <- LIFE_INDICATORS[LIFE_INDICATORS$id %in% ids, , drop = FALSE]
   sexes <- unique(wanted$sex)
-  membership <- planning_membership_matrix(areas, lookup, mode)
+  # 0/1 here: the parish weights are applied per age band below, and applying
+  # them to the membership as well would count them twice.
+  membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   available <- life_expectancy_years()
@@ -236,18 +238,18 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
       for (j in seq_along(window)) {
         block <- blocks[[j]][[sex]]
         before <- if (is.null(previous[[j]])) block else previous[[j]][[sex]]
-        sum_areas <- function(values, own_ok) {
-          summed <- planning_band_product(membership, values, mode)
+        sum_areas <- function(values, own_ok, target = NULL) {
+          summed <- planning_band_product(membership, values, mode, target = target)
           for (area in intersect(areas, planning_published_areas)) {
             if (isTRUE(own_ok[[area]])) summed[area, ] <- values[area, ]
           }
           summed
         }
-        deaths <- deaths + sum_areas(block$deaths, block$has_row)
+        deaths <- deaths + sum_areas(block$deaths, block$has_row, target = planning_parish_weights(areas, municipalities, "mortality", mode, window[[j]]))
         mid <- (block$population + before$population) / 2
         person_years <- person_years + sum_areas(mid, block$has_population & before$has_population)
-        spread_vec <- planning_weighted_sum(membership, block$spread, "mortality", mode)
-        infant_vec <- planning_weighted_sum(membership, block$infant, "female_15_49", mode)
+        spread_vec <- planning_weighted_sum(membership, block$spread, "mortality", mode, window[[j]])
+        infant_vec <- planning_weighted_sum(membership, block$infant, "female_15_49", mode, window[[j]])
         for (area in intersect(areas, planning_published_areas)) {
           i <- match(area, areas)
           if (isTRUE(block$has_row[[area]])) spread_vec[i] <- block$spread[[area]]

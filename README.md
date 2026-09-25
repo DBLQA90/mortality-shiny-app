@@ -322,8 +322,10 @@ Deaths by cause indicators:
 - `0008206`
 - `0013166`
 
-Parish-level census population (2021, indicator `0012364`) for the ULS that
-share a municipality: `tools/fetch_census_parish.R`, with the assignment in
+For the ULS that share a municipality: parish-level census population (2021,
+`0012364`, `tools/fetch_census_parish.R`) and annual births and deaths by
+parish (`0012450`/`0012542` and earlier editions,
+`tools/fetch_parish_vitals.R`, refresh task `parish`), with the assignment in
 `data-raw/uls_parish.csv` and `tools/build_uls_parish.R`.
 
 Weekly deaths by NUTS III and age: `0012100` (NUTS 2024, from 2021) and
@@ -412,6 +414,7 @@ Requests` and then refuses connections for hours.
 | `planning` | RSI, pensions, purchasing power, waste, births by mother's age and gestation, under-1 deaths by age |
 | `weekly` | INE weekly deaths by NUTS III and age (`0012100`, `0010112`) |
 | `sns` | Primary-care indicators per ULS from the SNS Transparency portal |
+| `parish` | Births and deaths by parish, for the ULS that share a municipality |
 | `current` | `weekly`, `sns`, `deaths`, `population`, `deathtotals` and `infant`: what the scheduled refresh runs |
 | `ambiguous` | Reports municipalities INE labels ambiguously, without guessing |
 | `inventory` | Rebuilds the snapshot manifest |

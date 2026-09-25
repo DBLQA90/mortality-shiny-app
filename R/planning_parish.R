@@ -22,17 +22,21 @@
 # The exact groups (unions of ULS that contain only whole municipalities) stay
 # available and assume nothing at all.
 #
-# Weights. Age is used wherever it is known: a population band or a death band
-# is weighted by the parishes' share of the municipality in that census age
-# group. For quantities without age, the share of the population that produces
-# them is used instead:
-#   births and everything per birth   women aged 15-49
-#   deaths, infant and perinatal      expected deaths - the census age
-#                                     structure of the parishes weighted by
-#                                     national age-specific death rates
-#   everything else                   the whole resident population
-# Weights are fixed over time (one census) and are applied to each year's
-# municipal values.
+# Weights. Births and deaths are not estimated at all where INE publishes them
+# by parish - annually since 2014, counts only (0012450/0012542 and the earlier
+# editions). Each year's own parish split is used, and it is exact: the
+# parishes of a municipality sum to its total. So:
+#   births and everything per birth   the parishes' share of that year's births
+#   deaths, infant and perinatal      their share of that year's deaths
+#   population and everything else    the census share (the only parish
+#                                     population there is)
+# Age is used wherever it is known: a population or death band is weighted by
+# the parishes' census share of that age group, and for deaths those band
+# weights are then scaled so the bands add up to the year's real parish share -
+# the census supplies the shape over ages, the registers the level.
+# Before 2014 the parishes are the pre-reform ones and do not match, so those
+# years fall back to the census shares: women 15-49 for births, and the census
+# age structure weighted by national death rates for deaths.
 
 PLANNING_SPLIT_MODES <- c(
   "Município inteiro" = "whole",
@@ -152,6 +156,53 @@ planning_parish_shares <- function() {
   value
 }
 
+# Births and deaths by parish, as published (counts, both sexes).
+planning_parish_vitals <- function(kind) {
+  path <- file.path(infant_snapshot_root(), "parish_vitals", paste0(kind, ".rds"))
+  if (!file.exists(path)) return(NULL)
+  key <- paste(infant_snapshot_root(), "parishvitals", kind, sep = "|")
+  if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
+  value <- readRDS(path)
+  assign(key, value, envir = planning_cache)
+  value
+}
+
+# Each ULS's share of a shared municipality's births or deaths, per year, from
+# the parish registers. NULL where the parishes of the year do not match the
+# current ones (before the 2013 reform).
+planning_parish_actual <- function(kind) {
+  key <- paste(infant_snapshot_root(), "parishactual", kind, sep = "|")
+  if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
+  lookup <- planning_parish_lookup()
+  vitals <- planning_parish_vitals(kind)
+  value <- NULL
+  if (!is.null(lookup) && !is.null(vitals)) {
+    rows <- vitals[vitals$dico %in% unique(lookup$dico), , drop = FALSE]
+    totals <- rows %>%
+      dplyr::group_by(.data$year, .data$dico) %>%
+      dplyr::summarise(total = sum(.data$value, na.rm = TRUE), covered = sum(.data$value[.data$code %in% lookup$code], na.rm = TRUE), .groups = "drop")
+    # A year counts only if its parishes are the current ones, so that the
+    # parts of the municipality are complete.
+    usable <- totals[totals$total > 0 & abs(totals$covered / totals$total - 1) < 1e-9, c("year", "dico", "total")]
+    value <- rows %>%
+      dplyr::inner_join(lookup[, c("code", "municipality", "unit")], by = "code") %>%
+      dplyr::inner_join(usable, by = c("year", "dico")) %>%
+      dplyr::group_by(.data$year, .data$municipality, .data$unit) %>%
+      dplyr::summarise(weight = sum(.data$value, na.rm = TRUE) / dplyr::first(.data$total), .groups = "drop")
+  }
+  assign(key, value, envir = planning_cache)
+  value
+}
+
+# The years the registers cover for both births and deaths.
+planning_parish_actual_years <- function() {
+  years <- lapply(c("births", "deaths"), function(kind) {
+    actual <- planning_parish_actual(kind)
+    if (is.null(actual)) integer(0) else sort(unique(actual$year))
+  })
+  Reduce(intersect, years)
+}
+
 # The weight basis for each component column of the planning tab.
 planning_weight_basis <- function(column) {
   if (identical(column, "pop_total")) return("total")
@@ -169,12 +220,19 @@ planning_weight_basis <- function(column) {
 
 # Weights of `areas` over municipalities for one basis, in the chosen mode.
 # Every area that is not one of the six split ULS keeps whole municipalities.
-planning_parish_weights <- function(areas, municipalities, basis = "total", mode = PLANNING_DEFAULT_SPLIT_MODE) {
+planning_parish_weights <- function(areas, municipalities, basis = "total", mode = PLANNING_DEFAULT_SPLIT_MODE, year = NULL) {
   weights <- matrix(1, length(areas), length(municipalities), dimnames = list(areas, municipalities))
   if (!identical(mode, "parish")) return(weights)
   shares <- planning_parish_shares()
   if (is.null(shares)) return(weights)
-  rows <- shares[shares$basis == basis, , drop = FALSE]
+  # Births and deaths of a year INE publishes by parish are not estimated.
+  registered <- if (is.null(year)) NULL else switch(basis, female_15_49 = "births", mortality = "deaths", NULL)
+  rows <- NULL
+  if (!is.null(registered)) {
+    actual <- planning_parish_actual(registered)
+    if (!is.null(actual)) rows <- actual[actual$year == as.integer(year), c("municipality", "unit", "weight"), drop = FALSE]
+  }
+  if (is.null(rows) || nrow(rows) == 0) rows <- shares[shares$basis == basis, , drop = FALSE]
   if (nrow(rows) == 0) rows <- shares[shares$basis == "total", , drop = FALSE]
   for (i in seq_len(nrow(rows))) {
     a <- match(rows$unit[[i]], areas); m <- match(rows$municipality[[i]], municipalities)
@@ -199,22 +257,31 @@ planning_parish_band_weights <- function(areas, municipalities, band, mode = PLA
 # Sum a municipalities x bands matrix into areas x bands, weighting each band
 # by the parishes' share of that age group. Outside the parish reading it is
 # the plain membership product.
-planning_band_product <- function(membership, values, mode = PLANNING_DEFAULT_SPLIT_MODE, bands = colnames(values)) {
+planning_band_product <- function(membership, values, mode = PLANNING_DEFAULT_SPLIT_MODE, bands = colnames(values), target = NULL) {
   municipalities <- colnames(membership)
   if (!identical(mode, "parish") || !any(rownames(membership) %in% planning_parish_units())) {
     return(membership %*% values[municipalities, , drop = FALSE])
   }
+  weights <- lapply(bands, function(band) planning_parish_band_weights(rownames(membership), municipalities, band, mode))
+  if (!is.null(target)) {
+    # The census gives the shape over ages; the registers give the level. Scale
+    # each municipality's band weights so they add up to the real share of its
+    # births or deaths that year.
+    totals <- rowSums(values[municipalities, bands, drop = FALSE])
+    implied <- Reduce(`+`, lapply(seq_along(bands), function(j) weights[[j]] * matrix(values[municipalities, bands[[j]]], nrow(membership), length(municipalities), byrow = TRUE)))
+    scale <- ifelse(implied > 0, target * matrix(totals, nrow(membership), length(municipalities), byrow = TRUE) / implied, 1)
+    weights <- lapply(weights, function(w) w * scale)
+  }
   out <- matrix(0, nrow(membership), length(bands), dimnames = list(rownames(membership), bands))
   for (j in seq_along(bands)) {
-    weights <- planning_parish_band_weights(rownames(membership), municipalities, bands[[j]], mode)
-    out[, j] <- (membership * weights) %*% values[municipalities, bands[[j]], drop = FALSE]
+    out[, j] <- (membership * weights[[j]]) %*% values[municipalities, bands[[j]], drop = FALSE]
   }
   out
 }
 
 # Sum a vector over municipalities with the weights of one basis.
-planning_weighted_sum <- function(membership, values, basis, mode = PLANNING_DEFAULT_SPLIT_MODE) {
+planning_weighted_sum <- function(membership, values, basis, mode = PLANNING_DEFAULT_SPLIT_MODE, year = NULL) {
   municipalities <- colnames(membership)
-  weights <- planning_parish_weights(rownames(membership), municipalities, basis, mode)
+  weights <- planning_parish_weights(rownames(membership), municipalities, basis, mode, year)
   as.numeric((membership * weights) %*% values[municipalities])
 }

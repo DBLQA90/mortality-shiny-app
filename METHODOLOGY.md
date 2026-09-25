@@ -1112,12 +1112,18 @@ São José` (six municipalities). The lookup keeps those ULS individually as
 `whole`, where each ULS takes every municipality it serves (nothing estimated,
 but the six overlap: in 2024 they sum to 18,186 deaths and 1.8 million people
 more than the Continente), and `parish`, where each shared municipality is
-divided by the parishes' census share. Weights come from the 2021 census by
-parish, age group and sex (`tools/fetch_census_parish.R`, indicator `0012364`):
-age-group shares for anything with an age, women 15-49 for births and
-birth-based rates, an expected-deaths share (the parishes' census age structure
-weighted by national age-specific death rates) for deaths and infant deaths,
-and the total population otherwise. `planning_membership_matrix()` takes a mode
+divided by the parishes' census share. Births and deaths are not estimated: INE publishes them by parish every year
+(`tools/fetch_parish_vitals.R`; the current parishes match from 2014, and the
+parishes of a municipality sum exactly to its total), so each ULS takes its
+parishes' own counts, year by year - in 2024 ULS São José holds 50.2% of
+Lisboa's deaths and 61.3% of Loures'. Population has no annual parish figure,
+so it uses the 2021 census share by age group (`tools/fetch_census_parish.R`,
+`0012364`), as does everything derived from population, and as do births and
+deaths before 2014 (women 15-49 and an expected-deaths share respectively).
+For quantities carried by age band, the census gives the shape over ages and
+the registers the level: `planning_band_product()` scales each municipality's
+band weights so they sum to that year's registered share (raking), which makes
+the six ULS reproduce the parish registers exactly. `planning_membership_matrix()` takes a mode
 and a basis and returns fractional weights; `planning_components()` multiplies
 each column with the matrix of its own basis, and `planning_band_product()`
 does the same per age band for life expectancy and the standardised module. In

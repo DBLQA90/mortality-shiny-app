@@ -5180,3 +5180,5 @@
 "2026-09-25T094348","2026-09-25T09:43:48+0100","uls_parish.rds","uls_parish",,"added",,41,,,,,"build_uls_parish.R",,
 "2026-09-25T095117","2026-09-25T09:51:17+0100","uls_lookup.rds","uls_lookup",,"replaced",556,567,,,,"archive/2026-09-25T095117/uls_lookup.rds","build_uls_lookup.R",,
 "2026-09-25T095155","2026-09-25T09:51:55+0100","uls_lookup.rds","uls_lookup",,"replaced",567,570,,,,"archive/2026-09-25T095155/uls_lookup.rds","build_uls_lookup.R",,
+"2026-09-25T112748","2026-09-25T11:27:48+0100","snapshots/parish_vitals/births.rds","parish_vitals",,"added",,132004,"value",,2939972,,"fetch_parish_vitals.R",,
+"2026-09-25T112748","2026-09-25T11:28:47+0100","snapshots/parish_vitals/deaths.rds","parish_vitals",,"added",,132004,"value",,3300514,,"fetch_parish_vitals.R",,

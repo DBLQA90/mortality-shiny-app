@@ -12,6 +12,8 @@
 #   infant         live births, under-1 deaths by cause, complete under-1 counts
 #   planning       socio-economic, birth and neonatal components of the planning tab
 #   weekly         INE weekly deaths by NUTS III and age (0012100, 0010112)
+#   parish         births and deaths by parish, for the ULS that share a
+#                  municipality (0012450/0012542 and earlier editions)
 #   sns            primary-care indicators from the SNS Transparency portal
 #   current        weekly + sns + the latest deaths and population: what the
 #                  scheduled refresh runs (tools/scheduled_refresh.sh)
@@ -262,6 +264,11 @@ task_weekly <- function() {
   invisible(run_builder("fetch_weekly_deaths.R", label = "weekly deaths 0012100 / 0010112"))
 }
 
+task_parish <- function() {
+  say("== Task: births and deaths by parish ==")
+  invisible(run_builder("fetch_parish_vitals.R", label = "parish births and deaths"))
+}
+
 task_sns <- function() {
   say("== Task: SNS Transparency portal ==")
   invisible(run_builder("fetch_sns.R", label = "SNS primary care"))
@@ -401,6 +408,7 @@ say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 # as part of "all", where it re-read 8,580 chunks every time.
 if (identical(task, "fixareas")) if (have_time(5)) task_fixareas()
 if (task %in% c("all", "current", "weekly")) if (have_time(5)) task_weekly()
+if (task %in% c("all", "current", "parish")) if (have_time(5)) task_parish()
 if (task %in% c("all", "current", "sns")) if (have_time(5)) task_sns()
 if (task %in% c("all", "current", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
 if (task %in% c("all", "current", "population")) if (have_time(5)) task_population()

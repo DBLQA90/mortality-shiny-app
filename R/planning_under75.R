@@ -184,7 +184,8 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
   # Municipal sums for every area at once, one matrix product per year; the
   # areas INE publishes a row for are then overwritten one by one (about thirty
   # of them).
-  membership <- planning_membership_matrix(areas, lookup, mode, "mortality")
+  # 0/1 here: each year's own weights are applied in municipal_year().
+  membership <- planning_membership_matrix(areas, lookup)
   municipalities <- colnames(membership)
   causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
 
@@ -198,7 +199,7 @@ planning_under75_table <- function(areas, end_years, window = 3L, sex = "HM",
       hit <- intersect(municipalities, names(counts))
       values[hit, cause] <- counts[hit]
     }
-    summed <- membership %*% values
+    summed <- planning_membership_matrix(areas, lookup, mode, "mortality", year) %*% values
     colnames(summed) <- causes
     # Portugal and Continente publish their own rows in the death files - but
     # not in every year: Continente has none before 2022, and then falls back to

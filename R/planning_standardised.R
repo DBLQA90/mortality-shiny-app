@@ -164,7 +164,8 @@ planning_standardised_years <- function() life_expectancy_years()
 # measure, person-years, deaths spread, infant deaths. NULL when a year is
 # missing.
 planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLANNING_DEFAULT_SPLIT_MODE) {
-  membership <- planning_membership_matrix(areas, lookup, mode)
+  # 0/1 here: planning_band_product() applies the parish weights per age band.
+  membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   window <- seq.int(end_year - 2L, end_year)
@@ -184,13 +185,14 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
     block <- blocks[[j]][[sex]]
     before <- if (is.null(previous[[j]])) block else previous[[j]][[sex]]
     for (m in measures) {
-      summed <- planning_band_product(membership, block$deaths[municipalities, , m, drop = TRUE], mode)
+      summed <- planning_band_product(membership, block$deaths[municipalities, , m, drop = TRUE], mode,
+                                      target = planning_parish_weights(areas, municipalities, "mortality", mode, window[[j]]))
       for (area in published) if (isTRUE(block$has_row[[area]])) summed[area, ] <- block$deaths[area, , m]
       deaths[, , m] <- deaths[, , m] + summed
     }
     s <- membership %*% block$spread[municipalities, , drop = FALSE]
     if (identical(mode, "parish")) {
-      s <- apply(block$spread[municipalities, , drop = FALSE], 2, function(v) planning_weighted_sum(membership, v, "mortality", mode))
+      s <- apply(block$spread[municipalities, , drop = FALSE], 2, function(v) planning_weighted_sum(membership, v, "mortality", mode, window[[j]]))
       dimnames(s) <- list(rownames(membership), colnames(block$spread))
     }
     for (area in published) if (isTRUE(block$has_row[[area]])) s[area, ] <- block$spread[area, ]
@@ -199,7 +201,7 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
     py <- planning_band_product(membership, mid, mode)
     for (area in published) if (sum(mid[area, ]) > 0) py[area, ] <- mid[area, ]
     person_years <- person_years + py
-    inf <- planning_weighted_sum(membership, block$infant, "female_15_49", mode)
+    inf <- planning_weighted_sum(membership, block$infant, "female_15_49", mode, window[[j]])
     for (area in published) if (block$infant[[area]] > 0) inf[match(area, areas)] <- block$infant[[area]]
     infant <- infant + inf
   }

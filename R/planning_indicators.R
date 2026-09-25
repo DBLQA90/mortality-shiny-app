@@ -193,7 +193,7 @@ planning_significance_mark <- function(significance) {
 
 # Version of the method, as in the methodological note. Part of the cache key of
 # the all-areas export: raise it whenever a change alters published values.
-PLANNING_METHOD_VERSION <- "1.6"
+PLANNING_METHOD_VERSION <- "1.7"
 
 planning_cache <- new.env(parent = emptyenv())
 
@@ -843,7 +843,7 @@ planning_estimate_suppressed_sectors <- function(employees, lookup = get_nuts_lo
 # Membership of each area in the municipalities of the lookup, as a 0/1 matrix
 # (areas x municipalities). Summing components over any set of areas is then one
 # matrix product per year, which is what lets an export cover every area.
-planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE, basis = "total") {
+planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE, basis = "total", year = NULL) {
   areas <- unique(as.character(areas))
   municipalities <- sort(unique(as.character(lookup$municipality)))
   membership <- matrix(0, length(areas), length(municipalities), dimnames = list(areas, municipalities))
@@ -854,7 +854,7 @@ planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode =
   # In the parish reading, the six ULS that share a municipality take the
   # share of it their parishes hold in the census.
   if (identical(mode, "parish") && any(areas %in% planning_parish_units())) {
-    membership <- membership * planning_parish_weights(areas, municipalities, basis, mode)
+    membership <- membership * planning_parish_weights(areas, municipalities, basis, mode, year)
   }
   membership
 }
@@ -912,7 +912,7 @@ planning_components <- function(areas, years, lookup = get_nuts_lookup(), mode =
     sums <- matrix(0, length(areas), length(columns), dimnames = list(areas, columns))
     for (basis in unique(bases)) {
       pick <- bases == basis
-      sums[, pick] <- planning_membership_matrix(areas, lookup, mode, basis) %*% values[, pick, drop = FALSE]
+      sums[, pick] <- planning_membership_matrix(areas, lookup, mode, basis, year) %*% values[, pick, drop = FALSE]
     }
     sums[(membership %*% unreported) > 0 | split] <- NA
     colnames(sums) <- columns
@@ -1279,18 +1279,17 @@ planning_proportional <- function(area, end_year, window = 3L, sex = "HM", looku
 
   frames <- lapply(years, planning_year_causes, sex = sex)
   if (any(vapply(frames, is.null, logical(1)))) return(tibble::tibble())
-  membership <- planning_membership_matrix(area, lookup, mode, "mortality")
+  membership <- planning_membership_matrix(area, lookup)
+  weights_of <- function(year) planning_membership_matrix(area, lookup, mode, "mortality", year)
   if (any(vapply(years, function(y) planning_joint_split(membership, y, "deaths")[[1]], logical(1)))) return(tibble::tibble())
 
-  pooled <- dplyr::bind_rows(lapply(frames, function(frame) {
-    rows <- if (area %in% planning_published_areas && area %in% frame$area) {
-      frame[frame$area == area, , drop = FALSE]
-    } else {
-      frame[frame$area %in% members, , drop = FALSE]
-    }
-    rows$weight <- if (area %in% planning_published_areas && area %in% frame$area) 1 else membership[1, rows$area]
+  pooled <- dplyr::bind_rows(Map(function(frame, year) {
+    own_row <- area %in% planning_published_areas && area %in% frame$area
+    rows <- if (own_row) frame[frame$area == area, , drop = FALSE] else frame[frame$area %in% members, , drop = FALSE]
+    # A ULS that shares a municipality takes its share of that year's deaths.
+    rows$weight <- if (own_row) 1 else weights_of(year)[1, rows$area]
     rows
-  }))
+  }, frames, years))
   counts <- vapply(causes, function(cause) sum(pooled$deaths[pooled$cause == cause] * pooled$weight[pooled$cause == cause]), numeric(1))
 
   total <- counts[[1]]
@@ -1447,7 +1446,8 @@ planning_comparators <- function(area, lookup = get_nuts_lookup(), health = get_
 # The same figures as planning_proportional(), for every area and triennium in
 # one pass: the cause counts are summed with the membership matrix.
 planning_proportional_table <- function(areas, end_years, window = 3L, sex = "HM", lookup = get_nuts_lookup(), mode = PLANNING_DEFAULT_SPLIT_MODE) {
-  membership <- planning_membership_matrix(areas, lookup, mode, "mortality")
+  # 0/1 here: each year's deaths are weighted in the loop below.
+  membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   causes <- c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)
@@ -1459,7 +1459,7 @@ planning_proportional_table <- function(areas, end_years, window = 3L, sex = "HM
     wide <- matrix(0, length(municipalities), length(causes), dimnames = list(municipalities, causes))
     hit <- frame[frame$area %in% municipalities & frame$cause %in% causes, , drop = FALSE]
     wide[cbind(match(hit$area, municipalities), match(hit$cause, causes))] <- hit$deaths
-    sums <- membership %*% wide
+    sums <- planning_membership_matrix(areas, lookup, mode, "mortality", year) %*% wide
     for (area in intersect(areas, planning_published_areas)) {
       own <- frame[frame$area == area & frame$cause %in% causes, , drop = FALSE]
       if (nrow(own) > 0) {

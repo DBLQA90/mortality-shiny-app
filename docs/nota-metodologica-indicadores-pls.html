@@ -177,7 +177,7 @@
         <h1>Indicadores de apoio aos Planos Locais de Saúde calculados a partir de dados municipais do INE</h1>
         <p class="lede">Como a aplicação de monitorização obtém os indicadores demográficos, socioeconómicos e de mortalidade para Portugal, regiões NUTS, ARS, ULS e municípios, e como os valores foram validados face ao INE, ao Eurostat e ao ficheiro de apoio aos PLS (versão 26).</p>
         <ul class="meta">
-          <li><b>Versão</b> 1.6</li>
+          <li><b>Versão</b> 1.7</li>
           <li><b>Data</b> 21 de Setembro de 2026</li>
           <li><b>Dados do INE importados até</b> 2026-09-17</li>
           <li><b>Definição das regiões</b> NUTS 2024 (NUTS 2013 disponível)</li>
@@ -424,7 +424,8 @@ e(0)  = Σ L(x) / l(0)</div>
           <li><strong>Município inteiro</strong> — cada ULS leva o município todo. Nada é estimado e corresponde à realidade das decisões (a ULS não pode excluir residentes do município que serve), mas as seis sobrepõem-se: em 2024 somam mais 18.186 óbitos e 1,8 milhões de habitantes do que o Continente.</li>
           <li><strong>Ponderação por freguesias</strong> — cada município repartido pela quota de população das freguesias de cada ULS nos Censos de 2021, por grupo etário. As partes somam o município e o país exactamente.</li>
         </ul>
-        <p>Quando o indicador não tem idade, usa-se a população que lhe corresponde: mulheres dos 15 aos 49 anos nos nascimentos e nas taxas por nado-vivo, os óbitos esperados (estrutura etária das freguesias pesada pelas taxas de mortalidade nacionais por idade) nos óbitos, e a população total nos restantes. A ponderação assume que as quotas de 2021 se mantêm e que, dentro de cada município e grupo etário, as freguesias de uma ULS se comportam como as das outras: o INE publica por freguesia apenas os Censos e as contagens anuais de nados-vivos e óbitos, sem idade, e não há estimativas anuais de população por freguesia.</p>
+        <p><strong>Os nascimentos e os óbitos não são estimados.</strong> O INE publica-os por freguesia todos os anos (<span class="code">0012450</span> e <span class="code">0012542</span>, e edições anteriores; com as freguesias actuais desde 2014, somando exactamente o total do município), e é essa a repartição que se usa, ano a ano: em 2024 a ULS São José tem 50,2% dos óbitos de Lisboa e 61,3% dos de Loures. Nos indicadores com idade — esperança de vida, mortalidade padronizada, mortalidade prematura —, os Censos dão a forma da distribuição por idades e os registos dão o nível: as ponderações por grupo etário são reescaladas para somarem os óbitos registados nas freguesias da ULS nesse ano.</p>
+        <p>Fica por estimar a <strong>população</strong>, e o que dela depende, porque o INE não publica estimativas anuais por freguesia: usa-se a quota de cada ULS na população das freguesias nos Censos de 2021, por grupo etário, assumindo que se mantém. Antes de 2014 as freguesias eram outras e não coincidem com as actuais, pelo que também os nascimentos e os óbitos desses anos seguem as quotas do Censo.</p>
         <p>Os agrupamentos exactos de ULS — ULS Santo António + São João, e ULS Lisboa Ocidental + Loures/Odivelas + Santa Maria + São José — contêm apenas municípios inteiros, não dependem da escolha e não assumem nada.</p>
       </section>
 

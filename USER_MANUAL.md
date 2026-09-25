@@ -989,15 +989,22 @@ mais 18.186 óbitos e 1,8 milhões de habitantes do que o Continente, porque
 Lisboa, Loures e Porto entram mais do que uma vez. A ULS São José, por exemplo,
 tem 895 mil habitantes desta forma e 474 mil (53%) com as freguesias.
 
-A ponderação usa a quota de população das freguesias de cada ULS **por grupo
-etário**, e, quando o indicador não tem idade, a população que lhe corresponde:
-mulheres dos 15 aos 49 anos para os nascimentos, os óbitos esperados (a
-estrutura etária das freguesias pesada pelas taxas de mortalidade nacionais por
-idade) para os óbitos, e a população total nos restantes. Assume-se que as
-quotas de 2021 se mantêm e que, dentro de cada município e idade, as freguesias
-de uma ULS se comportam como as das outras — não há dados anuais por freguesia
-que permitam fazer melhor (o INE publica por freguesia apenas os Censos e as
-contagens anuais de nados-vivos e óbitos, sem idade).
+**Os nascimentos e os óbitos não são estimados.** O INE publica-os por
+freguesia todos os anos (desde 2014 com as freguesias actuais), e é essa a
+repartição usada: cada ULS leva os nascimentos e os óbitos das suas freguesias,
+ano a ano. Em 2024, por exemplo, a ULS São José fica com 50,2% dos óbitos de
+Lisboa e 61,3% dos de Loures, valores registados e não estimados. Nos
+indicadores por idade (esperança de vida, mortalidade padronizada), os Censos
+dão a forma da distribuição por idades e os registos dão o nível: as
+ponderações por grupo etário são ajustadas para que somem exactamente os óbitos
+registados nas freguesias da ULS nesse ano.
+
+Fica por estimar a **população** (e o que dela depende), porque não há
+estimativas anuais por freguesia: aí usa-se a quota de cada ULS na população
+das freguesias nos Censos de 2021, por grupo etário. Assume-se que essas quotas
+se mantêm. Antes de 2014 as freguesias eram outras e não coincidem com as
+actuais, pelo que esses anos usam também as quotas do Censo para nascimentos e
+óbitos.
 
 Os **agrupamentos exactos** (ULS Santo António + São João, e ULS Lisboa
 Ocidental + Loures/Odivelas + Santa Maria + São José) continuam disponíveis e

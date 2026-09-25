@@ -1203,4 +1203,22 @@ test_that("the six ULS that share a municipality read whole or by parish weights
   # Porto's two ULS split it, so each is smaller than under the whole reading.
   porto <- planning_indicator_table(c("ULS Santo António", "ULS São João"), year, ids = "pop_total", lookup = lookup, mode = "parish")
   expect_equal(sum(porto$value), group[[1]])
+
+  # Births and deaths are not estimated where INE publishes them by parish:
+  # each ULS gets its parishes' own count, plus its whole municipalities.
+  registers <- planning_parish_actual("deaths")
+  expect_true(year %in% registers$year)
+  totals <- registers %>% dplyr::group_by(.data$year, .data$municipality) %>% dplyr::summarise(total = sum(.data$weight), .groups = "drop")
+  expect_true(all(abs(totals$total - 1) < 1e-9))
+
+  parishes <- readRDS("../../data/uls_parish.rds")
+  deaths <- readRDS("../../data/snapshots/parish_vitals/deaths.rds")
+  deaths <- deaths[deaths$year == year, , drop = FALSE]
+  for (unit in c("ULS São José", "ULS Santo António")) {
+    own <- sum(deaths$value[deaths$code %in% parishes$code[parishes$unit == unit]])
+    rest <- setdiff(planning_area_members(unit, lookup), unique(parishes$municipality))
+    whole <- if (length(rest) == 0) 0 else sum(planning_indicator_table(rest, year, ids = "deaths", lookup = lookup)$value)
+    got <- planning_indicator_table(unit, year, ids = "deaths", lookup = lookup, mode = "parish")$value
+    expect_equal(got, own + whole)
+  }
 })
