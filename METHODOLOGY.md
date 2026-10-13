@@ -1259,6 +1259,28 @@ population estimate their rates were 4-7% higher, and Portugal showed a
 spurious deficit of 4-7% in every year from 2023. Week 53 borrows week 52.
 Deaths of unknown age (0.014%) are left out on both sides.
 
+### Calendar-year deaths by age before the causes of death
+
+Deaths by age by region arrive with the causes of death (`0013166`) in March of
+year n+2. INE's annual deaths of year n+1 (`0013331`) come earlier but in five
+broad age groups (under 1, 1-14, 15-24, 25-64, 65+), too coarse for ESP-2013 or a
+life table. `tools/build_calendar_deaths_by_age.R` rebuilds the missing year from
+two observed datasets the app already holds, for each NUTS II 2024 region:
+
+- the age profile from the weekly deaths (`0012100`, five-year groups to 90+),
+  with each ISO week split by the number of its seven days in the calendar year;
+- the level from the parish deaths of the calendar year (`0012542`).
+
+Portugal keeps the weekly total, which like INE's national row includes deaths
+of unknown or foreign residence; Continente is the sum of its regions. Against
+the by-cause rows for 2022-2024 the rebuilt totals differ by at most 0.13%, the
+standardised rate by 0.03% and the under-75 rate by 0.3%, in every region. The
+output, `data/snapshots/calendar_deaths_by_age/year_<year>.rds`, is both sexes
+only and regional only, and is built only for years the by-cause archive does
+not have; the refresh rebuilds it after the weekly and parish tasks. The app's
+tabs do not read it yet: it serves regional standardised rates and life tables
+for the latest year.
+
 ### Location profile
 
 `write_planning_profile()` (`R/planning_profile.R`) builds a .docx with

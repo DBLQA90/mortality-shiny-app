@@ -271,6 +271,12 @@ task_parish <- function() {
   invisible(run_builder("fetch_parish_vitals.R", label = "parish births and deaths"))
 }
 
+# Rebuilt from the two datasets above; only for years the by-cause archive has not reached.
+task_calendar_deaths <- function() {
+  say("== Task: calendar-year deaths by age (weekly + parish) ==")
+  invisible(run_builder("build_calendar_deaths_by_age.R", label = "calendar deaths by age"))
+}
+
 task_sns <- function() {
   say("== Task: SNS Transparency portal ==")
   invisible(run_builder("fetch_sns.R", label = "SNS primary care"))
@@ -416,6 +422,7 @@ say("Refresh started; task=", task, ", budget=", budget_minutes, " min")
 if (identical(task, "fixareas")) if (have_time(5)) task_fixareas()
 if (task %in% c("all", "current", "weekly")) if (have_time(5)) task_weekly()
 if (task %in% c("all", "current", "parish")) if (have_time(5)) task_parish()
+if (task %in% c("all", "current", "weekly", "parish")) if (have_time(2)) task_calendar_deaths()
 if (task %in% c("all", "current", "sns")) if (have_time(5)) task_sns()
 if (task %in% c("all", "current", "deaths2024", "deaths")) if (have_time(10)) task_deaths_latest()
 if (task %in% c("all", "current", "population")) if (have_time(5)) task_population()
