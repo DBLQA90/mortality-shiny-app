@@ -599,6 +599,8 @@ crude rate = deaths / population * 100,000
 
 Exact Poisson 95% confidence intervals are calculated for crude rates using `poisson.test()` and then scaled by the population denominator.
 
+The population is chosen app-wide in the header (`População no denominador`; see *Mean or end-of-year population*): by default the mean of the end-of-year estimates of the previous year and of this one, or that year's end-of-year estimate alone.
+
 ### Age-Standardised Mortality
 
 Directly standardised mortality is calculated with `PHEindicatormethods::calculate_dsr()` using the European Standard Population 2013 weights embedded in the app.
@@ -1307,16 +1309,37 @@ ranking of all ULS or a 35-year series is a sum over that table.
 
 ### Mean or end-of-year population
 
-Events counted over a year - births, deaths, RSI beneficiaries, waste - are
-divided by the year's mean population, the mean of the end-of-year estimates of
-the previous year and of this one. That is INE's convention and the workbook's:
-with it the app reproduces INE's 2024 crude birth and death rates and waste per
-inhabitant in all 308 municipalities (to the published decimal), and the
-workbook's Continente I8, I38 and I14 of 2015 and 2019 exactly. The end-of-year
-estimate alone read about 0.5-0.8% low in 2024, while the population grew.
-Stocks counted on 31 December (pensioners, the age structure) use that day's
-estimate. The first year of the series has no previous estimate and uses its
-own. Life expectancy and the fertility index already used mid-year population.
+INE's population estimates refer to 31 December. Events counted over a year -
+births, deaths, RSI beneficiaries, waste - are divided by default by the year's
+mean population, the mean of the end-of-year estimates of the previous year and
+of this one, an approximation of the mid-year population. That is INE's
+convention and the workbook's: with it the app reproduces INE's 2024 crude
+birth and death rates and waste per inhabitant in all 308 municipalities (to the
+published decimal), the workbook's Continente I8, I38 and I14 of 2015 and 2019
+exactly, and INE's under-75 standardised rate for Portugal in 2019 and 2020
+(`0014727`: 320.0 and 336.2). The end-of-year estimate alone read about 0.5-0.8%
+low in 2024 and 1.0-1.4% low for the standardised rates of 2019-2024, while the
+population grew. The first year of the series has no previous estimate and uses
+its own.
+
+**The choice is the user's** (`population_basis_choices`, the header's
+`População no denominador`, default `mean`; `MORTALITY_POPULATION_BASIS=end`
+changes the default). The end-of-year option exists for continuity with series
+computed that way - the September 2026 DGS table for the CCDR contracts was, and
+the annual tab reproduces it exactly under that option (Portugal 2019: 881.48).
+It applies to every rate per inhabitant: the main pipeline (`get_data_for()`
+loads each year's predecessor and `apply_population_basis()` averages them, so
+the observed, forecast, annual and avoidable tabs all follow), and in the
+planning tab the crude rates, RSI, waste and the standardised module (DSR, SMR,
+premature and avoidable rates, YPLL). Stocks counted on 31 December (pensioners,
+the age structure) always use that day's estimate. Life expectancy and the
+fertility index always use mid-year population: they are built on person-years,
+whose definition is not a choice of denominator.
+
+Before this option the main pipeline divided by the end-of-year estimate and the
+planning tab by the mean, so the same area and year read about 1% apart between
+tabs. Both now divide by the same population (Norte 2019, mean: 861.44 in the
+annual tab and in the planning module).
 
 ### Gaps in INE's municipal data
 

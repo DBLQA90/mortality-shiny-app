@@ -112,6 +112,26 @@ server <- function(input, output, session) {
     normalize_region_source(value_or_default_input(input$region_source, default_region_source()))
   })
 
+  # The denominator of every rate per inhabitant: the mean of two consecutive
+  # end-of-year estimates (INE) or the end-of-year estimate alone. App-wide,
+  # like the two above, so no tab divides by a different population.
+  active_population_basis <- reactive({
+    normalize_population_basis(value_or_default_input(input$population_basis, default_population_basis()))
+  })
+
+  # The planning tab recomputes on its own; the tabs that load on a button keep
+  # the rates they computed until the user loads again.
+  observeEvent(input$population_basis, {
+    showNotification(
+      paste0(
+        "População no denominador: ", population_basis_label(active_population_basis()), ". ",
+        "O separador de planeamento atualiza-se; nos separadores de mortalidade observada, previsões, ",
+        "métricas anuais e mortalidade evitável, volte a carregar os dados para recalcular."
+      ),
+      type = "message", duration = 12
+    )
+  }, ignoreInit = TRUE)
+
   # Applied immediately after every death load, so each tab gets the same
   # substitution without repeating it. Population is untouched.
   apply_region_source <- function(df, expanded_regions) {
@@ -867,7 +887,8 @@ server <- function(input, output, session) {
         query_spec$cause,
         years_to_load,
         year_order = year_order,
-        data_source = query_spec$data_source
+        data_source = query_spec$data_source,
+        population_basis = active_population_basis()
       )
     )
 
@@ -2974,7 +2995,8 @@ server <- function(input, output, session) {
         cause = cause,
         years = years,
         year_order = "desc",
-        data_source = data_source
+        data_source = data_source,
+        population_basis = active_population_basis()
       )$full
     } else {
       get_death_data_for(
@@ -4074,7 +4096,8 @@ server <- function(input, output, session) {
             cause = causes[[i]],
             years = years,
             year_order = "desc",
-            data_source = input$avoidable_data_source
+            data_source = input$avoidable_data_source,
+            population_basis = active_population_basis()
           )$full,
           area_spec$expanded
         ) %>%
@@ -4312,7 +4335,8 @@ server <- function(input, output, session) {
     # The benchmark is computed even when not shown, for the significance marks.
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age(), mode = planning_split_mode())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
     planning_add_significance(table, benchmark)
   })
 
@@ -4384,7 +4408,8 @@ server <- function(input, output, session) {
     years <- seq.int(max(1991L, min(last - 4L, 10L * (last %/% 10L) + 1L)), last)
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age(), mode = planning_split_mode())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
     planning_add_significance(table, benchmark)
   })
 
@@ -4446,7 +4471,8 @@ server <- function(input, output, session) {
     units <- planning_uls_units("units")
     benchmark <- planning_benchmark()
     ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                        education_min_age = planning_education_age(), mode = planning_split_mode())
+                                        education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
     planning_ranking_chart(ranking, spec, year, highlight = highlight, benchmark_area = benchmark)
@@ -4469,7 +4495,8 @@ server <- function(input, output, session) {
       levels$area[levels$level == kind]
     }
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark, mode = planning_split_mode())
+    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark, mode = planning_split_mode(),
+                                      basis = active_population_basis())
     data <- planning_funnel_data(table, spec, benchmark)
     validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
     list(data = data, year = year, kind = kind, model = model)
@@ -4576,7 +4603,8 @@ server <- function(input, output, session) {
     areas <- planning_areas_all_comparators()
     benchmark <- planning_benchmark()
     sex <- input$planning_cause_sex %||% "HM"
-    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex, mode = planning_split_mode())
+    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex, mode = planning_split_mode(),
+                                         basis = active_population_basis())
     validate(need(nrow(table) > 0 && any(is.finite(table$smr[table$area == areas$area[[1]]])), "Sem valores para este local neste triénio."))
     list(table = table, end_year = end_year, areas = areas, benchmark = benchmark, sex = sex)
   })
@@ -4743,6 +4771,7 @@ server <- function(input, output, session) {
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           focus = planning_location(), years = planning_year_range(),
           education_min_age = planning_education_age(), benchmark = planning_benchmark(), mode = planning_split_mode(),
+          basis = active_population_basis(),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
       })
@@ -4759,6 +4788,7 @@ server <- function(input, output, session) {
           file, planning_areas_all_comparators(),
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           benchmark = planning_benchmark(), education_min_age = planning_education_age(), mode = planning_split_mode(),
+          basis = active_population_basis(),
           last_year = max(planning_year_range()),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
@@ -4775,7 +4805,7 @@ server <- function(input, output, session) {
       cached <- file.path(
         get_app_dir(), ".mortality-shiny-cache", "exports",
         paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date),
-               "_metodo_", PLANNING_METHOD_VERSION, ".xlsx")
+               "_metodo_", PLANNING_METHOD_VERSION, "_populacao_", active_population_basis(), ".xlsx")
       )
       if (!file.exists(cached)) {
         dir.create(dirname(cached), recursive = TRUE, showWarnings = FALSE)
@@ -4783,7 +4813,7 @@ server <- function(input, output, session) {
           write_planning_workbook(
             paste0(cached, ".tmp.xlsx"), planning_full_export_areas(active_nuts_lookup()),
             lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = date,
-            include_long = FALSE,
+            include_long = FALSE, basis = active_population_basis(),
             progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
           )
           file.rename(paste0(cached, ".tmp.xlsx"), cached)

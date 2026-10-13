@@ -65,6 +65,7 @@ write_planning_workbook <- function(path,
                                     education_min_age = 0L,
                                     benchmark = "Portugal",
                                     mode = PLANNING_DEFAULT_SPLIT_MODE,
+                                    basis = default_population_basis(),
                                     progress = function(value, detail = NULL) invisible(NULL)) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("The openxlsx package is required to write Excel files.", call. = FALSE)
@@ -74,7 +75,8 @@ write_planning_workbook <- function(path,
   years <- if (is.null(years)) all_years else intersect(as.integer(years), all_years)
 
   progress(0.05, "indicadores")
-  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode) %>%
+  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode,
+                                    basis = basis) %>%
     planning_add_significance(benchmark) %>%
     dplyr::filter(.data$area %in% areas$area) %>%
     dplyr::left_join(areas, by = "area")
@@ -104,6 +106,7 @@ write_planning_workbook <- function(path,
     paste0("Dados importados do INE até: ", ifelse(is.na(data_date), "desconhecido", data_date)),
     paste0("Ficheiro gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M")),
     paste0("Definição das regiões: NUTS ", vintage),
+    paste0("População no denominador das taxas por habitante: ", population_basis_label(basis), "."),
     paste0("Âmbito: ", if (is.null(focus)) paste0("todas as áreas (", nrow(areas), ")") else paste0(focus, " e comparadores")),
     paste0("Anos: ", min(years), "-", max(years)),
     paste0("Versão do método: ", PLANNING_METHOD_VERSION, " (nota metodológica)"),
@@ -314,7 +317,7 @@ write_planning_workbook <- function(path,
   if (length(cause_years) > 0) {
     progress(0.96, "mortalidade por causa")
     causes <- dplyr::bind_rows(lapply(cause_years, function(y) {
-      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark, mode = mode)
+      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark, mode = mode, basis = basis)
     })) %>%
       dplyr::filter(.data$area %in% areas$area) %>%
       dplyr::left_join(areas, by = "area") %>%

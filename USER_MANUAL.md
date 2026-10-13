@@ -33,7 +33,7 @@ A ordem dos separadores é:
 
 O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
 
-Acima dos separadores há um controlo que se aplica a toda a aplicação, `Definição das regiões`. Escolhe se as regiões seguem a definição NUTS 2013 ou NUTS 2024. Não altera os dados lidos, apenas a forma como os municípios são agrupados — ver a secção *Definição das Regiões (NUTS)*.
+Acima dos separadores há controlos que se aplicam a toda a aplicação: `Definição das regiões`, `Óbitos das regiões` e `População no denominador` (ver a secção *População no Denominador*). O primeiro, `Definição das regiões`, escolhe se as regiões seguem a definição NUTS 2013 ou NUTS 2024. Não altera os dados lidos, apenas a forma como os municípios são agrupados — ver a secção *Definição das Regiões (NUTS)*.
 
 ## 2. Como Começar
 
@@ -205,6 +205,15 @@ Quando escolhe ambos os sexos, a aplicação soma os óbitos e a população ant
 `Total` usa todos os grupos etários disponíveis.
 
 `Menos de 75 anos` exclui os grupos etários a partir dos 75 anos. Esta opção pode ser útil quando o foco é mortalidade prematura ou potencialmente evitável, mas deixa de representar a mortalidade total da população.
+
+### População no Denominador
+
+O controlo `População no denominador`, no topo de qualquer página, escolhe a população pela qual se dividem os acontecimentos de um ano em todas as taxas por habitante:
+
+- **Média de dois fins de ano consecutivos (INE)** — a predefinição. As estimativas de população do INE referem-se a 31 de dezembro; a média da estimativa no fim do ano anterior e no fim desse ano aproxima a população a meio do ano, e é assim que o INE calcula as suas taxas. Com ela, a aplicação reproduz as taxas brutas publicadas pelo INE.
+- **População a 31 de dezembro do ano** — para continuidade com séries calculadas dessa forma. Quando a população cresce, dá taxas cerca de 1% mais baixas.
+
+Aplica-se às taxas brutas e padronizadas, ao SMR e à taxa padronizada indirecta, às previsões, à mortalidade evitável e às taxas por habitante do separador de planeamento (natalidade, mortalidade, RSI, resíduos). Não se aplica à esperança de vida nem ao índice de fecundidade, que usam a população a meio do ano por definição, nem às contagens a 31 de dezembro (pensionistas). O separador de planeamento recalcula de imediato; nos outros, volte a carregar os dados depois de mudar a opção.
 
 ### Taxa
 

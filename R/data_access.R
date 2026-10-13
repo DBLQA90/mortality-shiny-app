@@ -46,8 +46,38 @@ prepare_death_data <- function(indicator, years, area, cause, source_priority, y
 }
 
 
-get_data_for_snapshot <- function(area, cause, years = year_of_interest) {
-  df_pop <- get_snapshot_population_data(years, area)
+# The population a rate divides by. INE's estimates refer to 31 December; with
+# basis "mean" each year's estimate is replaced by the mean of it and the
+# previous year's, as INE does for rates. `df_pop` must already hold the
+# previous years where they exist (see population_years_to_load()); a year
+# whose previous estimate is missing - the first of the series - keeps its own.
+# The previous years are then dropped, so the frame covers exactly `years`.
+apply_population_basis <- function(df_pop, years, basis = default_population_basis()) {
+  years <- as.integer(years)
+  if (identical(normalize_population_basis(basis), "end") || nrow(df_pop) == 0) {
+    return(df_pop[as.integer(df_pop$year) %in% years, , drop = FALSE])
+  }
+  before <- df_pop %>%
+    dplyr::transmute(year = as.integer(.data$year) + 1L, .data$area, .data$sex, .data$age_band, pop_before = .data$pop)
+  df_pop %>%
+    dplyr::mutate(year = as.integer(.data$year)) %>%
+    dplyr::filter(.data$year %in% years) %>%
+    dplyr::left_join(before, by = c("year", "area", "sex", "age_band")) %>%
+    dplyr::mutate(pop = ifelse(is.finite(.data$pop_before), (.data$pop + .data$pop_before) / 2, .data$pop)) %>%
+    dplyr::select(-"pop_before")
+}
+
+# The years whose population a selection needs: with the mean, each year's
+# predecessor too. Years the sources do not have are simply absent when loaded.
+population_years_to_load <- function(years, basis = default_population_basis()) {
+  years <- as.integer(years)
+  if (identical(normalize_population_basis(basis), "end")) return(years)
+  sort(unique(c(years, years - 1L)))
+}
+
+get_data_for_snapshot <- function(area, cause, years = year_of_interest, population_basis = default_population_basis()) {
+  df_pop <- get_snapshot_population_data(population_years_to_load(years, population_basis), area) %>%
+    apply_population_basis(years, population_basis)
   df_death <- get_snapshot_death_data(years, area, cause)
 
   df_full <- df_pop %>%
@@ -115,11 +145,12 @@ get_death_data_for <- function(area, cause, years = year_of_interest, year_order
     dplyr::select(-source_priority)
 }
 
-get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc", data_source = "ine") {
+get_data_for <- function(area, cause, years = year_of_interest, year_order = "asc", data_source = "ine",
+                         population_basis = default_population_basis()) {
   data_source <- normalize_data_source(data_source)
   if (identical(data_source, "snapshot")) {
     years <- order_years(years, year_order)
-    return(get_data_for_snapshot(area, cause, years))
+    return(get_data_for_snapshot(area, cause, years, population_basis = population_basis))
   }
 
   year_order <- normalize_year_order(year_order)
@@ -128,7 +159,7 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
   population_plan <- get_source_year_plan(
     indicators = names(population_source_priorities),
     priorities = unname(population_source_priorities),
-    requested_years = years,
+    requested_years = population_years_to_load(years, population_basis),
     year_order = year_order
   )
   death_plan <- get_source_year_plan(
@@ -157,7 +188,8 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
     dplyr::arrange(dplyr::desc(source_priority), .by_group = TRUE) %>%
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
-    dplyr::select(-source_priority)
+    dplyr::select(-source_priority) %>%
+    apply_population_basis(years, population_basis)
 
   df_death_sources <- purrr::pmap_dfr(
     death_plan,

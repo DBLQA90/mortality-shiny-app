@@ -1077,6 +1077,25 @@ test_that("a published row present at only one year-end does not halve the perso
   })
 })
 
+test_that("the standardised person-years follow the population basis", {
+  with_cause_age_fixture(function(lookup) {
+    # The population doubles at the end of 2022: Alfa holds 200 per band (both
+    # sexes) at the ends of 2020 and 2021, and 400 at the end of 2022.
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    path <- file.path(root, "population", "year_2022.rds")
+    pop <- readRDS(path)
+    pop$pop <- pop$pop * 2
+    saveRDS(pop, path)
+    planning_clear_cache()
+    end <- planning_standardised_pool("Alfa", 2022L, "HM", lookup, basis = "end")$person_years["Alfa", ]
+    mean <- planning_standardised_pool("Alfa", 2022L, "HM", lookup, basis = "mean")$person_years["Alfa", ]
+    # End of year: 200 + 200 + 400. Mean: 2020 has no 2019 estimate and keeps
+    # its own, then (200 + 200) / 2 and (200 + 400) / 2.
+    expect_equal(unname(end), rep(800, length(age_levels)))
+    expect_equal(unname(mean), rep(700, length(age_levels)))
+  })
+})
+
 test_that("standardised rates match PHEindicatormethods and the SMR is 100 for the benchmark", {
   skip_if_not_installed("PHEindicatormethods")
   with_cause_age_fixture(function(lookup) {

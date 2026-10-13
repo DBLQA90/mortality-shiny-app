@@ -158,6 +158,29 @@ nuts_vintage_control <- function() {
         width = "100%"
       )
     ),
+    # The denominator of every rate per inhabitant, in every tab. Life
+    # expectancy and the fertility index keep mid-year person-years.
+    tags$label(
+      "População no denominador:",
+      `for` = "population_basis",
+      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
+    ),
+    tags$div(
+      style = "min-width:19rem;",
+      title = paste(
+        "As estimativas de população do INE referem-se a 31 de dezembro.",
+        "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
+        "A população a 31 de dezembro sozinha dá taxas cerca de 1% mais baixas quando a população cresce.",
+        "Não se aplica à esperança de vida nem ao índice de fecundidade."
+      ),
+      selectInput(
+        "population_basis",
+        label = NULL,
+        choices = population_basis_choices,
+        selected = default_population_basis(),
+        width = "100%"
+      )
+    ),
     data_version_badge()
   )
 }

@@ -285,7 +285,8 @@ planning_standardised_years <- function() life_expectancy_years()
 # measure, person-years, deaths spread, infant deaths. NULL when a year is
 # missing.
 planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLANNING_DEFAULT_SPLIT_MODE,
-                                       vintage = planning_lookup_vintage(lookup)) {
+                                       vintage = planning_lookup_vintage(lookup), basis = default_population_basis()) {
+  end_of_year <- identical(normalize_population_basis(basis), "end")
   # 0/1 here: planning_band_product() applies the parish weights per age band.
   membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
@@ -327,13 +328,15 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
     }
     for (area in published) if (isTRUE(block$has_row[[area]])) s[area, ] <- block$spread[area, ]
     spread <- spread + s
-    mid <- (block$population + before$population) / 2
+    # Person-years: the mean of the two year-ends around the year, as INE does,
+    # or the end-of-year estimate alone (population_basis_choices).
+    mid <- if (end_of_year) block$population else (block$population + before$population) / 2
     py <- planning_band_product(membership, mid, mode)
-    # The published row only where both year-ends have it: Continente first
-    # appears in the 2021 estimates (0012918), so for 2021 the mean with an
+    # The published row only where every year-end it uses has it: Continente
+    # first appears in the 2021 estimates (0012918), so for 2021 the mean with an
     # absent 2020 row would be half the population and double the rate.
     for (area in published) {
-      if (sum(block$population[area, ]) > 0 && sum(before$population[area, ]) > 0) py[area, ] <- mid[area, ]
+      if (sum(block$population[area, ]) > 0 && (end_of_year || sum(before$population[area, ]) > 0)) py[area, ] <- mid[area, ]
     }
     person_years <- person_years + py
     inf <- planning_weighted_sum(membership, block$infant, "female_15_49", mode, window[[j]])
@@ -375,7 +378,7 @@ planning_band_upper <- function(bands) {
 # `end_years`, in the shape of planning_indicator_table().
 planning_standardised_table <- function(areas, end_years, ids = standardised_ids, lookup = get_nuts_lookup(),
                                         benchmark = "Portugal", sex = "HM", mode = PLANNING_DEFAULT_SPLIT_MODE,
-                                        vintage = planning_lookup_vintage(lookup)) {
+                                        vintage = planning_lookup_vintage(lookup), basis = default_population_basis()) {
   wanted <- STANDARDISED_INDICATORS[STANDARDISED_INDICATORS$id %in% ids, , drop = FALSE]
   areas <- unique(as.character(areas))
   all_areas <- unique(c(areas, benchmark))
@@ -386,7 +389,7 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
 
   rows <- list()
   for (end_year in as.integer(end_years)) {
-    pool <- if (end_year %in% available) planning_standardised_pool(all_areas, end_year, sex, lookup, mode, vintage) else NULL
+    pool <- if (end_year %in% available) planning_standardised_pool(all_areas, end_year, sex, lookup, mode, vintage, basis) else NULL
     for (i in seq_len(nrow(wanted))) {
       spec <- wanted[i, ]
       value <- lower <- upper_ci <- numerator <- denominator <- rep(NA_real_, length(areas))
@@ -446,9 +449,10 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
 # Mortality by cause group for one triennium: observed, expected, SMR against
 # the benchmark, and the standardised rates at all ages and under 75.
 planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_lookup(), benchmark = "Portugal", sex = "HM",
-                                        mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup)) {
+                                        mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup),
+                                        basis = default_population_basis()) {
   areas <- unique(as.character(areas))
-  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage)
+  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis)
   if (is.null(pool)) return(tibble::tibble())
   measures <- planning_standardised_measures()
   measures <- measures[!names(measures) %in% c("preventable", "treatable")]

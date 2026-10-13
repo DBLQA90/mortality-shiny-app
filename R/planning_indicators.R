@@ -1019,7 +1019,8 @@ planning_poisson_rate <- function(events, denominator, multiplier) {
 # Population-based indices carry no interval: the population estimates are not
 # a sample of events, and INE publishes no error for them. Event rates get an
 # exact Poisson interval on the count, the denominator treated as fixed.
-planning_compute_indicators <- function(components, ids, undercount_years = integer(0), education_min_age = 0L) {
+planning_compute_indicators <- function(components, ids, undercount_years = integer(0), education_min_age = 0L,
+                                        basis = default_population_basis()) {
   keys <- paste(components$area, components$year)
   lag_of <- function(column, k) components[[column]][match(paste(components$area, components$year - k), keys)]
   pooled <- function(column, window) {
@@ -1033,8 +1034,12 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
   # while the population grows: 2024 birth rate -0.5% on average). The first
   # year of the series has no previous estimate and falls back to its own.
   # Stocks counted on 31 December (pensioners) keep the end-of-year estimate.
+  # With basis "end" the rates use the end-of-year estimate too, for continuity
+  # with series computed that way (see population_basis_choices).
+  end_of_year <- identical(normalize_population_basis(basis), "end")
   mean_population <- function(column) {
     now <- components[[column]]
+    if (end_of_year) return(now)
     before <- lag_of(column, 1)
     ifelse(is.finite(before), (now + before) / 2, now)
   }
@@ -1206,7 +1211,7 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
 }
 
 planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id, lookup = get_nuts_lookup(), education_min_age = 0L,
-                                     benchmark = "Portugal", mode = PLANNING_DEFAULT_SPLIT_MODE) {
+                                     benchmark = "Portugal", mode = PLANNING_DEFAULT_SPLIT_MODE, basis = default_population_basis()) {
   years <- as.integer(years)
   areas <- unique(as.character(areas))
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
@@ -1226,7 +1231,8 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   other_ids <- setdiff(ids, c(life_ids, standard_ids))
   results <- list()
   if (length(other_ids) > 0) {
-    results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount, education_min_age = as.integer(education_min_age)) %>%
+    results$other <- planning_compute_indicators(components, other_ids, undercount_years = undercount, education_min_age = as.integer(education_min_age),
+                                                 basis = basis) %>%
       dplyr::filter(.data$year %in% years)
   }
   if (length(life_ids) > 0) {
@@ -1235,7 +1241,8 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   }
   if (length(standard_ids) > 0) {
     # The SMR is against the benchmark's rates, so it follows the Portugal choice.
-    results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark, mode = mode)
+    results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark, mode = mode,
+                                                          basis = basis)
   }
   dplyr::bind_rows(results) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))

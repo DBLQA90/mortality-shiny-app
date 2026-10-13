@@ -242,6 +242,29 @@ fallback_diseases <- c(
 
 sex_levels   <- c("HM", "H", "M")
 exclude_bands <- c("75 - 79 anos", "80 - 84 anos", "85 e mais anos")
+
+# Denominator of every rate per inhabitant. INE's population estimates refer to
+# 31 December; INE divides the events of a year by the mean of the estimates at
+# the end of the previous year and of this one, an approximation of the mid-year
+# population. The end-of-year estimate alone is offered for continuity with
+# series computed that way; it reads about 1% low while the population grows.
+population_basis_choices <- c(
+  "Média de dois fins de ano consecutivos (INE)" = "mean",
+  "População a 31 de dezembro do ano" = "end"
+)
+
+normalize_population_basis <- function(basis) {
+  basis <- as.character(basis)[1]
+  if (is.na(basis) || !basis %in% population_basis_choices) "mean" else basis
+}
+
+default_population_basis <- function() {
+  normalize_population_basis(Sys.getenv("MORTALITY_POPULATION_BASIS", unset = "mean"))
+}
+
+population_basis_label <- function(basis) {
+  names(population_basis_choices)[match(normalize_population_basis(basis), population_basis_choices)]
+}
 forecast_model_choices <- c(
   "ARIMA" = "arima",
   "ETS" = "ets",
