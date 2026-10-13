@@ -329,7 +329,12 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
     spread <- spread + s
     mid <- (block$population + before$population) / 2
     py <- planning_band_product(membership, mid, mode)
-    for (area in published) if (sum(mid[area, ]) > 0) py[area, ] <- mid[area, ]
+    # The published row only where both year-ends have it: Continente first
+    # appears in the 2021 estimates (0012918), so for 2021 the mean with an
+    # absent 2020 row would be half the population and double the rate.
+    for (area in published) {
+      if (sum(block$population[area, ]) > 0 && sum(before$population[area, ]) > 0) py[area, ] <- mid[area, ]
+    }
     person_years <- person_years + py
     inf <- planning_weighted_sum(membership, block$infant, "female_15_49", mode, window[[j]])
     for (area in published) if (block$infant[[area]] > 0) inf[match(area, areas)] <- block$infant[[area]]

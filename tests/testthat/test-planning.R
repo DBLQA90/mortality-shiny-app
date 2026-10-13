@@ -1062,6 +1062,21 @@ test_that("missing deaths by age follow the national gap, so the municipal sum m
   })
 })
 
+test_that("a published row present at only one year-end does not halve the person-years", {
+  with_cause_age_fixture(function(lookup) {
+    # As in INE's files: Continente first appears in the 2021 estimates.
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    for (year in 2021:2022) {
+      path <- file.path(root, "population", paste0("year_", year, ".rds"))
+      pop <- readRDS(path)
+      saveRDS(dplyr::bind_rows(pop, dplyr::mutate(pop[pop$area == "Portugal", ], area = "Continente")), path)
+    }
+    planning_clear_cache()
+    pool <- planning_standardised_pool(c("Continente", "Portugal"), 2022L, "HM", lookup)
+    expect_equal(pool$person_years["Continente", ], pool$person_years["Portugal", ])
+  })
+})
+
 test_that("standardised rates match PHEindicatormethods and the SMR is 100 for the benchmark", {
   skip_if_not_installed("PHEindicatormethods")
   with_cause_age_fixture(function(lookup) {
