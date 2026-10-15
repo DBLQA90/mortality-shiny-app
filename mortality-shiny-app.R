@@ -4387,11 +4387,25 @@ server <- function(input, output, session) {
                                       basis = active_population_basis())
     data <- planning_funnel_data(table, spec, benchmark)
     validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
-    list(data = data, year = year, kind = kind, model = model)
+    list(data = planning_eb_smooth(data, model), year = year, kind = kind, model = model)
   })
+
+  planning_funnel_smoothed <- reactive(identical(input$planning_funnel_values %||% "observed", "smoothed"))
 
   output$planningFunnelNote <- renderUI({
     funnel <- planning_funnel()
+    if (planning_funnel_smoothed()) {
+      w <- funnel$data$shrinkage_weight
+      return(helpText(paste0(
+        "Suavização por Bayes empírico (Marshall, 1991): cada valor é aproximado da média de todas as unidades (",
+        planning_format_value(attr(funnel$data, "smoothing_mean"), planning_spec()$digits), ") tanto mais quanto menor ",
+        "o seu denominador, porque aí o acaso pesa mais. Círculo vazio: observado; cheio: suavizado; o traço é a deslocação. ",
+        "Nesta selecção, o valor próprio pesa de ", planning_format_value(100 * min(w, na.rm = TRUE), 0), "% a ",
+        planning_format_value(100 * max(w, na.rm = TRUE), 0), "%. Serve para ordenar ou mapear áreas pequenas com valores ",
+        "mais estáveis; não diz se uma unidade difere de ", planning_benchmark(), " - para isso, use o funil (valores observados). ",
+        "Os valores suavizados são estimativas e não substituem os observados em relatórios."
+      )))
+    }
     counts <- table(funnel$data$position)
     outside <- sum(counts[names(counts) != "Dentro dos limites"])
     helpText(paste0(
@@ -4409,6 +4423,10 @@ server <- function(input, output, session) {
     funnel <- planning_funnel()
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level %in% c("ULS", funnel$kind)])
+    if (planning_funnel_smoothed()) {
+      return(planning_eb_chart(funnel$data, planning_spec(), funnel$year, planning_benchmark(), highlight = highlight,
+                               denominator_label = funnel$model$denominator_label))
+    }
     planning_funnel_chart(funnel$data, planning_spec(), funnel$year, planning_benchmark(), highlight = highlight,
                           denominator_label = funnel$model$denominator_label)
   })

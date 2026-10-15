@@ -969,6 +969,11 @@ planning_tab_ui <- function() {
               choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
               selected = "ULS", inline = TRUE
             ),
+            radioButtons(
+              "planning_funnel_values", "Valores:",
+              choices = c("Observados (funil)" = "observed", "Suavizados (Bayes empírico)" = "smoothed"),
+              selected = "observed", inline = TRUE
+            ),
             uiOutput("planningFunnelNote"),
             plotly::plotlyOutput("planningFunnelPlot", height = "560px")
           ),

@@ -1074,6 +1074,14 @@ nunca aparece como «significativamente baixo». O funil só existe para
 indicadores com um modelo de contagem; para as taxas brutas, a dispersão reflecte
 sobretudo a estrutura etária.
 
+Em **Valores: Suavizados (Bayes empírico)**, cada valor é aproximado da média de
+todas as unidades tanto mais quanto menor o seu denominador (Marshall, 1991): um
+município grande quase não se mexe; um com dois ou três acontecimentos fica perto
+da média. O gráfico mostra o observado (círculo vazio), o suavizado (cheio) e a
+deslocação entre ambos. Serve para ordenar ou comparar áreas pequenas com valores
+mais estáveis. Não diz se uma unidade difere de Portugal (para isso, use o funil
+com os valores observados) e não substitui os valores observados em relatórios.
+
 ### Escolaridade por idade
 
 A opção **Escolaridade [I24], população** restringe os quatro indicadores de
