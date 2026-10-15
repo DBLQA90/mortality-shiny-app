@@ -1337,8 +1337,8 @@ fertility index always use mid-year population: they are built on person-years,
 whose definition is not a choice of denominator.
 
 Before this option the main pipeline divided by the end-of-year estimate and the
-planning tab by the mean, so the same area and year read about 1% apart between
-tabs. Both now divide by the same population (Norte 2019, mean: 861.44 in the
+planning tab by the mean, so the same area and year read apart between tabs (in the
+regions, 2019-2025, from -0.6% to +3.9% depending on the rate). Both now divide by the same population (Norte 2019, mean: 861.44 in the
 annual tab and in the planning module).
 
 ### Gaps in INE's municipal data

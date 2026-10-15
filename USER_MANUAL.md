@@ -211,7 +211,7 @@ Quando escolhe ambos os sexos, a aplicação soma os óbitos e a população ant
 O controlo `População no denominador`, no topo de qualquer página, escolhe a população pela qual se dividem os acontecimentos de um ano em todas as taxas por habitante:
 
 - **Média de dois fins de ano consecutivos (INE)** — a predefinição. As estimativas de população do INE referem-se a 31 de dezembro; a média da estimativa no fim do ano anterior e no fim desse ano aproxima a população a meio do ano, e é assim que o INE calcula as suas taxas. Com ela, a aplicação reproduz as taxas brutas publicadas pelo INE.
-- **População a 31 de dezembro do ano** — para continuidade com séries calculadas dessa forma. Quando a população cresce, dá taxas cerca de 1% mais baixas.
+- **População a 31 de dezembro do ano** — para continuidade com séries calculadas dessa forma. Quando a população cresce dá taxas mais baixas, e mais altas quando diminui: nas regiões, em 2019-2025, a diferença foi de −0,6% a +3,9%, consoante a taxa e a região.
 
 Aplica-se às taxas brutas e padronizadas, ao SMR e à taxa padronizada indirecta, às previsões, à mortalidade evitável e às taxas por habitante do separador de planeamento (natalidade, mortalidade, RSI, resíduos). Não se aplica à esperança de vida nem ao índice de fecundidade, que usam a população a meio do ano por definição, nem às contagens a 31 de dezembro (pensionistas). O separador de planeamento recalcula de imediato; nos outros, volte a carregar os dados depois de mudar a opção.
 

@@ -247,7 +247,8 @@ exclude_bands <- c("75 - 79 anos", "80 - 84 anos", "85 e mais anos")
 # 31 December; INE divides the events of a year by the mean of the estimates at
 # the end of the previous year and of this one, an approximation of the mid-year
 # population. The end-of-year estimate alone is offered for continuity with
-# series computed that way; it reads about 1% low while the population grows.
+# series computed that way. It reads low while the population grows and high while
+# it falls: in the regions, 2019-2025, from -0.6% to +3.9% depending on the rate.
 population_basis_choices <- c(
   "Média de dois fins de ano consecutivos (INE)" = "mean",
   "População a 31 de dezembro do ano" = "end"

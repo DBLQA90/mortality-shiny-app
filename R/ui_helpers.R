@@ -170,7 +170,7 @@ nuts_vintage_control <- function() {
       title = paste(
         "As estimativas de população do INE referem-se a 31 de dezembro.",
         "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
-        "A população a 31 de dezembro sozinha dá taxas cerca de 1% mais baixas quando a população cresce.",
+        "A população a 31 de dezembro sozinha dá taxas mais baixas quando a população cresce e mais altas quando diminui (nas regiões, em 2019-2025, até cerca de 4%).",
         "Não se aplica à esperança de vida nem ao índice de fecundidade."
       ),
       selectInput(
@@ -864,18 +864,6 @@ planning_tab_ui <- function() {
           "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
           "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
           "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha."
-        ),
-        radioButtons(
-          "planning_split_mode", "ULS que partilham um município:",
-          choices = PLANNING_SPLIT_MODES, selected = PLANNING_DEFAULT_SPLIT_MODE
-        ),
-        helpText(
-          "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
-          "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas as seis ",
-          "ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
-          "«Ponderação por freguesias»: cada município é repartido pela população das suas freguesias ",
-          "nos Censos de 2021, por grupo etário — as partes somam o país, assumindo que as quotas se mantêm. ",
-          "Os agrupamentos exactos de ULS não dependem desta escolha."
         ),
         radioButtons(
           "planning_portugal", "Portugal:",
