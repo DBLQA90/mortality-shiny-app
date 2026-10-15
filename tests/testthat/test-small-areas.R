@@ -27,3 +27,21 @@ test_that("proportions use the binomial variance", {
   expect_true(all(binomial$shrinkage_weight >= 0 & binomial$shrinkage_weight <= 1))
   expect_lt(binomial$shrinkage_weight[3], binomial$shrinkage_weight[2])
 })
+
+test_that("every map level has a boundary for every area the app names", {
+  lookup <- get_nuts_lookup("2024")
+  for (level in c("municipio", "nuts3", "nuts2")) {
+    b <- planning_map_boundaries(level, "2024")
+    expect_true(all(planning_map_units(level, lookup) %in% b$polygons$id), info = level)
+  }
+  b <- planning_map_boundaries("uls")
+  uls <- readRDS(file.path(app_dir, "data", "uls_lookup.rds"))
+  expect_true(all(unique(uls$unit[uls$kind %in% c("ULS", "ULS (partilhada)")]) %in% b$polygons$id))
+})
+
+test_that("a click finds the area under it", {
+  b <- planning_map_boundaries("municipio")
+  expect_equal(planning_map_hit(b, -9.15, 38.73), "Lisboa")
+  expect_equal(planning_map_hit(b, -8.68, 41.2), "Matosinhos")
+  expect_null(planning_map_hit(b, -12, 36))
+})

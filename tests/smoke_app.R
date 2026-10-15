@@ -301,6 +301,30 @@ testServer(app, {
   cat("   smoothed funnel:", if (failed(smoothed)) conditionMessage(smoothed) else "OK", "\n")
   session$setInputs(planning_funnel_values = "observed")
 
+  # Maps: four indicators by municipality, two by ULS, and a click.
+  session$setInputs(planning_area = "Matosinhos", planning_years = c(2015, 2025), planning_map_level = "municipio",
+                    planning_map_indicators = c("smr_all", "dsr_premature", "ageing_index", "purchasing_power"),
+                    planning_map_scale = "index", planning_map_smoothed = TRUE)
+  map <- tryCatch(planning_map_view(), error = function(e) e)
+  if (!failed(map)) {
+    counts <- tapply(is.finite(map$values$value), map$values$indicator, sum)
+    cat("   map (municipalities):", paste(names(counts), counts, sep = "=", collapse = " "),
+        verdict(all(counts >= 300), "OK", "map values"), "\n")
+  }
+  plot <- tryCatch(output$planningMapPlot, error = function(e) e)
+  cat("   map plot:", if (failed(plot)) conditionMessage(plot) else "OK", "\n")
+  session$setInputs(planning_map_click = list(x = -8.68, y = 41.2))
+  clicked <- tryCatch(output$planningMapClicked, error = function(e) e)
+  cat("   map click:", if (failed(clicked)) conditionMessage(clicked) else verdict(grepl("Matosinhos", clicked$html), "OK", "map click"), "\n")
+  session$setInputs(planning_map_level = "uls", planning_map_indicators = c("life_expectancy_65", "death_rate"), planning_map_scale = "quintile")
+  map <- tryCatch(planning_map_view(), error = function(e) e)
+  if (!failed(map)) cat("   map (ULS):", verdict(sum(is.finite(map$values$value)) == 78, "OK", "ULS map"), "\n")
+
+  # Trend of the planning indicator, non-overlapping triennia.
+  session$setInputs(planning_indicator = "dsr_premature", planning_years = c(2005, 2024))
+  trend <- tryCatch(planning_trend(), error = function(e) e)
+  if (!failed(trend)) cat("   planning trend:", trend$`Variação anual (IC 95%)`[[1]], verdict(nrow(trend) >= 1, "OK", "planning trend"), "\n")
+
   session$setInputs(planning_area = "Matosinhos", planning_indicator = "pct_education_none", planning_education_age = "25")
   profile <- tryCatch(output$downloadPlanningProfile, error = function(e) e)
   cat("   profile download:", if (failed(profile)) conditionMessage(profile) else if (file.exists(profile)) paste(file.size(profile), "bytes") else "missing", "\n")

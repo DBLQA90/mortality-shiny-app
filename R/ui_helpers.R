@@ -1007,7 +1007,10 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
             uiOutput("planningIndicatorNotes"),
             h5("Valores"),
-            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable"))
+            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
+            h5("Tendência nos anos escolhidos"),
+            div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
+            uiOutput("planningTrendNote")
           ),
           tabPanel(
             "Resumo do local",
@@ -1024,6 +1027,30 @@ planning_tab_ui <- function() {
             br(),
             uiOutput("planningRankingNote"),
             plotly::plotlyOutput("planningRankingPlot", height = "820px")
+          ),
+          tabPanel(
+            "Mapa",
+            br(),
+            fluidRow(
+              column(6, selectizeInput(
+                "planning_map_indicators", "Indicadores (até 4):",
+                choices = planning_map_indicator_choices(), multiple = TRUE,
+                selected = c("smr_all", "dsr_premature", "ageing_index", "purchasing_power"),
+                options = list(maxItems = PLANNING_MAP_MAX_INDICATORS)
+              )),
+              column(3, radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio")),
+              column(3, radioButtons(
+                "planning_map_scale", "Cores:",
+                choices = c("Face a Portugal (= 100), comum a todos" = "index", "Quintis de cada indicador" = "quintile"),
+                selected = "index"
+              ))
+            ),
+            checkboxInput("planning_map_smoothed", "Suavizar as taxas de áreas pequenas (Bayes empírico)", value = FALSE),
+            uiOutput("planningMapNote"),
+            plotOutput("planningMapPlot", height = "auto", click = "planning_map_click"),
+            uiOutput("planningMapClicked"),
+            downloadButton("downloadPlanningMapCSV", "Descarregar valores (CSV)"),
+            downloadButton("downloadPlanningMapPNG", "Descarregar mapas (PNG)")
           ),
           tabPanel(
             "Funil",

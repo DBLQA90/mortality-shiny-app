@@ -1114,6 +1114,32 @@ deslocação entre ambos. Serve para ordenar ou comparar áreas pequenas com val
 mais estáveis. Não diz se uma unidade difere de Portugal (para isso, use o funil
 com os valores observados) e não substitui os valores observados em relatórios.
 
+### Mapa
+
+O subseparador **Mapa** mostra Portugal com até quatro indicadores lado a lado,
+por município, NUTS III, ULS ou NUTS II, para comparar onde vários estão altos ou
+baixos ao mesmo tempo.
+
+- **Cores face a Portugal (= 100)**: todos os mapas na mesma escala, azul abaixo
+  e vermelho acima, de 67 a 150. Indicadores em unidades diferentes lêem-se
+  juntos. Acima de Portugal não quer dizer pior: uma esperança de vida alta e uma
+  mortalidade alta ficam ambas a vermelho.
+- **Quintis**: cada indicador em cinco grupos com o mesmo número de áreas; mostra
+  a ordenação, não a distância a Portugal.
+- **Suavizar**: as taxas de áreas pequenas aproximadas da média (Bayes empírico,
+  como no funil), só nos indicadores com modelo de contagem.
+
+Cada mapa usa o último período disponível até ao último ano escolhido (no
+título). Clique numa área para ver os seus valores; o local escolhido tem
+contorno escuro. Os limites são os oficiais (CAOP, Direção-Geral do Território).
+
+### Tendência do indicador
+
+Por baixo da tabela de valores, a variação percentual anual de cada área nos
+anos escolhidos, com intervalo de confiança (ver Tendência, no separador
+Mortalidade Observada). Nos indicadores trienais usa só triénios que não se
+sobrepõem.
+
 ### Escolaridade por idade
 
 A opção **Escolaridade [I24], população** restringe os quatro indicadores de

@@ -52,6 +52,7 @@ for (app_file in c(
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/planning_profile.R",
+  "R/planning_maps.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/trend.R",
@@ -4582,6 +4583,100 @@ server <- function(input, output, session) {
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
     planning_ranking_chart(ranking, spec, year, highlight = highlight, benchmark_area = benchmark)
+  })
+
+  # Maps of Portugal (R/planning_maps.R): up to four indicators side by side,
+  # every area of one level, the latest period of each up to the last year
+  # chosen.
+  planning_map_view <- reactive({
+    ids <- utils::head(input$planning_map_indicators, PLANNING_MAP_MAX_INDICATORS)
+    validate(need(length(ids) > 0, "Escolha pelo menos um indicador."))
+    level <- input$planning_map_level %||% "municipio"
+    lookup <- active_nuts_lookup()
+    boundaries <- planning_map_boundaries(level, active_nuts_vintage())
+    validate(need(!is.null(boundaries), "Faltam os limites dos mapas (data/boundaries): corra tools/build_boundaries.R."))
+    benchmark <- planning_benchmark()
+    values <- shiny::withProgress(message = "A calcular os indicadores de todas as áreas...", value = 0.3, {
+      planning_map_values(ids, level, lookup, max(planning_year_range()), benchmark = benchmark,
+                          smoothed = isTRUE(input$planning_map_smoothed), mode = planning_split_mode(),
+                          basis = active_population_basis())
+    })
+    validate(need(nrow(values) > 0, "Sem valores para estes indicadores nos anos escolhidos."))
+    units <- planning_map_units(level, lookup)
+    location <- planning_location()
+    highlight <- if (location %in% units) {
+      location
+    } else if (identical(level, "municipio") && !location %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente")) {
+      intersect(planning_area_members(location, lookup), units)
+    } else {
+      character(0)
+    }
+    list(values = values, boundaries = boundaries, level = level, benchmark = benchmark, highlight = highlight)
+  })
+
+  planning_map_plot <- function() {
+    view <- planning_map_view()
+    planning_map_chart(view$values, view$boundaries, input$planning_map_scale %||% "index",
+                       highlight = view$highlight, benchmark = view$benchmark)
+  }
+
+  output$planningMapPlot <- renderPlot(
+    planning_map_plot(),
+    height = function() if (length(unique(planning_map_view()$values$panel)) <= 2) 600 else 1150
+  )
+
+  output$downloadPlanningMapPNG <- downloadHandler(
+    filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".png"),
+    content = function(file) {
+      panels <- length(unique(planning_map_view()$values$panel))
+      ggplot2::ggsave(file, planning_map_plot(), width = 10, height = if (panels <= 2) 6.5 else 12, dpi = 150, bg = "white")
+    }
+  )
+
+  output$downloadPlanningMapCSV <- downloadHandler(
+    filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".csv"),
+    content = function(file) {
+      v <- planning_map_view()$values
+      write_csv_utf8(tibble::tibble(
+        indicador = gsub("\n", " ", v$panel), area = v$area, valor = v$value, valor_observado = v$observed,
+        marca = v$flag, referencia = v$benchmark_value, indice_referencia_100 = round(v$index, 1), quintil = v$quintile
+      ), file)
+    }
+  )
+
+  output$planningMapNote <- renderUI({
+    view <- planning_map_view()
+    scale <- input$planning_map_scale %||% "index"
+    helpText(paste0(
+      if (identical(scale, "index")) {
+        paste0("Cada indicador face a ", view$benchmark, " (= 100), na mesma escala para todos: azul abaixo, vermelho acima, ",
+               "de 67 a 150 (os valores fora ficam na cor do extremo). Assim, indicadores em unidades diferentes lêem-se juntos. ")
+      } else {
+        "Cada indicador dividido em cinco grupos com o mesmo número de áreas: mostra a ordenação dentro do indicador, não a distância a Portugal. "
+      },
+      "Acima de Portugal não quer dizer pior: uma esperança de vida alta e uma mortalidade alta ficam ambas a vermelho. ",
+      "Cada mapa usa o último período disponível até ao último ano escolhido, indicado no título. ",
+      if (isTRUE(input$planning_map_smoothed)) "A suavização só se aplica às taxas com modelo de contagem (as do funil); os títulos dizem quais. " else "",
+      if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures ou Porto têm os valores das suas freguesias. As ilhas não têm ULS. " else "",
+      "Cinzento: sem valor. Contorno escuro: o local escolhido. Clique numa área para ver os seus valores."
+    ))
+  })
+
+  output$planningMapClicked <- renderUI({
+    click <- input$planning_map_click
+    req(click)
+    view <- planning_map_view()
+    area <- planning_map_hit(view$boundaries, click$x, click$y)
+    req(area)
+    rows <- view$values[view$values$area == area, , drop = FALSE]
+    table <- tibble::tibble(
+      Indicador = gsub("\n", " · ", rows$panel),
+      Valor = paste0(planning_format_value(rows$value, rows$digits), ifelse(is.na(rows$flag), "", rows$flag)),
+      !!view$benchmark := planning_format_value(rows$benchmark_value, rows$digits),
+      `Índice` = planning_format_value(rows$index, 0),
+      Quintil = ifelse(is.na(rows$quintile), "—", as.character(rows$quintile))
+    )
+    tagList(h5(area), renderTable(table, striped = TRUE, bordered = TRUE, spacing = "s", align = "l"))
   })
 
   planning_funnel <- reactive({

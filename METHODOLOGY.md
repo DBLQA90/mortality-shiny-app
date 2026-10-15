@@ -1304,6 +1304,32 @@ The tabs read it for that year (`calendar_death_years` in `R/metadata.R`):
   `calendar_selection_supported()` decides. Norte 2025, standardised: 808.98,
   the value of the DGS indicator table.
 
+### Maps
+
+The "Mapa" view draws up to four indicators side by side for every
+municipality, NUTS III, NUTS II or ULS (`R/planning_maps.R`). The boundaries
+are the official CAOP limits (DGT) from the geopt package
+(github.com/c-matos/geopt), exported once by `tools/build_boundaries.R` into
+`data/boundaries/` as plain coordinate tables (about 300 KB in all), with the
+Azores and Madeira as insets. The app draws them with ggplot2 and needs neither
+geopt nor sf, nor a network connection. The ULS are drawn from their parishes,
+so the six that share Lisboa, Loures and Porto are exact; their values are
+computed with the parish weights whatever the split option.
+
+By default each indicator is shown against the benchmark (Portugal = 100) on
+one diverging scale common to all maps, log-symmetric from 67 to 150: maps of
+indicators in different units can then be read together, as a heatmap. The
+alternative is each indicator's quintiles. Above Portugal is not worse in
+itself (high life expectancy and high mortality are both red). Rates with a
+count model can be smoothed by empirical Bayes; life expectancy and the
+standardised rates use, below NUTS II, the last year published by cause.
+
+Against geopt's tables the app's lookups agree: NUTS 2013 and 2024 for all 308
+municipalities and the parish split of Lisboa, Loures and Porto for all 41
+parishes. One difference is unresolved: geopt puts the parish of Lomba
+(Gondomar) in ULS Vila Nova de Gaia/Espinho, where the app keeps Gondomar whole
+in ULS Santo António.
+
 ### Location profile
 
 `write_planning_profile()` (`R/planning_profile.R`) builds a .docx with
