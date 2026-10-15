@@ -23,7 +23,9 @@ compute_metrics <- function(df) {
       crude_rate = dplyr::if_else(pop_total > 0, deaths_total / pop_total * 1e5, NA_real_),
       ci = purrr::map2(
         deaths_total, pop_total,
-        ~ if (is.na(.y) || .y <= 0) c(NA_real_, NA_real_) else stats::poisson.test(.x)$conf.int / .y * 1e5
+        # Rounded, like planning_poisson_ci(): deaths filled in by age or rebuilt
+        # from weekly counts are not whole numbers, and the exact interval needs one.
+        ~ if (is.na(.y) || .y <= 0) c(NA_real_, NA_real_) else stats::poisson.test(round(.x))$conf.int / .y * 1e5
       ),
       crude_lower = purrr::map_dbl(ci, 1),
       crude_upper = purrr::map_dbl(ci, 2)
@@ -166,7 +168,7 @@ compute_ypll_interval <- function(df, cutoff = 70, confidence = 0.95) {
   # counts: scale the exact Poisson limits of the total premature-death count
   # by sqrt(variance / count). Unlike a plain normal approximation this is
   # asymmetric and stays sensible for sparse local counts.
-  pois_ci <- stats::poisson.test(count, conf.level = confidence)$conf.int
+  pois_ci <- stats::poisson.test(round(count), conf.level = confidence)$conf.int
   scale <- sqrt(variance / count)
 
   c(

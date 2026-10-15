@@ -1260,6 +1260,25 @@ repartição está incompleta ao nível municipal, sobretudo em 2014. Contagens,
 taxas brutas e proporções de todas as idades não precisam da idade, pelo que
 aqui são exactas em qualquer nível.
 
+### O último ano (marca p)
+
+O INE publica os óbitos por causa e idade cerca de 15 meses depois do fim do ano.
+Até lá, a aplicação lê o último ano (hoje 2025) de duas fontes do INE que chegam
+antes: os óbitos por freguesia, que dão os óbitos de cada município, e os óbitos
+semanais por região e idade, que dão a repartição por idade.
+
+- A **taxa bruta de mortalidade** e os **óbitos** existem para todas as áreas.
+- A **esperança de vida**, as **taxas padronizadas de todas as causas** e a
+  **SMR** existem só para Portugal, o Continente, as regiões NUTS II e áreas feitas
+  de regiões inteiras (por exemplo Lisboa e Vale do Tejo, seleccionando as três
+  regiões), e só para ambos os sexos.
+- Por causa não há valores até o INE publicar.
+
+Esses valores têm a marca **p** (provisório). Nos separadores Mortalidade
+Observada, Previsão e Métricas Anuais vale a mesma regra: com uma região inteira e
+todas as causas, o último ano entra na série; num município, numa causa ou num
+sexo, fica de fora e a aplicação avisa.
+
 ### População média e lacunas nos dados do INE
 
 Nascimentos, óbitos, beneficiários do RSI e resíduos acontecem ao longo do ano,
@@ -1310,6 +1329,14 @@ ficheiro de apoio (ULS Matosinhos, 2013-2018).
 
 Cobertura: ganho médio desde 2011, trabalhadores por sector desde 2013. O ganho
 médio só é apresentado a partir de 2013, porque antes disso não há os pesos.
+
+Quando o INE oculta o total de um município (segredo estatístico), o valor é
+recuperado do total do Continente ou de Portugal, que ainda o inclui, menos os
+municípios publicados (marca ≈). Um só município oculto recupera o seu valor
+(São João da Madeira em 2015); vários partilham-no e só as áreas que os contêm a
+todos têm valor (em 2013, São João da Madeira e Vale de Cambra: Norte, Área
+Metropolitana do Porto e ULS Entre Douro e Vouga; em 2013-2014, os Açores como
+região). Os trabalhadores por sector desses municípios continuam em falta.
 
 ### Indicadores dos Censos
 

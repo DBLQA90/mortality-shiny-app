@@ -1279,9 +1279,30 @@ the by-cause rows for 2022-2024 the rebuilt totals differ by at most 0.13%, the
 standardised rate by 0.03% and the under-75 rate by 0.3%, in every region. The
 output, `data/snapshots/calendar_deaths_by_age/year_<year>.rds`, is both sexes
 only and regional only, and is built only for years the by-cause archive does
-not have; the refresh rebuilds it after the weekly and parish tasks. The app's
-tabs do not read it yet: it serves regional standardised rates and life tables
-for the latest year.
+not have; the refresh rebuilds it after the weekly and parish tasks.
+
+The tabs read it for that year (`calendar_death_years` in `R/metadata.R`):
+
+- **Planning tab.** A year with the rebuilt file but no by-cause files gets a
+  block whose municipal deaths are `NA` (`planning_calendar_block()`). Portugal,
+  the Continente and any area made of whole NUTS II 2024 regions (Lisboa e Vale
+  do Tejo as three of them) take their deaths from the file; everything else
+  stays empty. Life expectancy, the all-cause standardised rates and the SMR
+  reach the triennium ending in that year for those areas, both sexes only;
+  by-cause measures do not. The all-cause death count and crude death rate
+  exist for every area, from the parish deaths (`planning_parish_death_totals()`,
+  whose sums equal INE's municipal, Portugal and Continente totals exactly in
+  2020-2024). Values whose period includes the year carry the flag `p`. The ULS
+  ranking, the funnel and mortality by cause use the last year published by
+  cause.
+- **Observed, forecast and annual tabs.** The region's deaths in each band are
+  shared among its municipalities in proportion to the deaths their population
+  would have at the region's age-specific rates (`calendar_municipal_deaths()`),
+  so any union of whole regions sums back to the file exactly. A selection that
+  is not such a union, a cause other than all causes, or one sex leaves the year
+  out (observed and forecast tabs, with a notice) or refuses it (annual tab);
+  `calendar_selection_supported()` decides. Norte 2025, standardised: 808.98,
+  the value of the DGS indicator table.
 
 ### Location profile
 
@@ -1381,6 +1402,41 @@ audit of 2026-09-21 found four kinds, each now handled explicitly:
   the hidden remainder between the hidden sectors in the proportions of the rest
   of the NUTS III that year; shares where more than 1% of the area's employees
   were estimated carry the flag `≈`.
+
+### Suppressed employees and earnings, recovered from the totals
+
+INE's Continente and Portugal rows of employees and earnings (Quadros de
+Pessoal) still count what it suppressed for a municipality: in the years
+without suppression the continental municipalities add up to the Continente
+row exactly for employees and within 0.005% for earnings, and the islands to
+Portugal less the Continente within 0.2%. So a suppressed value is the total
+less the published municipalities (`planning_recover_suppressed()`). One
+suppressed municipality in a group gets the residual itself (São João da
+Madeira, 2015: 9,820); several share it, and only the areas holding all of them
+get a value (2013: São João da Madeira and Vale de Cambra, for the Norte, the
+Área Metropolitana do Porto and ULS Entre Douro e Vouga; 2013-2014: the 19
+Azorean municipalities, for the Região Autónoma). Only the totals are
+recovered; employees by sector stay missing there. Values that include a
+recovered amount carry `≈`. Pensions and waste are not recovered: INE's totals
+leave the suppressed municipalities out as well (the Continente's 2005
+pensioners equal the sum of the published municipalities).
+
+### Deaths without a published age, in every tab
+
+The age bands of INE's municipal deaths do not always add up to the all-ages
+total: some deaths have no recorded age and small cells are suppressed. In
+2024, 28 municipalities lose more than 10% of their all-cause deaths that way
+(Barrancos: 19 of 32); in 2014 it is 123. The planning module has always filled
+them in (`planning_complete_by_age()`); the observed, forecast, annual and
+avoidable tabs dropped them, so the same area and year read differently between
+tabs (Portugal 2024 by a few deaths, small municipalities by up to a third).
+Every death frame those tabs load now goes through `fill_death_ages()`, which
+applies the same fill, computed once per year, cause and sex on the whole
+snapshot. INE's regional rows by age leave out the deaths without an age too
+(Continente 2021: 119,589 in the bands, 119,595 in total), so a region read from
+them is topped up to the total of its municipalities in its own age profile
+(`top_up_regional_rows()`): the NUTS I regions add up to Portugal again. Exact
+Poisson intervals round the filled counts, as the planning module does.
 
 ### Why deaths come from the all-ages totals
 

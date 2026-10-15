@@ -240,6 +240,47 @@ read_death_totals_year <- function(year) {
   out
 }
 
+# All-cause deaths of both sexes per municipality, Portugal and the Continente
+# from INE's deaths by parish of residence (0012542), for the years the death
+# totals do not reach yet: the parish file arrives about a year earlier. In
+# 2020-2024 its sums equal INE's Portugal and Continente rows exactly and every
+# municipal total but Vimioso 2024 (blank in the totals, repaired below). Only
+# the deaths component reads it; by cause the year stays empty.
+planning_parish_death_totals <- function(year) {
+  key <- paste(infant_snapshot_root(), "parishtotals", year, sep = "|")
+  if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
+  out <- NULL
+  path <- file.path(infant_snapshot_root(), "parish_vitals", "deaths.rds")
+  if (file.exists(path)) {
+    parish <- readRDS(path)
+    parish <- parish[parish$year == year & parish$dico != "0000", , drop = FALSE]
+    if (nrow(parish) > 0) {
+      lookup <- get_nuts_lookup("2024")
+      code <- as.character(lookup$municipality_code)
+      dico <- substr(code, nchar(code) - 3L, nchar(code))
+      by_dico <- tapply(parish$value, parish$dico, sum, na.rm = TRUE)
+      municipal <- tibble::tibble(area = lookup$municipality, deaths = as.numeric(by_dico[dico]),
+                                  continental = lookup$nuts1 == "Continente")
+      municipal <- municipal[!is.na(municipal$deaths), , drop = FALSE]
+      out <- tibble::tibble(
+        year = as.integer(year),
+        area = c(municipal$area, "Portugal", "Continente"),
+        sex = "HM", cause = planning_all_causes,
+        deaths = c(municipal$deaths, sum(by_dico), sum(municipal$deaths[municipal$continental])),
+        source_indicator = "0012542"
+      )
+    }
+  }
+  assign(key, out, envir = planning_cache)
+  out
+}
+
+planning_parish_death_years <- function() {
+  path <- file.path(infant_snapshot_root(), "parish_vitals", "deaths.rds")
+  if (!file.exists(path)) return(integer(0))
+  sort(setdiff(unique(as.integer(readRDS(path)$year)), death_totals_years()))
+}
+
 # INE leaves the all-ages cell blank for a few municipality-years (Vimioso
 # 2024, Alfândega da Fé and Miranda do Douro 2015, some in the 1990s) while its
 # age bands are filled in; older snapshots stored the blank as 0. A total can
@@ -272,6 +313,7 @@ planning_dataset_years <- function(dataset) {
   switch(
     dataset,
     death_totals = death_totals_years(),
+    deaths_all = sort(union(death_totals_years(), planning_parish_death_years())),
     infant = sort(union(snapshot_years_for("infant_totals"), snapshot_years_for("infant_deaths"))),
     snapshot_years_for(dataset)
   )
@@ -279,14 +321,23 @@ planning_dataset_years <- function(dataset) {
 
 # Years each indicator can be computed for, from the files actually present.
 planning_indicator_years <- function(id) {
-  if (id %in% life_expectancy_ids) return(life_expectancy_years())
-  if (id %in% standardised_ids) return(planning_standardised_years())
+  # The rebuilt latest year has all causes and both sexes only.
+  if (id %in% life_expectancy_ids) {
+    years <- life_expectancy_years()
+    if (!identical(LIFE_INDICATORS$sex[LIFE_INDICATORS$id == id], "HM")) years <- setdiff(years, planning_calendar_years())
+    return(years)
+  }
+  if (id %in% standardised_ids) {
+    years <- planning_standardised_years()
+    if (!identical(STANDARDISED_INDICATORS$measure[STANDARDISED_INDICATORS$id == id], "all")) years <- setdiff(years, planning_calendar_years())
+    return(years)
+  }
   needs <- switch(
     id,
     births = "births",
     birth_rate = c("births", "population"),
-    deaths = "death_totals",
-    death_rate = c("death_totals", "population"),
+    deaths = "deaths_all",
+    death_rate = c("deaths_all", "population"),
     infant_rate = c("births", "infant"),
     fertility_index = c("extra:births_by_mother_age", "population"),
     teen_births_pct = , older_births_pct = "extra:births_by_mother_age",
@@ -379,6 +430,17 @@ planning_area_members_uncached <- function(area, lookup = get_nuts_lookup()) {
 # "not reported", never zero. See planning_year_components().
 PLANNING_COMPLETE_BLOCKS <- c(waste = "waste_total", pensions = "pensioners", employees = "employees_total", earnings = "earnings_value")
 
+# Blocks whose published Continente and Portugal totals still count what INE
+# suppressed for a municipality, so the suppressed value is the total less the
+# reported municipalities (see planning_recover_suppressed()). Measured on the
+# years without suppression: the continental municipalities add up to the
+# Continente row exactly for employees (2014, 2016-2024) and within 0.005% for
+# earnings; the islands to Portugal less the Continente within 0.2%. Not
+# pensioners or waste: there INE's totals leave the suppressed municipalities
+# out too (Continente pensioners 2005 equal the sum of the reported ones), and
+# Portugal's pensioners include those of unknown residence.
+PLANNING_RESIDUAL_BLOCKS <- c("employees", "earnings")
+
 # Municipalities whose values INE files under another one. An area then has a
 # value only if it holds both or neither; otherwise it is missing.
 # - Odivelas, Trofa and Vizela were created in 1998, out of Loures, Santo Tirso
@@ -445,6 +507,7 @@ planning_component_columns <- c(
   "births_gest_total", "births_gest_known", "births_preterm",
   "births_weight_known", "births_low_weight",
   "earnings_value", "employees_total", "employees_primary", "employees_secondary", "employees_tertiary", "employees_estimated",
+  "employees_recovered", "earnings_recovered",
   "census_pop", "census_pop_10plus", "census_illiterate",
   "census_education_total", "census_education_basic", "census_education_secondary", "census_education_higher",
   planning_education_age_columns(),
@@ -534,6 +597,7 @@ planning_component_blocks <- function(year) {
   }
 
   totals <- read_death_totals_year(year)
+  if (is.null(totals)) totals <- planning_parish_death_totals(year)
   if (!is.null(totals)) {
     blocks$deaths <- totals %>%
       dplyr::filter(.data$sex == "HM", .data$cause == planning_all_causes) %>%
@@ -680,6 +744,7 @@ planning_component_blocks <- function(year) {
         employees_primary = sum(value[grepl("^Agricultura", category)], na.rm = TRUE),
         employees_secondary = sum(value[grepl("^Indústria", category)], na.rm = TRUE),
         employees_tertiary = sum(value[grepl("^Serviços", category)], na.rm = TRUE),
+        employees_recovered = 0,
         .groups = "drop"
       ) %>%
       planning_estimate_suppressed_sectors()
@@ -691,7 +756,7 @@ planning_component_blocks <- function(year) {
       dplyr::group_by(area) %>%
       dplyr::summarise(mean_earnings = sum(value, na.rm = TRUE), .groups = "drop") %>%
       dplyr::inner_join(blocks$employees[, c("area", "employees_total")], by = "area") %>%
-      dplyr::transmute(area, earnings_value = .data$mean_earnings * .data$employees_total)
+      dplyr::transmute(area, earnings_value = .data$mean_earnings * .data$employees_total, earnings_recovered = 0)
   }
 
   # Census measures: only the census years have files.
@@ -778,7 +843,8 @@ planning_column_block <- function(column) {
     waste_total = , waste_selective = "waste",
     births_gest_total = , births_gest_known = , births_preterm = "gestation",
     births_weight_known = , births_low_weight = "weight",
-    employees_total = , employees_primary = , employees_secondary = , employees_tertiary = , employees_estimated = "employees",
+    employees_total = , employees_primary = , employees_secondary = , employees_tertiary = , employees_estimated = ,
+    employees_recovered = "employees", earnings_recovered = "earnings",
     earnings_value = "earnings",
     census_pop = "census_population",
     census_pop_10plus = "census_age",
@@ -825,6 +891,50 @@ planning_year_components <- function(year) {
 
   assign(key, table, envir = planning_cache)
   table
+}
+
+# Values INE suppressed for a municipality, recovered from its published totals
+# (PLANNING_RESIDUAL_BLOCKS): the Continente row less the reported continental
+# municipalities, and Portugal less the Continente for the islands. One
+# suppressed municipality in a group gets the residual itself - São João da
+# Madeira's 2015 employees are the Continente's 1,991,131 less the other 277
+# municipalities. Several share it: in 2013 São João da Madeira and Vale de
+# Cambra together, which the Norte, the Área Metropolitana do Porto and ULS
+# Entre Douro e Vouga hold but neither municipality alone; in 2013-2014 the
+# nineteen Azorean municipalities, for the Região Autónoma dos Açores. Only the
+# block's key column is recovered (employees by sector stay missing), and the
+# amount is kept in employees_recovered / earnings_recovered for the ≈ flag.
+planning_recover_suppressed <- function(table, values, unreported, municipalities, columns, present, lookup) {
+  joint <- list()
+  published <- function(area, column) {
+    row <- match(area, table$area)
+    if (is.na(row)) NA_real_ else as.numeric(table[[column]][[row]])
+  }
+  continental <- municipalities %in% lookup$municipality[lookup$nuts1 == "Continente"]
+  groups <- list(
+    list(members = continental, total = function(column) published("Continente", column)),
+    list(members = !continental, total = function(column) published("Portugal", column) - published("Continente", column))
+  )
+  for (block in intersect(PLANNING_RESIDUAL_BLOCKS, present)) {
+    key <- match(PLANNING_COMPLETE_BLOCKS[[block]], columns)
+    flag <- match(paste0(block, "_recovered"), columns)
+    for (group in groups) {
+      blank <- group$members & unreported[, key]
+      total <- group$total(columns[[key]])
+      if (!any(blank) || !is.finite(total)) next
+      residual <- total - sum(values[group$members & !blank, key], na.rm = TRUE)
+      if (residual <= 0) next
+      unreported[blank, c(key, flag)] <- FALSE
+      if (sum(blank) == 1) {
+        values[blank, key] <- residual
+        values[blank, flag] <- residual
+      } else {
+        values[blank, c(key, flag)] <- 0
+        joint[[length(joint) + 1L]] <- list(members = which(blank), columns = c(key, flag), value = residual)
+      }
+    }
+  }
+  list(values = values, unreported = unreported, joint = joint)
 }
 
 planning_age_lower <- function(age_band) {
@@ -940,6 +1050,9 @@ planning_components <- function(areas, years, lookup = get_nuts_lookup(), mode =
         (vapply(joint$blocks, function(b) block %in% unlist(b), logical(1)) & missing_own))
       unreported[match(joint_members[active], municipalities), cols] <- FALSE
     }
+    recovery <- planning_recover_suppressed(table, values, unreported, municipalities, columns, present, lookup)
+    values <- recovery$values
+    unreported <- recovery$unreported
     values[is.na(values)] <- 0
     # Each column is summed with the weights of its own basis: population by
     # age group, births by women of childbearing age, deaths by the expected
@@ -950,6 +1063,15 @@ planning_components <- function(areas, years, lookup = get_nuts_lookup(), mode =
     for (basis in unique(bases)) {
       pick <- bases == basis
       sums[, pick] <- planning_membership_matrix(areas, lookup, mode, basis, year) %*% values[, pick, drop = FALSE]
+    }
+    # A residual shared by several suppressed municipalities belongs only to
+    # the areas that hold all of them.
+    for (joint in recovery$joint) {
+      held <- rowSums(membership[, joint$members, drop = FALSE] == 1)
+      whole <- held == length(joint$members)
+      partial <- held > 0 & !whole | rowSums(membership[, joint$members, drop = FALSE] > 0) > held
+      sums[whole, joint$columns] <- sums[whole, joint$columns] + joint$value
+      sums[partial, joint$columns] <- NA
     }
     sums[(membership %*% unreported) > 0 | split] <- NA
     colnames(sums) <- columns
@@ -1133,8 +1255,17 @@ planning_compute_indicators <- function(components, ids, undercount_years = inte
       },
       teen_births_pct = set_share("births_mother_lt20", "births_mother_total"),
       low_birth_weight_pct = set_share("births_low_weight", "births_weight_known"),
-      earnings_mean = set_ratio("earnings_value", "employees_total", 1),
-      employees = set_count("employees_total", interval = FALSE),
+      earnings_mean = {
+        set_ratio("earnings_value", "employees_total", 1)
+        flag <- ifelse(is.finite(value) & (total("earnings_recovered") > 0 | total("employees_recovered") > 0),
+                       PLANNING_ESTIMATED_FLAG, "")
+      },
+      employees = {
+        set_count("employees_total", interval = FALSE)
+        # Includes employees INE suppressed for a municipality, recovered from
+        # its published totals (planning_recover_suppressed()).
+        flag <- ifelse(is.finite(value) & total("employees_recovered") > 0, PLANNING_ESTIMATED_FLAG, "")
+      },
       pct_employees_primary = , pct_employees_secondary = , pct_employees_tertiary = {
         set_ratio(sub("^pct_", "", id), "employees_total", 100)
         # More than 1% of the area's employees in sectors INE suppressed; see
@@ -1248,8 +1379,28 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
     results$standardised <- planning_standardised_table(areas, years, ids = standard_ids, lookup = lookup, benchmark = benchmark, mode = mode,
                                                           basis = basis)
   }
-  dplyr::bind_rows(results) %>%
+  planning_mark_provisional(dplyr::bind_rows(results)) %>%
     dplyr::arrange(match(.data$area, areas), .data$year, match(.data$indicator, ids))
+}
+
+# Values whose period includes a year read before INE's deaths by cause reach
+# it - all-cause deaths by parish, and deaths by age rebuilt from weekly deaths
+# (planning_calendar_years()) - are provisional, marked "p".
+PLANNING_PROVISIONAL_FLAG <- "p"
+planning_provisional_years <- function() sort(union(planning_parish_death_years(), planning_calendar_years()))
+
+planning_mark_provisional <- function(table) {
+  provisional <- planning_provisional_years()
+  if (length(provisional) == 0 || nrow(table) == 0) return(table)
+  deaths_based <- c("deaths", "death_rate", life_expectancy_ids, standardised_ids)
+  window <- PLANNING_INDICATORS$window[match(table$indicator, PLANNING_INDICATORS$id)]
+  window[is.na(window)] <- 1L
+  first <- table$year - window + 1L
+  touches <- vapply(seq_len(nrow(table)), function(i) any(provisional >= first[[i]] & provisional <= table$year[[i]]), logical(1))
+  mark <- table$indicator %in% deaths_based & touches & is.finite(table$value)
+  table$flag <- ifelse(is.na(table$flag), "", table$flag)
+  table$flag[mark] <- paste0(table$flag[mark], PLANNING_PROVISIONAL_FLAG)
+  table
 }
 
 # Notes attached to an indicator's label with an asterisk wherever it is shown.

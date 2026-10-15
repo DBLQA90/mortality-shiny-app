@@ -790,8 +790,9 @@ avoidable_tab_ui <- function() {
         selectInput(
           "avoidable_year",
           "Ano:",
-          choices = sort(rate_years),
-          selected = max(rate_years)
+          # By cause: not the latest year, rebuilt for all causes only.
+          choices = sort(setdiff(rate_years, calendar_death_years)),
+          selected = max(setdiff(rate_years, calendar_death_years))
         ),
         selectInput(
           "avoidable_area",
@@ -1068,6 +1069,12 @@ planning_method_notes <- function() {
       tags$li("Poder de compra per capita (Portugal = 100): a quota de cada município no poder de compra nacional, dividida pela sua quota implícita de população. Para um agrupamento é a soma das quotas sobre a soma das quotas de população, e não a média dos índices municipais."),
       tags$li("Resíduos urbanos por habitante: toneladas recolhidas vezes 1.000, sobre a população média do ano. Loures e Odivelas têm um serviço conjunto (SIMAR) que o INE regista todo em Loures: o indicador só existe para áreas que contenham os dois municípios.")
     ),
+    h4("O último ano (provisório, p)"),
+    tags$ul(
+      tags$li("O INE publica os óbitos por causa e idade cerca de 15 meses depois do fim do ano. Até lá, o último ano é lido de duas fontes do INE que chegam antes: os óbitos por freguesia de residência (0012542), que dão os óbitos de todas as causas de cada município, e os óbitos semanais por região e idade (0012100), que dão a repartição por idade. Em 2020-2024 a soma das freguesias coincide exactamente com os totais do INE; os óbitos por idade reconstruídos ficaram a 0,13% dos publicados, e a taxa padronizada a 0,03%."),
+      tags$li("Com isso, a taxa bruta de mortalidade e os óbitos existem para todas as áreas; a esperança de vida, as taxas padronizadas de todas as causas e a SMR, só para Portugal, o Continente, as regiões NUTS II e as áreas feitas de regiões inteiras (Lisboa e Vale do Tejo), e só para ambos os sexos. Por causa (evitável, prematura por causa, mortalidade por causa) não há valores até o INE publicar."),
+      tags$li("Os valores cujo período inclui esse ano têm a marca p. A classificação das ULS, o funil e a mortalidade por causa usam o último ano publicado por causa.")
+    ),
     h4("Mudanças de série"),
     tags$ul(
       tags$li("Pensões: em 2017 a Série 2017 da segurança social substitui a Série 1990-2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois não são directamente comparáveis; o gráfico de evolução marca a mudança."),
@@ -1076,7 +1083,8 @@ planning_method_notes <- function() {
     ),
     h4("Lacunas nos dados municipais do INE"),
     tags$ul(
-      tags$li("Uma célula em branco no INE não é um zero. Nos dados publicados para todos os municípios (resíduos, pensões, trabalhadores, ganho médio), um município sem valor deixa sem valor todas as áreas que o contêm, em vez de desaparecer da soma: por exemplo, os Açores não têm trabalhadores por conta de outrem em 2013-2014, nem ganho médio em 2011-2014."),
+      tags$li("Uma célula em branco no INE não é um zero. Nos dados publicados para todos os municípios (resíduos, pensões, trabalhadores, ganho médio), um município sem valor deixa sem valor todas as áreas que o contêm, em vez de desaparecer da soma."),
+      tags$li("Trabalhadores por conta de outrem e ganho médio: o total do Continente e o de Portugal publicados pelo INE incluem o que ficou oculto nos municípios, pelo que o valor oculto é o total menos os municípios publicados (assinalado com \u2248). Um só município oculto recupera o seu valor (São João da Madeira em 2015); vários partilham-no, e só as áreas que os contêm a todos têm valor (São João da Madeira e Vale de Cambra em 2013: Norte, Área Metropolitana do Porto e ULS Entre Douro e Vouga; os 19 municípios dos Açores em 2013-2014: a Região Autónoma). Os trabalhadores por sector desses municípios continuam em falta. Nas pensões e nos resíduos não é possível, porque aí os totais do INE também deixam de fora os municípios ocultos."),
       tags$li("Odivelas, Trofa e Vizela foram criados em 1998, a partir de Loures, Santo Tirso e Guimarães. A população está estimada com os limites actuais, mas os nascimentos, os óbitos e o Censo de 1991 até 1998 estão registados no município de origem. Até 1998 (e nos triénios que incluem esses anos) os indicadores só existem para áreas que contenham os dois municípios de cada par."),
       tags$li("Óbitos de todas as causas: em alguns municípios e anos (Vimioso em 2024; Alfândega da Fé e Miranda do Douro em 2015) o INE deixa em branco o total de todas as idades, embora publique os grupos etários. O total é então a soma desses grupos."),
       tags$li("Trabalhadores por sector: o INE oculta dois dos três sectores quando um deles revelaria uma empresa (6 municípios em 2024, 41-49 em 2013-2016). O remanescente é repartido pelos sectores ocultos na proporção do resto da NUTS III nesse ano; as quotas com mais de 1% de trabalhadores estimados são marcadas com \u2248.")

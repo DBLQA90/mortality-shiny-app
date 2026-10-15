@@ -128,8 +128,10 @@ life_death_years <- function() {
   sort(unique(as.integer(sub(".*year_(\\d{4})$", "\\1", dirs))))
 }
 
+# Includes the years whose all-cause deaths by age were rebuilt from weekly
+# deaths (planning_calendar_years()), for the areas made of whole regions.
 life_expectancy_years <- function() {
-  deaths <- life_death_years()
+  deaths <- union(life_death_years(), planning_calendar_years())
   population <- snapshot_years_for("population")
   complete <- intersect(deaths, population)
   sort(complete[vapply(complete, function(y) all(c(y - 1L, y - 2L) %in% complete), logical(1))])
@@ -146,8 +148,9 @@ life_year_block <- function(year, municipalities) {
   pop <- read_year_file("population", year)
   totals <- read_death_totals_year(year)
   if (is.null(path) || is.null(pop)) {
-    assign(key, NULL, envir = planning_cache)
-    return(NULL)
+    value <- if (is.null(pop)) NULL else planning_calendar_block(year, municipalities)
+    assign(key, value, envir = planning_cache)
+    return(value)
   }
   deaths <- readRDS(path)
   infant <- read_year_file("infant_totals", year)
@@ -274,7 +277,7 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
       # One table per area, read at each age the caller asked for.
       tables <- lapply(seq_along(areas), function(i) {
         first <- deaths[i, 1]
-        infant_share <- if (first > 0) min(infant[i], first) / first else 1
+        infant_share <- if (is.finite(first) && first > 0) min(infant[i], first) / first else 1
         a_first <- (infant_share * 0.1 + (1 - infant_share) * 2.5) / 5
         a <- c(a_first, rep(0.5, length(age_levels) - 1))
         abridged_life_table(deaths[i, ], person_years[i, ], LIFE_WIDTHS, a)
@@ -291,7 +294,7 @@ planning_life_expectancy_table <- function(areas, end_years, ids = LIFE_INDICATO
         reason[too_wide] <- "intervalo de confiança superior a 20 anos"
         # Where most deaths have no published age the life table would be
         # mostly assumption: municipalities before 1999 and around 2014.
-        spread_share <- ifelse(total_deaths > 0, spread / total_deaths, 0)
+        spread_share <- ifelse(is.finite(total_deaths) & total_deaths > 0, spread / total_deaths, 0)
         withheld <- spread_share > PLANNING_SPREAD_SUPPRESS
         reason[withheld] <- "mais de 25% dos óbitos do triénio sem idade publicada por município"
         value[withheld] <- NA_real_

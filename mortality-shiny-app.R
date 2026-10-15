@@ -656,8 +656,24 @@ server <- function(input, output, session) {
       )
     }
 
+    # The latest year has deaths by age only for whole regions and all causes;
+    # elsewhere it is left out of the series, and said so.
+    calendar <- intersect(years_to_load, calendar_death_years)
+    if (length(calendar) > 0) {
+      if (calendar_selection_supported(query_spec$area_key, query_spec$cause, query_spec$sex)) {
+        showNotification(
+          paste0(paste(calendar, collapse = ", "), ": óbitos por idade reconstruídos a partir dos óbitos semanais do INE (provisório)."),
+          type = "message", duration = 10
+        )
+      } else {
+        years_to_load <- setdiff(years_to_load, calendar)
+        validate(need(length(years_to_load) > 0, calendar_gap_message(calendar)))
+        showNotification(calendar_gap_message(calendar), type = "warning", duration = 15)
+      }
+    }
+
     notify_snapshot_request_warnings(
-      years = years_to_load,
+      years = setdiff(years_to_load, calendar_death_years),
       areas = query_spec$area_key,
       causes = query_spec$cause,
       data_source = query_spec$data_source
@@ -2845,6 +2861,22 @@ server <- function(input, output, session) {
 
     pooling_window <- normalize_pooling_window(pooling_window)
     years <- get_pooled_years(year, pooling_window, metric_id)
+
+    # The latest year has deaths by age only for whole regions and all causes
+    # (and the reference of an indirect rate must be one too). Outside that, a
+    # window reaching it is cut back to the years before; the year itself is
+    # refused.
+    calendar <- intersect(years, calendar_death_years)
+    calendar_ok <- FALSE
+    if (length(calendar) > 0 && !(metric_id %in% infant_metric_ids)) {
+      calendar_ok <- metric_id %in% c("deaths", "crude", "dsr", "smr", "isr", "ypll") &&
+        calendar_selection_supported(area_spec$areas, causes, sex) &&
+        (!metric_id %in% c("smr", "isr") || calendar_selection_supported(reference_areas, causes, sex))
+      if (!calendar_ok) {
+        validate(need(!as.integer(year) %in% calendar, calendar_gap_message(calendar)))
+        years <- setdiff(years, calendar)
+      }
+    }
     period_label <- make_period_label(min(years), max(years))
 
     # A rate needs a denominator for every year in the window. INE publishes
@@ -2866,7 +2898,7 @@ server <- function(input, output, session) {
     if (!(metric_id %in% infant_metric_ids)) {
       validate(
         need(
-          length(years_without_deaths(years)) == 0,
+          length(years_without_deaths(years, calendar_ok)) == 0,
           death_gap_message(years, get_annual_metric_label(metric_id))
         )
       )
@@ -3828,6 +3860,9 @@ server <- function(input, output, session) {
     year <- as.integer(input$avoidable_year)
     pooling_window <- normalize_pooling_window(input$avoidable_pooling)
     years <- get_pooled_years(year, pooling_window, "dsr")
+    # Avoidable mortality needs the causes, which the latest year does not have.
+    validate(need(!year %in% calendar_death_years, calendar_gap_message(year)))
+    years <- setdiff(years, calendar_death_years)
 
     validate(need(length(input$avoidable_area) > 0, "Seleccione pelo menos um local."))
     validate(need(
@@ -4121,6 +4156,9 @@ server <- function(input, output, session) {
     table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
                                       education_min_age = planning_education_age(), mode = planning_split_mode(),
                                       basis = active_population_basis())
+    # The rebuilt latest year exists for whole regions only; elsewhere it is a
+    # gap at the end of the line, not a point.
+    table <- table[!(table$year %in% planning_calendar_years() & is.na(table$value)), , drop = FALSE]
     planning_add_significance(table, benchmark)
   })
 
@@ -4155,7 +4193,12 @@ server <- function(input, output, session) {
     if (any(grepl("\\*", series$flag))) notes <- c(notes, "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.")
     if (any(grepl("\u2020", series$flag))) notes <- c(notes, "\u2020 triénio com anos em que os óbitos com menos de 1 ano por município estão incompletos no INE (1995-2001): valor subestimado.")
     if (any(grepl("\u2021", series$flag))) notes <- c(notes, "\u2021 mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.")
-    if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III.")
+    if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, if (spec$id %in% c("employees", "earnings_mean")) {
+      "\u2248 inclui valores que o INE ocultou num município (segredo estatístico), recuperados do total publicado do Continente ou de Portugal menos os municípios publicados."
+    } else {
+      "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III."
+    })
+    if (any(grepl(PLANNING_PROVISIONAL_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "p provisório: período com um ano que o INE ainda não publicou por causa de morte; óbitos por freguesia e, por idade, reconstruídos dos óbitos semanais (ver Notas).")
     if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) notes <- c(notes, paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
     if (spec$id %in% PLANNING_EDUCATION_IDS && planning_education_age() > 0) notes <- c(notes, PLANNING_EDUCATION_NOTE)
     if (any(planning_areas()$area %in% planning_parish_units())) {
@@ -4225,6 +4268,9 @@ server <- function(input, output, session) {
   planning_ranking_year <- reactive({
     spec <- planning_spec()
     available <- planning_indicator_years(spec$id)
+    # ULS, municipalities and NUTS III have no deaths by age in the rebuilt
+    # latest year: rank them on the last year INE published by cause.
+    if (spec$id %in% c(standardised_ids, life_expectancy_ids)) available <- setdiff(available, planning_calendar_years())
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "Sem anos disponíveis para este indicador."))
     max(available)
@@ -4380,7 +4426,8 @@ server <- function(input, output, session) {
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
 
   planning_cause_view <- reactive({
-    available <- planning_standardised_years()
+    # By cause: not the rebuilt latest year, which has all causes only.
+    available <- setdiff(planning_standardised_years(), planning_calendar_years())
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "A mortalidade por causa precisa de três anos de óbitos e população até ao ano escolhido."))
     end_year <- max(available)
