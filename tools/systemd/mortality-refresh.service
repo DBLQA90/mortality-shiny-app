@@ -7,5 +7,6 @@ After=network-online.target
 Type=oneshot
 ExecStart=%h/Desktop/DGS/Mortality/scripts/mortality-app-smr/tools/scheduled_refresh.sh
 # INE is slow; the refresh stops itself after REFRESH_MINUTES (default 120).
-TimeoutStartSec=3h
+# Then the regression check and the invariant sweep (about 25 minutes).
+TimeoutStartSec=4h
 Nice=10

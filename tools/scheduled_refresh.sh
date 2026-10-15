@@ -17,8 +17,16 @@
 # and running `Rscript tools/regression_check.R --update` records the new
 # values; the commit diff then shows exactly what moved.
 #
+# Then tools/invariant_sweep.R runs the planning module and the annual tab
+# across areas, years and options and flags what should never happen (a blank
+# where data exist, Portugal not adding up, a server error). Flags already
+# reviewed are listed in data/invariant_sweep_expected.csv; a new one goes to
+# $state/latest-sweep.txt and makes the unit exit non-zero. It takes about 25
+# minutes, nearly all in the server part.
+#
 # REFRESH_TASK overrides the task (e.g. sns for a quick test).
 # REGRESSION=0 skips the check; REGRESSION_ARGS passes it options (--quick).
+# SWEEP=0 skips the sweep; SWEEP_ARGS passes it options (--planning).
 #
 # The data files are left changed in the working tree. Set AUTO_COMMIT=1 (in
 # ~/.config/mortality-refresh.env) to commit them, and AUTO_PUSH=1 to push that
@@ -50,12 +58,25 @@ cd "$repo" || exit 1
     esac
   fi
 
+  sweep=0
+  if [ "${SWEEP:-1}" = "1" ]; then
+    echo "== $(date -Is) invariant sweep"
+    Rscript tools/invariant_sweep.R ${SWEEP_ARGS:-} --report="$state/latest-sweep.txt"
+    sweep=$?
+    case "$sweep" in
+      0) echo "invariant sweep: no new flag" ;;
+      1) echo "invariant sweep: new flag(s) - see $state/latest-sweep.txt" ;;
+      *) echo "invariant sweep: FAILED or server error (exit $sweep)" ;;
+    esac
+  fi
+
   if [ "${AUTO_COMMIT:-0}" = "1" ] && [ -n "$(git status --porcelain -- data)" ]; then
     git add -- data
     git commit -q -m "Data: scheduled refresh $(date +%F)" -- data && echo "committed data changes"
     if [ "${AUTO_PUSH:-0}" = "1" ]; then git push -q && echo "pushed"; fi
   fi
   [ "$status" -eq 0 ] && status="$regression"
+  [ "$status" -eq 0 ] && status="$sweep"
 } >>"$log" 2>&1
 
 # Keep the last 30 logs.

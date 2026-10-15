@@ -1,0 +1,89 @@
+name: Tests
+
+# Unit tests and the end-to-end smoke test on every push and pull request.
+#
+# Both run on the committed snapshots in data/ and make no network calls, so
+# they work on GitHub's hosted runners - unlike the data refresh, which INE
+# blocks there (see refresh-snapshots.yml).
+#
+# The invariant sweep (tools/invariant_sweep.R) is not run here: it takes
+# minutes rather than seconds and checks the data more than the code. It runs
+# after every scheduled refresh, and can be started by hand from the Actions
+# tab (workflow_dispatch, input `sweep`).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      sweep:
+        description: "Also run the invariant sweep"
+        type: boolean
+        default: false
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MORTALITY_INSTALL_MISSING_PACKAGES: "false"
+      MORTALITY_DEFAULT_DATA_SOURCE: snapshot
+      TESTTHAT_REPORTER: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      # The app is not a package, so the dependencies are listed here rather
+      # than read from a DESCRIPTION. They are R/dependencies.R's
+      # required_packages, plus what the Word profile and the tests need.
+      # pak installs the system libraries they require.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+          packages: |
+            any::glue
+            any::PHEindicatormethods
+            any::tidyverse
+            any::shiny
+            any::plotly
+            any::openxlsx
+            any::forecast
+            any::ineptr2
+            any::strucchange
+            any::memoise
+            any::cachem
+            any::later
+            any::officer
+            any::flextable
+            any::testthat
+            any::withr
+
+      - name: Unit tests
+        run: Rscript run_tests.R
+
+      - name: Smoke test (Shiny server)
+        run: Rscript tests/smoke_app.R
+
+      - name: Invariant sweep
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sweep }}
+        run: Rscript tools/invariant_sweep.R --report=invariant-sweep.txt
+
+      - name: Upload sweep report
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.sweep }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: invariant-sweep
+          path: invariant-sweep.txt
+          if-no-files-found: ignore
