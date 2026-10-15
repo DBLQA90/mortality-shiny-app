@@ -320,6 +320,25 @@ testServer(app, {
     }
   }
 
+  cat("\n=== Trend in the observed tab (Lisboa, the last area loaded, 1995-2025, up to 2 joinpoints) ===\n")
+  session$setInputs(observed_trend_span = "all", observed_trend_joinpoints = "2", years_import = c(1995, 2025), go_rates = 3)
+  trend <- tryCatch(observed_trend(), error = function(e) e)
+  if (!failed(trend)) cat(sprintf("   AAPC %+.1f%% (%+.1f; %+.1f), %d segment(s) %s\n", trend$aapc$apc, trend$aapc$lower,
+                                  trend$aapc$upper, nrow(trend$segments),
+                                  verdict(trend$aapc$upper < 0, "OK", "observed trend")))
+
+  # Several areas compared, each with the combination of the best models.
+  cat("\n=== Guided forecast, several areas, combination ===\n")
+  session$setInputs(beginner_area = c("Norte", "Alentejo"), beginner_area_label = "", beginner_indicator = "mortality",
+                    beginner_areas_mode = "separate", beginner_model_policy = "combo", beginner_cause = "Todas as causas de morte",
+                    beginner_sex = "HM", beginner_population = "Total", beginner_rate_type = "dsr", beginner_data_source = "snapshot",
+                    beginner_horizon = 4, beginner_years_fit = c(2001, 2025), beginner_mode = "recommended",
+                    beginner_validation = "rolling", beginner_test_pct = 25, go_beginner_forecast = 10)
+  multi <- tryCatch(beginner_multi_table(), error = function(e) e)
+  if (!failed(multi)) cat("   ", paste(multi$Local, multi$Modelo, multi$`Projecção (IC)`, sep = ": ", collapse = " | "),
+                          verdict(nrow(multi) == 2 && all(grepl("Combinação", multi$Modelo)), "OK", "several areas"), "\n")
+  session$setInputs(beginner_areas_mode = "pooled")
+
   # Infant mortality in the guided forecast, five-year periods, both methods.
   cat("\n=== Guided forecast of five-year infant mortality, Norte ===\n")
   for (method in c("annual", "rolling")) {

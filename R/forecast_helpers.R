@@ -185,3 +185,73 @@ infant_window_forecast <- function(annual, fc, window) {
   })
   dplyr::bind_rows(rows)
 }
+
+# ---------------------------------------------------------
+# Combining models
+# ---------------------------------------------------------
+# An equal-weight combination of the `k` models that validated best. Averages
+# of a few good models are rarely the worst and often the best forecast (the
+# M-competitions); they also stop the chosen method from changing from one area
+# to the next for reasons of noise, which matters when areas are compared.
+#
+# The point forecast is the mean of the members' means. The interval is that of
+# the mixture of their forecast distributions, read on the modelling scale
+# (`forward`/`inverse` from the transformation): each member's distribution is
+# recovered from its interval, and the mixture's quantiles are found
+# numerically. Where the members disagree the mixture is wider than any of
+# them, so the interval grows with the models' disagreement as well as with
+# each model's own uncertainty - the part a single model leaves out.
+FORECAST_COMBINATION_ID <- "combo"
+FORECAST_COMBINATION_SIZE <- 3L
+
+combine_model_forecasts <- function(fc, members, forward, inverse, level = 95) {
+  z <- stats::qnorm(1 - (1 - level / 100) / 2)
+  alpha <- (1 - level / 100) / 2
+  rows <- fc[fc$model %in% members, , drop = FALSE]
+  dplyr::bind_rows(lapply(split(rows, rows$year), function(r) {
+    lo <- forward(r$lower); hi <- forward(r$upper)
+    mu <- (lo + hi) / 2
+    s <- pmax((hi - lo) / (2 * z), 1e-9)
+    cdf <- function(q) mean(stats::pnorm((q - mu) / s))
+    span <- c(min(mu - 10 * s), max(mu + 10 * s))
+    quantile_at <- function(p) stats::uniroot(function(q) cdf(q) - p, span, tol = 1e-10)$root
+    tibble::tibble(year = r$year[[1]], model = FORECAST_COMBINATION_ID, mean = mean(r$mean),
+                   lower = inverse(quantile_at(alpha)), upper = inverse(quantile_at(1 - alpha)))
+  }))
+}
+
+# The members at each step of a rolling validation, chosen without hindsight:
+# the `k` models with the lowest error over the earlier steps only (the first
+# step uses `initial_order`, the in-sample ranking). `steps`: model, year,
+# predicted, actual. Returns the combination's own predictions, to be scored
+# like any model's.
+combination_rolling_predictions <- function(steps, initial_order, k = FORECAST_COMBINATION_SIZE) {
+  years <- sort(unique(steps$year))
+  dplyr::bind_rows(lapply(seq_along(years), function(i) {
+    current <- steps[steps$year == years[[i]], , drop = FALSE]
+    earlier <- steps[steps$year %in% years[seq_len(i - 1L)], , drop = FALSE]
+    order <- if (nrow(earlier) == 0) {
+      intersect(initial_order, current$model)
+    } else {
+      rmse <- tapply((earlier$predicted - earlier$actual)^2, earlier$model, function(x) sqrt(mean(x)))
+      intersect(names(sort(rmse)), current$model)
+    }
+    members <- utils::head(order, k)
+    tibble::tibble(model = FORECAST_COMBINATION_ID, year = years[[i]],
+                   predicted = mean(current$predicted[current$model %in% members]),
+                   actual = current$actual[[1]])
+  }))
+}
+
+# One model for several areas: the one with the lowest mean relative error
+# (RMSE over the mean of the area's series, so large and small areas count
+# alike) among the models every area could fit. `metrics`: one table per area
+# (Model, RMSE); `levels`: each area's mean observed value.
+choose_common_model <- function(metrics, levels) {
+  shared <- Reduce(intersect, lapply(metrics, function(m) m$Model[is.finite(m$RMSE)]))
+  if (length(shared) == 0) return(NULL)
+  relative <- vapply(shared, function(model) {
+    mean(mapply(function(m, level) m$RMSE[m$Model == model][[1]] / level, metrics, levels))
+  }, numeric(1))
+  names(which.min(relative))
+}

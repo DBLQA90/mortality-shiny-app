@@ -54,6 +54,7 @@ for (app_file in c(
   "R/planning_profile.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
+  "R/trend.R",
   "R/data_access.R",
   "R/ui_helpers.R"
 )) {
@@ -3533,8 +3534,40 @@ server <- function(input, output, session) {
     plotly::config(gp, displaylogo = FALSE, modeBarButtonsToRemove = list("lasso2d", "select2d"))
   }
 
+  # Annual percentage change over the chosen span of the observed series.
+  observed_trend <- reactive({
+    dat <- observed_history()
+    series <- dat$series[is.finite(dat$series$value), , drop = FALSE]
+    span <- input$observed_trend_span %||% "10"
+    if (!identical(span, "all")) series <- series[series$year > max(series$year) - as.integer(span), , drop = FALSE]
+    trend_apc(series$year, series$value, series$lower, series$upper,
+              max_joinpoints = as.integer(input$observed_trend_joinpoints %||% "0"))
+  })
+
+  build_trend_table <- function(trend) {
+    rows <- trend$segments
+    if (nrow(rows) > 1) rows <- dplyr::bind_rows(rows, trend$aapc)
+    tibble::tibble(
+      `Período` = paste0(rows$from, "-", rows$to, ifelse(seq_len(nrow(rows)) > nrow(trend$segments), " (média, AAPC)", "")),
+      `Variação anual (IC 95%)` = vapply(seq_len(nrow(rows)), function(i) trend_label(rows[i, ]), character(1)),
+      Leitura = vapply(seq_len(nrow(rows)), function(i) trend_reading(rows[i, ]), character(1))
+    )
+  }
+
+  output$rateTrendTable <- renderTable({
+    trend <- observed_trend()
+    validate(need(!is.null(trend), "São precisos pelo menos 5 anos para estimar a tendência."))
+    build_trend_table(trend)
+  }, bordered = TRUE, spacing = "s")
+
   output$ratePlot <- plotly::renderPlotly({
-    to_interactive_plot(build_observed_rate_plot(observed_history()))
+    p <- build_observed_rate_plot(observed_history())
+    trend <- tryCatch(observed_trend(), error = function(e) NULL)
+    if (!is.null(trend)) {
+      p <- p + geom_line(data = trend$fitted, aes(x = year, y = fitted), inherit.aes = FALSE,
+                         linetype = "dashed", colour = "#eb6834", linewidth = 0.8)
+    }
+    to_interactive_plot(p)
   })
 
   output$downloadRatePlot <- downloadHandler(
@@ -3563,8 +3596,6 @@ server <- function(input, output, session) {
   # Beginner Forecasting
   # -------------------------
   beginner_training_history <- eventReactive(input$go_beginner_forecast, {
-    token <- isolate(cancel_seq$beginner)
-    year_order <- isolate(year_load_state$beginner_order)
     query_spec <- make_query_spec(
       input$beginner_area,
       input$beginner_area_label,
@@ -3572,7 +3603,11 @@ server <- function(input, output, session) {
       input$beginner_sex,
       input$beginner_data_source
     )
+    build_guided_history(query_spec, isolate(cancel_seq$beginner), isolate(year_load_state$beginner_order))
+  }, ignoreNULL = TRUE)
 
+  # The guided forecast's training series for one selection.
+  build_guided_history <- function(query_spec, token, year_order) {
     if (identical(input$beginner_indicator, "infant")) {
       return(build_infant_history(query_spec, input$beginner_years_fit,
                                   value_or_default(input$beginner_infant_window, "5"),
@@ -3602,43 +3637,181 @@ server <- function(input, output, session) {
         )
       )
     })
-  }, ignoreNULL = TRUE)
+  }
+
+  # Adds the combination of the best models (R/forecast_helpers.R) as one more
+  # candidate. Its validation error is computed the same way as the others',
+  # choosing its members at each step from the earlier steps only, so it is
+  # recommended only when it does validate best. Needs the rolling validation.
+  add_forecast_combination <- function(result, validation) {
+    steps <- validation$plot_data$predictions
+    fitted <- get_successful_model_ids(result)
+    if (!identical(validation$method_used, "rolling") || is.null(steps) || nrow(steps) == 0 ||
+        length(fitted) < FORECAST_COMBINATION_SIZE) {
+      return(list(result = result, validation = validation))
+    }
+    initial <- result$accuracy %>% dplyr::filter(is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+    combo_steps <- combination_rolling_predictions(steps, initial$Model)
+    scale_denom <- mean(abs(diff(result$obs$value)), na.rm = TRUE)
+    combo_metrics <- compute_forecast_error_metrics(combo_steps$actual, combo_steps$predicted, scale_denom) %>%
+      dplyr::mutate(Model = FORECAST_COMBINATION_ID) %>%
+      dplyr::select(Model, ME, RMSE, MAE, MAPE, MASE)
+    members <- validation$metrics %>% dplyr::filter(Model %in% fitted, is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+    members <- utils::head(members$Model, FORECAST_COMBINATION_SIZE)
+    setup <- get_transformation_setup(result$obs$value, result$transform_method)
+    result$fc <- dplyr::bind_rows(result$fc, combine_model_forecasts(result$fc, members, setup$forward, setup$inverse, result$conf_level))
+    result$fitted_models <- c(fitted, FORECAST_COMBINATION_ID)
+    result$combination_members <- members
+    validation$metrics <- dplyr::bind_rows(validation$metrics, combo_metrics)
+    validation$ranking <- rank_model_metrics(validation$metrics)
+    validation$recommended_model <- choose_recommended_model(validation$metrics)
+    validation$plot_data$predictions <- dplyr::bind_rows(steps, combo_steps)
+    list(result = result, validation = validation)
+  }
+
+  # Fit, validate and combine for one training series.
+  run_guided_forecast <- function(training_history, token) {
+    guided_result <- run_forecast_models(
+      history = training_history,
+      model_ids = unname(forecast_model_choices),
+      horizon = input$beginner_horizon,
+      kind = "beginner",
+      token = token
+    )
+    validation <- evaluate_model_selection(
+      base_result = guided_result,
+      method = value_or_default(input$beginner_validation, "rolling"),
+      test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
+    )
+    combined <- add_forecast_combination(guided_result, validation)
+    guided_result <- combined$result
+    validation <- combined$validation
+    if (!is.null(validation$recommended_model)) {
+      guided_result$recommended_model <- validation$recommended_model
+    }
+    aggregate_infant_result(c(
+      guided_result,
+      list(
+        full_history = training_history,
+        horizon = input$beginner_horizon,
+        mode = input$beginner_mode,
+        training_label = get_beginner_training_label(training_history),
+        validation = validation
+      )
+    ), training_history)
+  }
 
   beginner_forecast <- eventReactive(input$go_beginner_forecast, {
     training_history <- beginner_training_history()
-
-    shiny::withProgress(message = "A ajustar e validar modelos...", value = 0, {
-      guided_result <- run_forecast_models(
-        history = training_history,
-        model_ids = unname(forecast_model_choices),
-        horizon = input$beginner_horizon,
-        kind = "beginner",
-        token = isolate(cancel_seq$beginner)
-      )
-      incProgress(0.5)
-
-      validation <- evaluate_model_selection(
-        base_result = guided_result,
-        method = value_or_default(input$beginner_validation, "rolling"),
-        test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
-      )
-      if (!is.null(validation$recommended_model)) {
-        guided_result$recommended_model <- validation$recommended_model
-      }
-      incProgress(0.5)
-
-      aggregate_infant_result(c(
-        guided_result,
-        list(
-          full_history = training_history,
-          horizon = input$beginner_horizon,
-          mode = input$beginner_mode,
-          training_label = get_beginner_training_label(training_history),
-          validation = validation
-        )
-      ), training_history)
+    shiny::withProgress(message = "A ajustar e validar modelos...", value = 0.3, {
+      run_guided_forecast(training_history, isolate(cancel_seq$beginner))
     })
   }, ignoreNULL = TRUE)
+
+  # Several areas, each forecast on its own, under one model policy:
+  #   "combo"  the combination for every area - the same method everywhere,
+  #            so differences between areas come from their data;
+  #   "common" the single model with the lowest mean relative error across
+  #            the areas;
+  #   "best"   each area's own recommended model.
+  GUIDED_MAX_AREAS <- 12L
+  beginner_multi_forecast <- eventReactive(input$go_beginner_forecast, {
+    areas <- unique(as.character(input$beginner_area))
+    validate(need(length(areas) >= 2, "Seleccione pelo menos dois locais para os comparar."))
+    validate(need(length(areas) <= GUIDED_MAX_AREAS, paste("Seleccione no máximo", GUIDED_MAX_AREAS, "locais.")))
+    token <- isolate(cancel_seq$beginner)
+    order <- isolate(year_load_state$beginner_order)
+    results <- list()
+    shiny::withProgress(message = "A ajustar e validar modelos, área a área...", value = 0, {
+      for (area in areas) {
+        query_spec <- make_query_spec(area, "", input$beginner_cause, input$beginner_sex, input$beginner_data_source)
+        history <- build_guided_history(query_spec, token, order)
+        results[[area]] <- tryCatch(run_guided_forecast(history, token), error = function(e) {
+          if (inherits(e, "shiny.silent.error")) stop(e)
+          e
+        })
+        incProgress(1 / length(areas))
+      }
+    })
+    failed <- vapply(results, inherits, logical(1), "error")
+    if (any(failed)) {
+      showNotification(paste("Sem previsão para:", paste(names(results)[failed], collapse = ", ")), type = "warning", duration = 15)
+    }
+    results <- results[!failed]
+    validate(need(length(results) > 0, "Nenhuma área pôde ser projectada."))
+
+    policy <- value_or_default(input$beginner_model_policy, "combo")
+    chosen <- vapply(results, function(r) r$recommended_model, character(1))
+    if (identical(policy, "combo")) {
+      has_combo <- vapply(results, function(r) FORECAST_COMBINATION_ID %in% r$fc$model, logical(1))
+      chosen[has_combo] <- FORECAST_COMBINATION_ID
+    } else if (identical(policy, "common")) {
+      common <- choose_common_model(
+        lapply(results, function(r) r$validation$metrics),
+        vapply(results, function(r) mean(r$obs$value, na.rm = TRUE), numeric(1))
+      )
+      if (!is.null(common)) chosen[] <- common
+    }
+    list(results = results, chosen = chosen, policy = policy)
+  }, ignoreNULL = TRUE)
+
+  beginner_multi_table <- reactive({
+    multi <- beginner_multi_forecast()
+    dplyr::bind_rows(lapply(names(multi$results), function(area) {
+      r <- multi$results[[area]]
+      model <- multi$chosen[[area]]
+      last <- utils::tail(r$full_history$series, 1)
+      end <- utils::tail(r$fc[r$fc$model == model, , drop = FALSE], 1)
+      tibble::tibble(
+        Local = area,
+        Modelo = get_model_labels(model),
+        `Último observado` = paste0(round(last$value, 2), " (", last$year, ")"),
+        `Projecção (IC)` = paste0(round(end$mean, 2), " (", round(end$lower, 2), "; ", round(end$upper, 2), ") em ", end$year),
+        `Variação` = sprintf("%+.1f%%", (end$mean / last$value - 1) * 100),
+        `Recomendado no local` = get_model_labels(r$recommended_model)
+      )
+    }))
+  })
+
+  output$beginnerMultiTable <- renderTable({
+    req(input$go_beginner_forecast > 0)
+    beginner_multi_table()
+  }, bordered = TRUE, spacing = "s")
+
+  output$downloadBeginnerMultiCSV <- downloadHandler(
+    filename = function() paste0("previsao_por_local_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(beginner_multi_table(), file)
+  )
+
+  output$beginnerMultiNote <- renderUI({
+    req(input$go_beginner_forecast > 0)
+    multi <- beginner_multi_forecast()
+    policy <- c(combo = "a combinação dos três modelos que melhor previram os anos de teste em cada local",
+                common = paste0("o mesmo modelo em todos (", get_model_labels(unique(multi$chosen))[[1]], ", o de menor erro relativo médio)"),
+                best = "o modelo recomendado em cada local")[[multi$policy]]
+    helpText(paste0(
+      "Cada local é projectado em separado com ", policy, ". Linha cheia: observado; tracejada e faixa: projecção e ",
+      "intervalo. A última coluna diz qual seria o modelo recomendado olhando só para esse local."
+    ))
+  })
+
+  output$beginnerMultiPlot <- plotly::renderPlotly({
+    req(input$go_beginner_forecast > 0)
+    multi <- beginner_multi_forecast()
+    observed <- dplyr::bind_rows(lapply(names(multi$results), function(a) dplyr::mutate(multi$results[[a]]$full_history$series, local = a)))
+    projected <- dplyr::bind_rows(lapply(names(multi$results), function(a) {
+      r <- multi$results[[a]]
+      dplyr::mutate(r$fc[r$fc$model == multi$chosen[[a]], , drop = FALSE], local = a)
+    }))
+    p <- ggplot() +
+      geom_ribbon(data = projected, aes(x = year, ymin = lower, ymax = upper), fill = "#8fb8de", alpha = 0.35) +
+      geom_line(data = observed, aes(x = year, y = value), colour = "#1f4e79", linewidth = 0.8) +
+      geom_line(data = projected, aes(x = year, y = mean), colour = "#0b2e4f", linetype = "dashed", linewidth = 0.9) +
+      facet_wrap(~local) +
+      labs(x = "Ano", y = multi$results[[1]]$history$y_label) +
+      theme_minimal()
+    to_interactive_plot(p)
+  })
 
   output$beginnerForecastPlot <- plotly::renderPlotly({
     req(input$go_beginner_forecast > 0)
@@ -4279,6 +4452,51 @@ server <- function(input, output, session) {
     if (nrow(breaks) > 0) notes <- c(notes, paste0("Linha pontilhada em ", breaks$year, ": ", breaks$note))
     if (length(notes) == 0) return(NULL)
     helpText(HTML(paste(htmltools::htmlEscape(notes), collapse = "<br>")))
+  })
+
+  # Annual percentage change of each area over the chosen years
+  # (R/trend.R). A triennial value shares two years with its neighbour, so
+  # only non-overlapping periods ending in the last year are used; otherwise
+  # the interval would be far too narrow.
+  planning_trend <- reactive({
+    spec <- planning_spec()
+    series <- planning_series()
+    series <- series[is.finite(series$value) & series$value > 0, , drop = FALSE]
+    validate(need(nrow(series) > 0, "Sem valores para estimar a tendência."))
+    window <- as.integer(spec$window)
+    areas <- planning_areas()
+    rows <- lapply(seq_len(nrow(areas)), function(i) {
+      own <- series[series$area == areas$area[[i]], , drop = FALSE]
+      if (nrow(own) == 0) return(NULL)
+      if (window > 1) own <- own[(max(own$year) - own$year) %% window == 0, , drop = FALSE]
+      trend <- trend_apc(own$year, own$value, own$lower, own$upper, min_points = 4L)
+      if (is.null(trend)) return(NULL)
+      tibble::tibble(
+        Área = planning_series_name(areas$area[[i]], areas$level[[i]]),
+        `Período` = paste0(if (window > 1) paste0(trend$aapc$from - window + 1, "-") else "", trend$aapc$to,
+                           " (", trend$n, if (window > 1) " triénios)" else " anos)"),
+        `Variação anual (IC 95%)` = trend_label(trend$aapc),
+        Leitura = trend_reading(trend$aapc)
+      )
+    })
+    dplyr::bind_rows(rows)
+  })
+
+  output$planningTrendTable <- renderTable({
+    table <- planning_trend()
+    validate(need(nrow(table) > 0, "São precisos pelo menos 4 períodos para estimar a tendência."))
+    table
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$planningTrendNote <- renderUI({
+    spec <- planning_spec()
+    helpText(paste0(
+      "Variação percentual anual (APC) de uma regressão log-linear ao longo dos anos escolhidos, cada ponto pesado ",
+      "pela sua precisão (método Joinpoint, sem mudanças de tendência). ",
+      if (spec$window > 1) "Valores trienais: só triénios que não se sobrepõem, terminando no último ano. " else "",
+      "Significativa quando o intervalo não inclui 0; não diz se a subida ou a descida é desejável. ",
+      "Com mudanças de tendência, veja o separador Mortalidade Observada."
+    ))
   })
 
   output$planningIndicatorTable <- renderTable({

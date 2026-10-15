@@ -45,6 +45,15 @@ population_help <- function() {
     "e não representa a mortalidade total."
   )
 }
+trend_help <- function() {
+  helpText(
+    "Variação percentual anual (APC): o ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%, ",
+    "de uma regressão log-linear em que cada ano pesa conforme a sua precisão (método Joinpoint do National Cancer ",
+    "Institute). Com mudanças de tendência, a recta pode quebrar em até um ou dois anos, escolhidos pelo critério BIC, ",
+    "e a última linha dá a variação média anual (AAPC) de todo o período. Uma tendência é significativa quando o ",
+    "intervalo não inclui 0. A linha tracejada no gráfico é a tendência ajustada."
+  )
+}
 horizon_help <- function() {
   helpText("Número de anos a projectar para o futuro. Quanto maior o horizonte, maior a incerteza.")
 }
@@ -197,6 +206,15 @@ transform_help <- function() {
     "'Sem transformação' modela a taxa directamente."
   )
 }
+model_policy_help <- function() {
+  helpText(
+    "Para comparar locais ou fixar metas, use o mesmo método em todos: com «o melhor de cada local», um local pode ",
+    "ficar com uma tendência e o vizinho com uma linha plana só porque o acaso favoreceu modelos diferentes. A ",
+    "combinação (média dos três modelos que melhor previram os anos de teste) é a escolha mais robusta; «o mesmo ",
+    "modelo» usa o que teve, em média, o menor erro relativo em todos os locais. Para olhar para um só local, ",
+    "a previsão recomendada (que já considera a combinação) é suficiente."
+  )
+}
 infant_method_help <- function() {
   helpText(
     "Série anual: os modelos são ajustados às taxas de cada ano, com a variação real de ano para ano, e cada ",
@@ -304,6 +322,26 @@ beginner_forecast_controls_panel <- function() {
       selected = get_default_area_selection()
     ),
     textInput("beginner_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
+    radioButtons(
+      "beginner_areas_mode",
+      "Com vários locais:",
+      choices = c("Somá-los numa só selecção" = "pooled", "Projectar cada um em separado, para comparar" = "separate"),
+      selected = "pooled"
+    ),
+    conditionalPanel(
+      "input.beginner_areas_mode == 'separate'",
+      radioButtons(
+        "beginner_model_policy",
+        "Modelo em cada local:",
+        choices = c(
+          "Combinação dos melhores modelos (recomendado para comparar)" = "combo",
+          "O mesmo modelo para todos" = "common",
+          "O melhor modelo de cada local" = "best"
+        ),
+        selected = "combo"
+      ),
+      model_policy_help()
+    ),
     radioButtons(
       "beginner_indicator",
       "Indicador:",
@@ -710,6 +748,21 @@ observed_mortality_tab_ui <- function() {
         br(),
         downloadButton("downloadRatePlot", "Descarregar gráfico (PNG)"),
         br(),
+        h4("Tendência"),
+        fluidRow(
+          column(6, selectInput(
+            "observed_trend_span", "Período da tendência:",
+            choices = c("Últimos 10 anos" = "10", "Últimos 5 anos" = "5", "Últimos 15 anos" = "15", "Todos os anos carregados" = "all"),
+            selected = "10"
+          )),
+          column(6, selectInput(
+            "observed_trend_joinpoints", "Mudanças de tendência:",
+            choices = c("Nenhuma (uma só recta)" = "0", "Até 1" = "1", "Até 2" = "2"),
+            selected = "0"
+          ))
+        ),
+        tableOutput("rateTrendTable"),
+        trend_help(),
         h4("Série anual observada"),
         tableOutput("rateTable"),
         downloadButton("downloadRateTableCSV", "Descarregar tabela (CSV)")
@@ -726,6 +779,16 @@ beginner_forecasting_tab_ui <- function() {
         beginner_forecast_controls_panel()
       ),
       mainPanel(
+        conditionalPanel(
+          "input.beginner_areas_mode == 'separate'",
+          h4("Previsão por local"),
+          plotly::plotlyOutput("beginnerMultiPlot", height = "560px"),
+          uiOutput("beginnerMultiNote"),
+          div(style = "overflow-x:auto;", tableOutput("beginnerMultiTable")),
+          downloadButton("downloadBeginnerMultiCSV", "Descarregar tabela (CSV)")
+        ),
+        conditionalPanel(
+          "input.beginner_areas_mode != 'separate'",
         plotly::plotlyOutput("beginnerForecastPlot", height = "400px"),
         helpText(
           "Azul: taxa observada usada no ajuste. Cinzento: restante histórico. ",
@@ -744,6 +807,7 @@ beginner_forecasting_tab_ui <- function() {
         h4("Tabela da previsão"),
         tableOutput("beginnerForecastTable"),
         downloadButton("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)")
+        )
       )
     )
   )

@@ -524,6 +524,18 @@ Cuidados:
 - em causas raras, pequenas flutuações podem produzir grandes variações nas taxas;
 - em áreas pequenas, observe sempre os intervalos de confiança.
 
+### Tendência
+
+Por baixo do gráfico, a **Tendência** dá a variação percentual anual (APC): o
+ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%.
+Escolha o período (últimos 5, 10 ou 15 anos, ou todos os carregados) e se a
+recta pode mudar de inclinação (até uma ou duas vezes, nos anos que melhor
+descrevem a série). Com mudanças, a última linha dá a variação média de todo o
+período (AAPC). A tendência é **significativa** quando o intervalo não inclui 0.
+A linha tracejada no gráfico é a tendência ajustada. É o método Joinpoint do
+National Cancer Institute (EUA): cada ano pesa conforme a sua precisão, pelo que
+um ano com poucos óbitos conta menos.
+
 ## 7. Separador Previsão Guiada
 
 ### O que é uma previsão
@@ -565,6 +577,26 @@ Modos típicos:
 
 - previsão recomendada;
 - comparação entre modelos disponíveis.
+
+### Combinação de modelos e vários locais
+
+Além dos oito modelos, a previsão guiada experimenta a **combinação**: a média
+dos três modelos que melhor previram os anos de teste. Raramente é a pior e
+muitas vezes é a melhor; o seu intervalo alarga-se quando os modelos discordam.
+Só é recomendada quando prevê de facto melhor os anos de teste.
+
+Com vários locais seleccionados pode **somá-los numa só selecção** (como
+sempre) ou **projectar cada um em separado, para comparar**. Neste caso escolha
+o modelo:
+
+- **Combinação** (recomendado para comparar ou fixar metas): o mesmo método em
+  todos, para que as diferenças venham dos dados e não de qual modelo ganhou por
+  acaso em cada local;
+- **O mesmo modelo para todos**: o que teve, em média, o menor erro relativo;
+- **O melhor de cada local**: cada um com o seu; a última coluna da tabela diz
+  qual seria em qualquer caso.
+
+Para olhar para um só local, a previsão recomendada chega.
 
 ### Como é Escolhido o Modelo Recomendado
 

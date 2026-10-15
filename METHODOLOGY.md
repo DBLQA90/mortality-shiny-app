@@ -1567,6 +1567,59 @@ When the selected series is too short to leave at least three training years and
 
 Backtesting can evaluate forecasts against a holdout period from the end of the observed series. Holdout errors are computed against the observed values for overlapping years.
 
+### Combining Models and Comparing Areas
+
+The guided forecast adds one candidate to the eight models: the equal-weight
+combination of the three that validated best (`combine_model_forecasts()`).
+Its point forecast is the mean of the three; its interval is that of the
+mixture of their forecast distributions, each recovered on the modelling scale
+from its own interval, so it widens where the members disagree as well as with
+each member's uncertainty - the part a single model's interval leaves out, and
+the reason long-horizon intervals were too narrow.
+
+It is scored like the other models in the rolling validation, with no
+hindsight: at each test year its members are the three with the lowest error
+over the earlier test years (the first year uses the in-sample ranking;
+`combination_rolling_predictions()`). It is recommended only when it validates
+best. Alentejo, standardised, 2001-2025: naive 41.9, combination 52.9, so naive
+is recommended. It needs the rolling validation; with the other methods it is
+not offered.
+
+With several locations, "Projectar cada um em separado" forecasts each on its
+own under one policy:
+
+- **combination** (default): the same method everywhere, so differences
+  between areas come from their data, not from which model won by chance in
+  each - with "best per area", Norte took ARIMA (-8.7% to 2029) while Centro and
+  Alentejo took the flat naive model;
+- **one common model**: the model with the lowest mean relative error (RMSE
+  over the area's mean level) among those every area could fit
+  (`choose_common_model()`);
+- **best per area**: each area's own recommendation, shown in any case in the
+  last column of the table.
+
+For one location the recommended model, which now includes the combination as
+a candidate, stays the default.
+
+### Trend: annual percentage change
+
+`R/trend.R` follows the US National Cancer Institute's Joinpoint method: a
+log-linear regression of the rate on the year, APC = 100 (exp(b) - 1), each
+year weighted by the inverse of the sampling variance of its log rate (from
+its 95% interval), with the residual variance estimated. Up to two joinpoints
+can be allowed; the line stays continuous (hinge terms), every candidate year
+leaving at least four years per segment is tried, and the number is chosen by
+BIC. The average annual percentage change (AAPC) weights each segment's slope
+by its length, with its interval from the same covariance matrix. Norte,
+standardised, 1995-2025, up to two joinpoints: -2.4% a year to 2017, +1.5%
+2017-2020, -2.8% 2020-2025; AAPC -2.1% (-2.2; -2.0).
+
+The observed tab shows it over the last 5, 10 or 15 years or all loaded, with
+the fitted line on the chart. The planning tab shows it for the location and
+its comparators over the chosen years, without joinpoints; a triennial
+indicator uses only non-overlapping triennia ending in the last year, since
+overlapping ones share two years and would make the interval far too narrow.
+
 ### Infant Mortality in the Guided Forecast
 
 The guided forecast also projects infant mortality, per 1,000 live births, for
