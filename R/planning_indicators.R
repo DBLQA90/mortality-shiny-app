@@ -391,12 +391,13 @@ PLANNING_COMPLETE_BLOCKS <- c(waste = "waste_total", pensions = "pensioners", em
 # - With `blocks`, only when the municipality has no value that year: the
 #   joint Loures-Odivelas waste service (SIMAR) is recorded wholly under
 #   Loures, with Odivelas blank; purchasing power has no row for the three
-#   until 2000.
+#   until 2000; Trofa's and Vizela's waste stays with Santo Tirso and
+#   Guimarães in 1999 (Santo Tirso 86,994 t, then 64,668 + Trofa 15,144 in 2000).
 PLANNING_JOINT_REPORTING <- tibble::tribble(
   ~municipality, ~holder,       ~until, ~blocks,
   "Odivelas",    "Loures",      1998L,  list(c("waste", "purchasing_power")),
-  "Trofa",       "Santo Tirso", 1998L,  list("purchasing_power"),
-  "Vizela",      "Guimarães",   1998L,  list("purchasing_power")
+  "Trofa",       "Santo Tirso", 1998L,  list(c("waste", "purchasing_power")),
+  "Vizela",      "Guimarães",   1998L,  list(c("waste", "purchasing_power"))
 )
 
 # Areas that hold one of a joint pair but not the other in `year`, for a block
@@ -1217,7 +1218,10 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   max_window <- max(PLANNING_INDICATORS$window[PLANNING_INDICATORS$id %in% ids])
   # One year earlier than the widest window: the fertility index needs the
   # previous year's population for its mid-year denominator.
-  component_years <- seq.int(min(years) - max_window, max(years))
+  # The census change compares with the census ten years before, whatever the
+  # range asked for: without it, 2021 read blank unless 2011 was requested too.
+  lookback <- if ("census_population_change" %in% ids) max(max_window, 10L) else max_window
+  component_years <- seq.int(min(years) - lookback, max(years))
   components <- if (length(setdiff(ids, c(life_expectancy_ids, standardised_ids))) > 0) planning_components(areas, component_years, lookup, mode) else NULL
 
   undercount <- if (any(c("infant_rate") %in% ids)) {

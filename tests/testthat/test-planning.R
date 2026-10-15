@@ -648,6 +648,10 @@ test_that("census indicators use the census years and their own denominators", {
     # Ten years apart, not one.
     expect_true(is.na(get("census_population_change", 2011)))
     expect_equal(get("census_population_change", 2021), 10)
+    # The previous census is found whatever the range asked for: 2021 alone
+    # used to read blank because 2011 fell outside the components loaded.
+    alone <- planning_indicator_table("Norte", 2021L, ids = "census_population_change", lookup = lookup)
+    expect_equal(alone$value, 10)
     # Those with no level are the census population less those with one.
     expect_equal(get("pct_education_none", 2011), (1500 - 1200) / 1500 * 100)
     expect_equal(get("pct_education_higher", 2011), 150 / 1500 * 100)
@@ -862,6 +866,16 @@ test_that("a municipality missing from a complete block makes its areas missing"
     expect_true(is.na(tab$value[tab$area == "Beta"]))
     expect_true(is.na(tab$value[tab$area == "Norte"]))
   })
+})
+
+test_that("the municipalities created in 1998 are joint with their parent for waste too", {
+  # INE files Trofa's and Vizela's waste under Santo Tirso and Guimarães until
+  # 1999, a year after the 1998 cut-off of the other blocks; without "waste"
+  # here, Norte read blank in 1999.
+  joint <- PLANNING_JOINT_REPORTING
+  for (m in c("Odivelas", "Trofa", "Vizela")) {
+    expect_true("waste" %in% unlist(joint$blocks[[match(m, joint$municipality)]]), info = m)
+  }
 })
 
 test_that("a municipality filed under another has values only together with it", {
