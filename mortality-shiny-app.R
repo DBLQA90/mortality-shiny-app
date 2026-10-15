@@ -2938,15 +2938,16 @@ server <- function(input, output, session) {
     candidate <- seq.int(as.integer(year) - half, as.integer(year) + half)
     years <- sort(intersect(candidate, as.integer(year_of_interest)))
 
-    # A rate pools deaths against person-years, so a year contributing deaths
-    # without a population estimate would inflate the numerator against a
-    # denominator that never included it. Those years are dropped from the
-    # window rather than failing the whole request: a window centred on 2022
-    # reaches 2024, which has deaths but no published population, and refusing
-    # outright would disable pooling exactly where it is most useful. The
-    # period label reports the span actually used.
-    if (!is.null(metric_id) && metric_id %in% annual_metrics_needing_population) {
-      usable <- intersect(years, as.integer(population_years))
+    # A window is cut to the years that have what the metric needs, rather than
+    # failing the whole request: deaths for every metric but the infant ones,
+    # and population as well for a rate (deaths without person-years would
+    # inflate the numerator). Either side can run ahead - population now
+    # reaches 2025 while deaths by cause stop at 2024, so a window centred on
+    # 2024 reached 2025 and every metric was refused. The period label reports
+    # the span actually used.
+    if (!is.null(metric_id) && !metric_id %in% infant_metric_ids) {
+      have <- if (metric_id %in% annual_metrics_needing_population) rate_years else death_archive_years
+      usable <- intersect(years, as.integer(have))
       if (length(usable) > 0) years <- usable
     }
 

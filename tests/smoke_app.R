@@ -44,6 +44,17 @@ testServer(app, {
   r24 <- run("crude", "1", year = 2024)
   if (!is.null(r24)) print(as.data.frame(r24[, c("location","period","value","lower","upper")]))
 
+  # Population reaches 2025 but deaths by cause stop at 2024: a window centred
+  # on 2024 must drop 2025 rather than refuse the whole request.
+  cat("\n=== DSR, 2024, 3-year pooling (window must stop at 2024) ===\n")
+  p24 <- run("dsr", "3", year = 2024)
+  if (!is.null(p24)) print(as.data.frame(p24[, c("location","period","n_years","value")]))
+
+  # The mean population of 1991 needs 1990, which the series does not have.
+  cat("\n=== DSR, 1991, mean population (first year keeps its own estimate) ===\n")
+  d91 <- run("dsr", "1", year = 1991)
+  if (!is.null(d91)) print(as.data.frame(d91[, c("location","period","value")]))
+
   cat("\n=== Deaths, 2024 (count metric -> must work) ===\n")
   d24 <- run("deaths", "1", year = 2024)
   if (!is.null(d24)) print(as.data.frame(d24[, c("location","period","value")]))

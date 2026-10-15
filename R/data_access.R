@@ -75,8 +75,20 @@ population_years_to_load <- function(years, basis = default_population_basis()) 
   sort(unique(c(years, years - 1L)))
 }
 
+# The previous years' estimates the mean needs, read one year at a time: a year
+# the snapshot does not have - 1990, before the series starts - is skipped rather
+# than failing the whole load (the chunked reader errors on a missing year), and
+# the first year then keeps its own estimate.
+load_previous_population <- function(years, basis, loader) {
+  extra <- setdiff(population_years_to_load(years, basis), as.integer(years))
+  dplyr::bind_rows(lapply(extra, function(year) tryCatch(loader(year), error = function(e) NULL)))
+}
+
 get_data_for_snapshot <- function(area, cause, years = year_of_interest, population_basis = default_population_basis()) {
-  df_pop <- get_snapshot_population_data(population_years_to_load(years, population_basis), area) %>%
+  df_pop <- dplyr::bind_rows(
+    get_snapshot_population_data(years, area),
+    load_previous_population(years, population_basis, function(year) get_snapshot_population_data(year, area))
+  ) %>%
     apply_population_basis(years, population_basis)
   df_death <- get_snapshot_death_data(years, area, cause)
 
