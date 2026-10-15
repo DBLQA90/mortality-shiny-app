@@ -197,6 +197,18 @@ transform_help <- function() {
     "'Sem transformação' modela a taxa directamente."
   )
 }
+infant_method_help <- function() {
+  helpText(
+    "Série anual: os modelos são ajustados às taxas de cada ano, com a variação real de ano para ano, e cada ",
+    "período projectado é depois a média, pesada pelos nascimentos, dos anos que contém (os anos futuros com os ",
+    "nascimentos do último ano observado). O intervalo trata os erros dos anos como totalmente correlacionados, ",
+    "pelo que é conservador. ",
+    "Médias móveis: os modelos são ajustados directamente à série de taxas de 3 ou 5 anos. Cada valor partilha ",
+    "quase todos os anos com o anterior, pelo que a série é suave por construção: os modelos tendem a ver ",
+    "tendências onde há acaso e dão intervalos demasiado estreitos. Fica disponível para comparar com valores ",
+    "calculados dessa forma. Em ambos, a escolha do modelo usa os erros da série ajustada."
+  )
+}
 beginner_validation_help <- function() {
   helpText(
     "A aplicação escolhe o melhor método testando a previsão em anos recentes ",
@@ -292,21 +304,52 @@ beginner_forecast_controls_panel <- function() {
       selected = get_default_area_selection()
     ),
     textInput("beginner_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
-    selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
-    selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
     radioButtons(
-      "beginner_population",
-      "População:",
-      choices = c("Total", "Menos de 75 anos")
+      "beginner_indicator",
+      "Indicador:",
+      choices = c("Taxa de mortalidade" = "mortality", "Mortalidade infantil (por 1.000 nados-vivos)" = "infant"),
+      selected = "mortality"
     ),
-    population_help(),
-    radioButtons(
-      "beginner_rate_type",
-      "Taxa:",
-      choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+    conditionalPanel(
+      "input.beginner_indicator == 'mortality'",
+      selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
+      selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
+      radioButtons(
+        "beginner_population",
+        "População:",
+        choices = c("Total", "Menos de 75 anos")
+      ),
+      population_help(),
+      radioButtons(
+        "beginner_rate_type",
+        "Taxa:",
+        choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+      ),
+      rate_type_help(),
+      region_aggregation_note()
     ),
-    rate_type_help(),
-    region_aggregation_note(),
+    conditionalPanel(
+      "input.beginner_indicator == 'infant'",
+      selectInput(
+        "beginner_infant_window",
+        "Período de cada valor:",
+        choices = c("Anual" = "1", "Triénio" = "3", "Quinquénio" = "5"),
+        selected = "5"
+      ),
+      conditionalPanel(
+        "input.beginner_infant_window != '1'",
+        radioButtons(
+          "beginner_infant_method",
+          "Como projectar:",
+          choices = c(
+            "Projectar a série anual e agregar no fim (recomendado)" = "annual",
+            "Projectar a série de médias móveis" = "rolling"
+          ),
+          selected = "annual"
+        ),
+        infant_method_help()
+      )
+    ),
     data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",

@@ -1023,6 +1023,15 @@ server <- function(input, output, session) {
   }
 
   rebuild_history_with_year_range <- function(history, year_range) {
+    # An infant series is already built over every year; the earlier years
+    # are a subset of it.
+    if (!is.null(history$infant)) {
+      year_range <- range(as.integer(year_range))
+      keep <- function(x) x[x$year >= year_range[[1]] & x$year <= year_range[[2]], , drop = FALSE]
+      history$series <- keep(history$series)
+      history$infant$annual <- history$infant$annual[history$infant$annual$year <= year_range[[2]], , drop = FALSE]
+      return(history)
+    }
     build_historical_series(
       metric_bundle = history$metric_bundle,
       series_spec = make_series_spec(
@@ -2429,6 +2438,46 @@ server <- function(input, output, session) {
     range(training_years)
   }
 
+  # The guided forecast's infant mortality series (R/forecast_helpers.R): the
+  # yearly rates when the models are to be fitted to them, the window rates
+  # when they are to be fitted to those. `infant` keeps what the window
+  # aggregation and the re-fits of the validation need.
+  build_infant_history <- function(query_spec, year_range, window, method) {
+    window <- as.integer(window)
+    years <- sort(intersect(get_years_in_selected_range(year_range), infant_mortality_years()))
+    validate(need(length(years) >= 3 + window - 1L, "Seleccione pelo menos 3 períodos com nados-vivos e óbitos infantis."))
+    undercount <- infant_undercount_message(years, query_spec$area_key)
+    if (!is.null(undercount)) showNotification(undercount, type = "warning", duration = 20)
+    annual <- infant_annual_series(years, query_spec$area_key)
+    validate(need(nrow(annual) >= 3, "Sem nados-vivos e óbitos infantis suficientes para esta selecção."))
+    fit_annual <- window == 1L || identical(method, "annual")
+    series <- infant_window_rates(annual, if (fit_annual) 1L else window)
+    period <- c("1" = "anual", "3" = "triénio", "5" = "quinquénio")[[as.character(window)]]
+    list(
+      spec = c(query_spec, list(population = "Total", rate_type = "infant", years = series$year, year_range = range(series$year))),
+      metric_bundle = NULL,
+      series = series[, c("year", "value", "lower", "upper")],
+      area_label = query_spec$area_label,
+      y_label = paste0("Mortalidade infantil (", period, "), por 1.000 nados-vivos"),
+      rate_label = "Mortalidade infantil",
+      unit_label = "por 1.000 nados-vivos",
+      measure_label = "a mortalidade infantil",
+      infant = list(annual = annual, window = window, method = if (fit_annual) "annual" else "rolling")
+    )
+  }
+
+  # Window rates in place of the yearly ones, once the models have run on them.
+  aggregate_infant_result <- function(result, history) {
+    info <- history$infant
+    if (is.null(info) || info$window == 1L || !identical(info$method, "annual")) return(result)
+    windowed <- infant_window_rates(info$annual, info$window)[, c("year", "value", "lower", "upper")]
+    result$fc <- infant_window_forecast(info$annual, result$fc, info$window)
+    result$obs <- windowed
+    result$full_history$series <- windowed
+    result$history$series <- windowed
+    result
+  }
+
   get_beginner_training_label <- function(training_history) {
     paste0("os anos ", format_year_selection(training_history$series$year))
   }
@@ -2554,16 +2603,19 @@ server <- function(input, output, session) {
       "Os diferentes modelos plausíveis divergem bastante quanto ao nível final."
     }
 
+    unit <- dat$history$unit_label %||% "por 100.000"
+    measure <- dat$history$measure_label %||% "a taxa de mortalidade"
+
     wellPanel(
       h4("Resumo em linguagem simples"),
       p(glue::glue(
-        "Usando {dat$training_label}, a previsão recomendada sugere que a taxa de mortalidade {trend_text} ao longo dos próximos {dat$horizon} anos."
+        "Usando {dat$training_label}, a previsão recomendada sugere que {measure} {trend_text} ao longo dos próximos {dat$horizon} anos."
       )),
       p(glue::glue(
-        "Em {final_forecast$year}, a projecção central é de {round(final_forecast$mean, 2)} por 100.000, em comparação com {round(last_observed$value, 2)} em {last_observed$year}."
+        "Em {final_forecast$year}, a projecção central é de {round(final_forecast$mean, 2)} {unit}, em comparação com {round(last_observed$value, 2)} em {last_observed$year}."
       )),
       p(glue::glue(
-        "Isto corresponde a uma variação de {sprintf('%+.2f', change_abs)} por 100.000{if (!is.na(change_pct)) paste0(' (', sprintf('%+.2f%%', change_pct), ')') else ''}."
+        "Isto corresponde a uma variação de {sprintf('%+.2f', change_abs)} {unit}{if (!is.na(change_pct)) paste0(' (', sprintf('%+.2f%%', change_pct), ')') else ''}."
       )),
       p(uncertainty_text),
       p(compare_text)
@@ -3521,6 +3573,12 @@ server <- function(input, output, session) {
       input$beginner_data_source
     )
 
+    if (identical(input$beginner_indicator, "infant")) {
+      return(build_infant_history(query_spec, input$beginner_years_fit,
+                                  value_or_default(input$beginner_infant_window, "5"),
+                                  value_or_default(input$beginner_infant_method, "annual")))
+    }
+
     shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
       metric_bundle <- load_metric_bundle(
         query_spec,
@@ -3569,7 +3627,7 @@ server <- function(input, output, session) {
       }
       incProgress(0.5)
 
-      c(
+      aggregate_infant_result(c(
         guided_result,
         list(
           full_history = training_history,
@@ -3578,7 +3636,7 @@ server <- function(input, output, session) {
           training_label = get_beginner_training_label(training_history),
           validation = validation
         )
-      )
+      ), training_history)
     })
   }, ignoreNULL = TRUE)
 

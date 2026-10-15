@@ -552,6 +552,11 @@ Controlos principais:
 - modo de previsão;
 - em `Mostrar opções avançadas` (opcional): o método de validação (`Como escolher o modelo recomendado`) e o `Tamanho do teste (% dos anos)`.
 
+Em `Indicador` pode escolher a taxa de mortalidade (por causa) ou a **mortalidade infantil** (por 1.000 nados-vivos), anual, por triénio ou por quinquénio. Para um triénio ou quinquénio há dois métodos:
+
+- **Projectar a série anual e agregar no fim** (recomendado): os modelos aprendem com as taxas de cada ano, com a sua variação real, e cada período projectado é a média, pesada pelos nascimentos, dos anos que contém;
+- **Projectar a série de médias móveis**: os modelos aprendem com a série de taxas de 3 ou 5 anos. Como cada valor partilha quase todos os anos com o anterior, a série é suave por construção e os intervalos ficam demasiado estreitos. Use-o para comparar com valores calculados dessa forma.
+
 Por predefinição, a aplicação usa boas escolhas automáticas, pelo que basta escolher local, causa e horizonte e clicar em `Gerar previsão`. As opções de validação só são necessárias para afinar como o modelo é escolhido e ficam escondidas até activar `Mostrar opções avançadas`.
 
 A `Janela de ajuste` define os anos usados para treinar o modelo. Se usar uma janela mais curta, a previsão fica mais focada na tendência recente. Se usar uma janela mais longa, fica mais influenciada pela história completa.

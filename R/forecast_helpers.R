@@ -121,3 +121,67 @@ build_fitted_values_df <- function(obs, fits, inverse = function(x) as.numeric(x
     )
   }))
 }
+
+# ---------------------------------------------------------
+# Infant mortality over several years
+# ---------------------------------------------------------
+# Infant mortality is usually reported over three or five years, because a
+# region has a few dozen infant deaths a year. Two ways to project it:
+#   "annual"  fit the models to the yearly rates and add up the projected years
+#             into each window afterwards (infant_window_forecast());
+#   "rolling" fit them to the series of window rates itself.
+# The rolling series shares four of its five years with its neighbour, so it is
+# smooth by construction: the models read that smoothness as signal, choose
+# trends too readily, and give intervals far narrower than the yearly
+# variation warrants. The annual fit sees the real year-to-year noise.
+
+# Under-1 deaths and live births of a selection, by year.
+infant_annual_series <- function(years, areas) {
+  rows <- lapply(as.integer(years), function(year) {
+    tibble::tibble(year = year, deaths = infant_deaths_total(year, areas), births = get_births_total(year, areas))
+  })
+  out <- dplyr::bind_rows(rows)
+  out[is.finite(out$deaths) & is.finite(out$births) & out$births > 0, , drop = FALSE]
+}
+
+# Rate per 1,000 live births over the `window` years ending in each year, with
+# an exact Poisson interval; only years whose whole window is present.
+infant_window_rates <- function(annual, window = 1L) {
+  annual <- annual[order(annual$year), , drop = FALSE]
+  window <- as.integer(window)
+  rows <- lapply(annual$year, function(year) {
+    span <- seq.int(year - window + 1L, year)
+    if (!all(span %in% annual$year)) return(NULL)
+    take <- annual$year %in% span
+    r <- compute_infant_mortality(sum(annual$deaths[take]), sum(annual$births[take]))
+    tibble::tibble(year = year, value = r$value, lower = r$lower, upper = r$upper,
+                   deaths = r$deaths, births = r$births)
+  })
+  dplyr::bind_rows(rows)
+}
+
+# Window rates from forecasts of the yearly rate (`fc`: year, model, mean,
+# lower, upper, per 1,000). Each window adds the observed years it still holds
+# to the projected ones; projected years count with the last observed births,
+# so the rate is a births-weighted mean. The interval adds the yearly limits as
+# if the forecast errors were perfectly correlated across years - conservative,
+# and close for the trend and random-walk models, whose errors are.
+infant_window_forecast <- function(annual, fc, window) {
+  window <- as.integer(window)
+  annual <- annual[order(annual$year), , drop = FALSE]
+  last_births <- utils::tail(annual$births, 1)
+  rows <- lapply(split(fc, fc$model), function(f) {
+    f <- f[order(f$year), , drop = FALSE]
+    dplyr::bind_rows(lapply(f$year, function(year) {
+      span <- seq.int(year - window + 1L, year)
+      observed <- annual[annual$year %in% span, , drop = FALSE]
+      projected <- f[f$year %in% span, , drop = FALSE]
+      if (nrow(observed) + nrow(projected) < window) return(NULL)
+      births <- sum(observed$births) + last_births * nrow(projected)
+      combine <- function(rate) (sum(observed$deaths) + sum(rate) / 1000 * last_births) / births * 1000
+      tibble::tibble(year = year, model = f$model[[1]], mean = combine(projected$mean),
+                     lower = combine(projected$lower), upper = combine(projected$upper))
+    }))
+  })
+  dplyr::bind_rows(rows)
+}

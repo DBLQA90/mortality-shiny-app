@@ -1567,6 +1567,28 @@ When the selected series is too short to leave at least three training years and
 
 Backtesting can evaluate forecasts against a holdout period from the end of the observed series. Holdout errors are computed against the observed values for overlapping years.
 
+### Infant Mortality in the Guided Forecast
+
+The guided forecast also projects infant mortality, per 1,000 live births, for
+one year or for periods of three or five years (`infant_annual_series()`,
+`infant_window_rates()`). For a period there are two methods:
+
+- **Annual series, aggregated** (default). The models are fitted to the yearly
+  rates; each projected period is then the births-weighted mean of the years it
+  contains, observed or projected, with projected years counting the last
+  observed births (`infant_window_forecast()`). The interval adds the yearly
+  limits as if the forecast errors were perfectly correlated across years,
+  which is conservative.
+- **Moving-average series.** The models are fitted to the period rates
+  directly. Neighbouring values share all but one year, so the series is smooth
+  by construction: models read that as signal and give intervals too narrow.
+  It is offered to compare with values computed that way (the CCDR table of
+  October 2026 did so).
+
+Norte, 2004-2025, five-year periods, to 2029: annual method 2.31 (1.63; 3.14),
+moving averages 2.29 (1.73; 2.93). Model selection uses the errors of whichever
+series was fitted.
+
 ### Diagnostics And Structural Breaks
 
 Diagnostics include residual plots, ACF, PACF, Ljung-Box tables, and model summaries where available.
