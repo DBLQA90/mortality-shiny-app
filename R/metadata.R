@@ -56,11 +56,23 @@ year_of_interest <- get_metadata_or_fallback(
 # Years that can produce a rate: both a numerator and a denominator. The
 # observed and forecast tabs work only in rates, so their sliders use this
 # rather than population_years, which now runs a year further than deaths.
-rate_years <- sort(intersect(as.integer(population_years), as.integer(death_archive_years)))
+# Years past the by-cause archive whose all-cause deaths by age were rebuilt from
+# INE's weekly and parish deaths (tools/build_calendar_deaths_by_age.R): 2025
+# until 0013166 reaches it. They serve all causes, both sexes, and areas made of
+# whole NUTS II regions only; see calendar_selection_supported().
+calendar_death_years <- local({
+  files <- list.files(file.path(infant_snapshot_root(), "calendar_deaths_by_age"), pattern = "^year_\\d{4}\\.rds$")
+  sort(setdiff(as.integer(sub("^year_(\\d{4})\\.rds$", "\\1", files)), as.integer(death_archive_years)))
+})
+
+rate_years <- sort(intersect(as.integer(population_years), union(as.integer(death_archive_years), calendar_death_years)))
 
 # Years the user can select that the main death archive cannot serve.
-years_without_deaths <- function(years) {
-  sort(setdiff(as.integer(years), as.integer(death_archive_years)))
+# `calendar_ok`: the selection is one the rebuilt latest year can serve.
+years_without_deaths <- function(years, calendar_ok = FALSE) {
+  have <- as.integer(death_archive_years)
+  if (isTRUE(calendar_ok)) have <- union(have, calendar_death_years)
+  sort(setdiff(as.integer(years), have))
 }
 
 death_gap_message <- function(years, metric_label = "esta métrica") {

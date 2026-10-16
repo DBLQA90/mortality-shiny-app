@@ -1,12 +1,13 @@
 # =========================================================
 # ULS that share a municipality: whole municipality or parish weights
 # =========================================================
-# Three municipalities are divided between ULS at parish level - Lisboa (ULS
+# Four municipalities are divided between ULS at parish level - Lisboa (ULS
 # Santa Maria, ULS São José, ULS Lisboa Ocidental), Loures (ULS Loures/Odivelas,
-# ULS São José) and Porto (ULS Santo António, ULS São João) - and INE publishes
-# nothing below the municipality except the census and annual counts of births
-# and deaths. The tab offers two readings of those six ULS, and says which one
-# is in use:
+# ULS São José), Porto (ULS Santo António, ULS São João) and Gondomar (ULS Santo
+# António, and the parish of Lomba in ULS Vila Nova de Gaia/Espinho) - and INE
+# publishes nothing below the municipality except the census and annual counts
+# of births and deaths. The tab offers two readings of those ULS, and says which
+# one is in use:
 #
 #   "whole"   the ULS takes each municipality it serves whole. Nothing is
 #             estimated, and it answers the question a ULS actually faces (it
@@ -21,6 +22,14 @@
 #
 # The exact groups (unions of ULS that contain only whole municipalities) stay
 # available and assume nothing at all.
+#
+# Lomba is the exception to "whole": 1,284 of Gondomar's 164,257 residents
+# (0.8%). Giving all of Gondomar to ULS Vila Nova de Gaia/Espinho for it would
+# add half that ULS's population, so a part flagged `whole = FALSE` in
+# data-raw/uls_parish.csv is left out of the whole reading (Gondomar counts
+# whole in ULS Santo António only, as in every other tab) and enters only
+# through the parish weights (planning_parish_extend()). The exact group of
+# Santo António and São João therefore includes Lomba.
 #
 # Weights. Births and deaths are not estimated at all where INE publishes them
 # by parish - annually since 2014, counts only (0012450/0012542 and the earlier
@@ -64,10 +73,36 @@ planning_parish_units <- function() {
   sort(unique(lookup$unit))
 }
 
+# The municipalities a ULS takes whole in the "whole" reading: not those where
+# it holds only a part flagged `whole = FALSE`.
 planning_parish_members <- function(unit) {
   lookup <- planning_parish_lookup()
   if (is.null(lookup)) return(character(0))
-  sort(unique(lookup$municipality[lookup$unit == unit]))
+  whole <- if ("whole" %in% names(lookup)) lookup$whole else rep(TRUE, nrow(lookup))
+  sort(unique(lookup$municipality[lookup$unit == unit & whole]))
+}
+
+# The (unit, municipality) pairs a ULS holds only in part, too small to take
+# whole: they enter the parish reading only.
+planning_parish_partial_pairs <- function() {
+  lookup <- planning_parish_lookup()
+  if (is.null(lookup) || !"whole" %in% names(lookup)) return(data.frame(unit = character(0), municipality = character(0)))
+  pairs <- unique(lookup[, c("unit", "municipality")])
+  whole <- vapply(seq_len(nrow(pairs)), function(i) {
+    any(lookup$whole[lookup$unit == pairs$unit[[i]] & lookup$municipality == pairs$municipality[[i]]])
+  }, logical(1))
+  as.data.frame(pairs[!whole, , drop = FALSE])
+}
+
+# The 0/1 membership with those parts added, for the parish reading: the
+# weights then give each its share.
+planning_parish_extend <- function(membership) {
+  pairs <- planning_parish_partial_pairs()
+  for (i in seq_len(nrow(pairs))) {
+    a <- match(pairs$unit[[i]], rownames(membership)); m <- match(pairs$municipality[[i]], colnames(membership))
+    if (!is.na(a) && !is.na(m)) membership[a, m] <- 1
+  }
+  membership
 }
 
 # Census population by parish, age group and sex.
@@ -276,6 +311,7 @@ planning_band_product <- function(membership, values, mode = PLANNING_DEFAULT_SP
     scale <- ifelse(implied > 0, target * matrix(totals, nrow(membership), length(municipalities), byrow = TRUE) / implied, 1)
     weights <- lapply(weights, function(w) w * scale)
   }
+  membership <- planning_parish_extend(membership)
   out <- matrix(0, nrow(membership), length(bands), dimnames = list(rownames(membership), bands))
   for (j in seq_along(bands)) {
     out[, j] <- (membership * weights[[j]]) %*% values[municipalities, bands[[j]], drop = FALSE]
@@ -287,5 +323,66 @@ planning_band_product <- function(membership, values, mode = PLANNING_DEFAULT_SP
 planning_weighted_sum <- function(membership, values, basis, mode = PLANNING_DEFAULT_SPLIT_MODE, year = NULL) {
   municipalities <- colnames(membership)
   weights <- planning_parish_weights(rownames(membership), municipalities, basis, mode, year)
+  if (identical(mode, "parish")) membership <- planning_parish_extend(membership)
   as.numeric((membership * weights) %*% values[municipalities])
+}
+
+# A note for each selected ULS that shares a municipality: what it shares,
+# with which ULS, and how the reading in use treats it. `mode` "whole" is also
+# how every tab but the planning tab's parish weights reads a ULS.
+uls_split_note <- function(units, mode = PLANNING_DEFAULT_SPLIT_MODE) {
+  lookup <- planning_parish_lookup()
+  if (is.null(lookup)) return(character(0))
+  units <- intersect(as.character(units), unique(lookup$unit))
+  if (length(units) == 0) return(character(0))
+  whole <- if ("whole" %in% names(lookup)) lookup$whole else rep(TRUE, nrow(lookup))
+  census <- planning_parish_census()
+  resident <- function(codes) {
+    if (is.null(census)) return(NA_real_)
+    sum(census$pop[census$code %in% codes & census$sex == "HM"], na.rm = TRUE)
+  }
+  fmt <- function(x) formatC(x, format = "f", digits = 0, big.mark = ".", decimal.mark = ",")
+  pct <- function(x) formatC(100 * x, format = "f", digits = 1, decimal.mark = ",")
+  parish_reading <- identical(mode, "parish")
+  unlist(lapply(units, function(unit) {
+    municipalities <- sort(unique(lookup$municipality[lookup$unit == unit]))
+    vapply(municipalities, function(m) {
+      here <- lookup$municipality == m
+      others <- sort(setdiff(unique(lookup$unit[here]), unit))
+      own <- here & lookup$unit == unit
+      share <- resident(lookup$code[own]) / resident(lookup$code[here])
+      partial_here <- !any(whole[own])
+      partial_other <- unique(lookup$unit[here & !whole])
+      if (partial_here) {
+        main <- setdiff(unique(lookup$unit[here & whole]), unit)
+        paste0(unit, ": de ", m, " pertence-lhe só a freguesia ", paste(lookup$parish[own], collapse = ", "), " (",
+               pct(share), "% dos residentes nos Censos de 2021). ",
+               if (parish_reading) {
+                 "Com a ponderação por freguesias, essa parte entra nesta ULS. "
+               } else {
+                 paste0("Com «Município inteiro», como nos outros separadores, ", m, " conta todo na ", paste(main, collapse = " e "),
+                        " e não nesta: dar-lhe o município inteiro por uma parte tão pequena somaria ", fmt(resident(lookup$code[here])),
+                        " residentes a esta ULS. Só a ponderação por freguesias a inclui. ")
+               })
+      } else if (length(partial_other) > 0) {
+        paste0(unit, ": ", m, " é seu, excepto a freguesia ", paste(lookup$parish[here & lookup$unit %in% partial_other], collapse = ", "),
+               " (", pct(1 - share), "%), que pertence à ", paste(partial_other, collapse = " e "), ". ",
+               if (parish_reading) {
+                 "Com a ponderação por freguesias, essa freguesia fica de fora. "
+               } else {
+                 paste0("Com «Município inteiro», como nos outros separadores, ", m, " conta todo nesta ULS, incluindo essa freguesia. ")
+               })
+      } else {
+        paste0(unit, ": ", m, " está repartido por freguesias com ", if (length(others) > 1) "as " else "a ",
+               paste(others, collapse = " e "), " (esta ULS tem ",
+               pct(share), "% dos residentes). ",
+               if (parish_reading) {
+                 "Com a ponderação por freguesias, cada ULS leva a sua parte, pelas freguesias e pela idade. "
+               } else {
+                 paste0("Com «Município inteiro», como nos outros separadores, ", m, " conta inteiro em cada uma: nada é estimado, ",
+                        "mas as ULS sobrepõem-se e não devem ser somadas. ")
+               })
+      }
+    }, character(1), USE.NAMES = FALSE)
+  }))
 }

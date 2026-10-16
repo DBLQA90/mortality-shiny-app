@@ -599,6 +599,8 @@ crude rate = deaths / population * 100,000
 
 Exact Poisson 95% confidence intervals are calculated for crude rates using `poisson.test()` and then scaled by the population denominator.
 
+The population is chosen app-wide in the header (`População no denominador`; see *Mean or end-of-year population*): by default the mean of the end-of-year estimates of the previous year and of this one, or that year's end-of-year estimate alone.
+
 ### Age-Standardised Mortality
 
 Directly standardised mortality is calculated with `PHEindicatormethods::calculate_dsr()` using the European Standard Population 2013 weights embedded in the app.
@@ -1129,6 +1131,24 @@ each column with the matrix of its own basis, and `planning_band_product()`
 does the same per age band for life expectancy and the standardised module. In
 the parish reading the 39 ULS sum exactly to the Continente in every component.
 
+**Gondomar.** The parish of Lomba belongs to ULS Vila Nova de Gaia/Espinho, not
+to ULS Santo António, which serves the rest of Gondomar (confirmed by the owner
+on 2026-10-16; geopt's CAOP-based health layer agrees). Lomba has 1,284 of
+Gondomar's 164,257 residents (2021 census, 0.8%). Under `whole`, giving
+Gondomar whole to ULS Vila Nova de Gaia/Espinho as well would add 164,257
+residents to a ULS of 354,128 for a part of 0.8%, a far larger error than the
+one it corrects, so `data-raw/uls_parish.csv` flags the Lomba row `whole =
+não`: Gondomar counts whole in ULS Santo António only, in the `whole` reading
+and in every other tab (`data/uls_lookup.rds` is unchanged), and Lomba enters
+ULS Vila Nova de Gaia/Espinho only under `parish`
+(`planning_parish_partial_pairs()`, `planning_parish_extend()`). In 2024 that
+moves 1,331 residents and 23 deaths between the two ULS, and the parish reading
+still sums exactly to the Continente. The exact group `ULS Santo António + São
+João` keeps Gondomar whole, so it includes Lomba. `uls_split_note()` writes,
+for each selected ULS that shares a municipality, what it shares and how the
+reading in use treats it: in the planning tab's indicator notes, and as a
+notice when such a ULS is selected in the other tabs.
+
 ### Portugal benchmark, significance and funnel
 
 `PLANNING_PORTUGAL_MUNICIPAL` ("Portugal (soma dos municípios)") is a pseudo-area
@@ -1259,6 +1279,82 @@ population estimate their rates were 4-7% higher, and Portugal showed a
 spurious deficit of 4-7% in every year from 2023. Week 53 borrows week 52.
 Deaths of unknown age (0.014%) are left out on both sides.
 
+### Calendar-year deaths by age before the causes of death
+
+Deaths by age by region arrive with the causes of death (`0013166`) in March of
+year n+2. INE's annual deaths of year n+1 (`0013331`) come earlier but in five
+broad age groups (under 1, 1-14, 15-24, 25-64, 65+), too coarse for ESP-2013 or a
+life table. `tools/build_calendar_deaths_by_age.R` rebuilds the missing year from
+two observed datasets the app already holds, for each NUTS II 2024 region:
+
+- the age profile from the weekly deaths (`0012100`, five-year groups to 90+),
+  with each ISO week split by the number of its seven days in the calendar year;
+- the level from the parish deaths of the calendar year (`0012542`).
+
+Portugal keeps the weekly total, which like INE's national row includes deaths
+of unknown or foreign residence; Continente is the sum of its regions. Against
+the by-cause rows for 2022-2024 the rebuilt totals differ by at most 0.13%, the
+standardised rate by 0.03% and the under-75 rate by 0.3%, in every region. The
+output, `data/snapshots/calendar_deaths_by_age/year_<year>.rds`, is both sexes
+only and regional only, and is built only for years the by-cause archive does
+not have; the refresh rebuilds it after the weekly and parish tasks.
+
+The tabs read it for that year (`calendar_death_years` in `R/metadata.R`):
+
+- **Planning tab.** A year with the rebuilt file but no by-cause files gets a
+  block whose municipal deaths are `NA` (`planning_calendar_block()`). Portugal,
+  the Continente and any area made of whole NUTS II 2024 regions (Lisboa e Vale
+  do Tejo as three of them) take their deaths from the file; everything else
+  stays empty. Life expectancy, the all-cause standardised rates and the SMR
+  reach the triennium ending in that year for those areas, both sexes only;
+  by-cause measures do not. The all-cause death count and crude death rate
+  exist for every area, from the parish deaths (`planning_parish_death_totals()`,
+  whose sums equal INE's municipal, Portugal and Continente totals exactly in
+  2020-2024). Values whose period includes the year carry the flag `p`. The ULS
+  ranking, the funnel and mortality by cause use the last year published by
+  cause.
+- **Observed, forecast and annual tabs.** The region's deaths in each band are
+  shared among its municipalities in proportion to the deaths their population
+  would have at the region's age-specific rates (`calendar_municipal_deaths()`),
+  so any union of whole regions sums back to the file exactly. A selection that
+  is not such a union, a cause other than all causes, or one sex leaves the year
+  out (observed and forecast tabs, with a notice) or refuses it (annual tab);
+  `calendar_selection_supported()` decides. Norte 2025, standardised: 808.98,
+  the value of the DGS indicator table.
+
+### Maps
+
+The "Mapa" view draws up to four indicators side by side for every
+municipality, NUTS III, NUTS II or ULS (`R/planning_maps.R`). The boundaries
+are the official CAOP limits (DGT) from the geopt package
+(github.com/c-matos/geopt), exported once by `tools/build_boundaries.R` into
+`data/boundaries/` as plain coordinate tables (about 300 KB in all), with the
+Azores and Madeira as insets. The app draws them with ggplot2 and needs neither
+geopt nor sf, nor a network connection. The ULS are drawn from their parishes,
+so the six that share Lisboa, Loures and Porto are exact; their values are
+computed with the parish weights whatever the split option.
+
+By default each indicator is shown against the benchmark (Portugal = 100) on
+the same log-symmetric range, 67 to 150, coloured by what the difference means
+(`PLANNING_INDICATOR_DIRECTION`): red where the area is worse than Portugal,
+blue where it is better, so high mortality and low life expectancy are both red
+and maps of indicators in different units read together as a heatmap.
+Indicators with no better or worse direction - age structure and dependency,
+births and fertility, employment sectors, pensioners, waste per inhabitant, and
+the crude death rate, which mostly measures age - are drawn violet below and
+yellow above, a pair distinct from blue/red under every colour-vision
+deficiency (OKLab distance x100 of 33 or more). Each map has its own legend
+(`planning_map_draw()` lays the panels out with grid). The alternative is each
+indicator's quintiles. Rates with a
+count model can be smoothed by empirical Bayes; life expectancy and the
+standardised rates use, below NUTS II, the last year published by cause.
+
+Against geopt's tables the app's lookups agree: NUTS 2013 and 2024 for all 308
+municipalities and the parish split of Lisboa, Loures and Porto for all 41
+parishes. One difference is unresolved: geopt puts the parish of Lomba
+(Gondomar) in ULS Vila Nova de Gaia/Espinho, where the app keeps Gondomar whole
+in ULS Santo António.
+
 ### Location profile
 
 `write_planning_profile()` (`R/planning_profile.R`) builds a .docx with
@@ -1285,16 +1381,37 @@ ranking of all ULS or a 35-year series is a sum over that table.
 
 ### Mean or end-of-year population
 
-Events counted over a year - births, deaths, RSI beneficiaries, waste - are
-divided by the year's mean population, the mean of the end-of-year estimates of
-the previous year and of this one. That is INE's convention and the workbook's:
-with it the app reproduces INE's 2024 crude birth and death rates and waste per
-inhabitant in all 308 municipalities (to the published decimal), and the
-workbook's Continente I8, I38 and I14 of 2015 and 2019 exactly. The end-of-year
-estimate alone read about 0.5-0.8% low in 2024, while the population grew.
-Stocks counted on 31 December (pensioners, the age structure) use that day's
-estimate. The first year of the series has no previous estimate and uses its
-own. Life expectancy and the fertility index already used mid-year population.
+INE's population estimates refer to 31 December. Events counted over a year -
+births, deaths, RSI beneficiaries, waste - are divided by default by the year's
+mean population, the mean of the end-of-year estimates of the previous year and
+of this one, an approximation of the mid-year population. That is INE's
+convention and the workbook's: with it the app reproduces INE's 2024 crude
+birth and death rates and waste per inhabitant in all 308 municipalities (to the
+published decimal), the workbook's Continente I8, I38 and I14 of 2015 and 2019
+exactly, and INE's under-75 standardised rate for Portugal in 2019 and 2020
+(`0014727`: 320.0 and 336.2). The end-of-year estimate alone read about 0.5-0.8%
+low in 2024 and 1.0-1.4% low for the standardised rates of 2019-2024, while the
+population grew. The first year of the series has no previous estimate and uses
+its own.
+
+**The choice is the user's** (`population_basis_choices`, the header's
+`População no denominador`, default `mean`; `MORTALITY_POPULATION_BASIS=end`
+changes the default). The end-of-year option exists for continuity with series
+computed that way - the September 2026 DGS table for the CCDR contracts was, and
+the annual tab reproduces it exactly under that option (Portugal 2019: 881.48).
+It applies to every rate per inhabitant: the main pipeline (`get_data_for()`
+loads each year's predecessor and `apply_population_basis()` averages them, so
+the observed, forecast, annual and avoidable tabs all follow), and in the
+planning tab the crude rates, RSI, waste and the standardised module (DSR, SMR,
+premature and avoidable rates, YPLL). Stocks counted on 31 December (pensioners,
+the age structure) always use that day's estimate. Life expectancy and the
+fertility index always use mid-year population: they are built on person-years,
+whose definition is not a choice of denominator.
+
+Before this option the main pipeline divided by the end-of-year estimate and the
+planning tab by the mean, so the same area and year read apart between tabs (in the
+regions, 2019-2025, from -0.6% to +3.9% depending on the rate). Both now divide by the same population (Norte 2019, mean: 861.44 in the
+annual tab and in the planning module).
 
 ### Gaps in INE's municipal data
 
@@ -1336,6 +1453,41 @@ audit of 2026-09-21 found four kinds, each now handled explicitly:
   the hidden remainder between the hidden sectors in the proportions of the rest
   of the NUTS III that year; shares where more than 1% of the area's employees
   were estimated carry the flag `≈`.
+
+### Suppressed employees and earnings, recovered from the totals
+
+INE's Continente and Portugal rows of employees and earnings (Quadros de
+Pessoal) still count what it suppressed for a municipality: in the years
+without suppression the continental municipalities add up to the Continente
+row exactly for employees and within 0.005% for earnings, and the islands to
+Portugal less the Continente within 0.2%. So a suppressed value is the total
+less the published municipalities (`planning_recover_suppressed()`). One
+suppressed municipality in a group gets the residual itself (São João da
+Madeira, 2015: 9,820); several share it, and only the areas holding all of them
+get a value (2013: São João da Madeira and Vale de Cambra, for the Norte, the
+Área Metropolitana do Porto and ULS Entre Douro e Vouga; 2013-2014: the 19
+Azorean municipalities, for the Região Autónoma). Only the totals are
+recovered; employees by sector stay missing there. Values that include a
+recovered amount carry `≈`. Pensions and waste are not recovered: INE's totals
+leave the suppressed municipalities out as well (the Continente's 2005
+pensioners equal the sum of the published municipalities).
+
+### Deaths without a published age, in every tab
+
+The age bands of INE's municipal deaths do not always add up to the all-ages
+total: some deaths have no recorded age and small cells are suppressed. In
+2024, 28 municipalities lose more than 10% of their all-cause deaths that way
+(Barrancos: 19 of 32); in 2014 it is 123. The planning module has always filled
+them in (`planning_complete_by_age()`); the observed, forecast, annual and
+avoidable tabs dropped them, so the same area and year read differently between
+tabs (Portugal 2024 by a few deaths, small municipalities by up to a third).
+Every death frame those tabs load now goes through `fill_death_ages()`, which
+applies the same fill, computed once per year, cause and sex on the whole
+snapshot. INE's regional rows by age leave out the deaths without an age too
+(Continente 2021: 119,589 in the bands, 119,595 in total), so a region read from
+them is topped up to the total of its municipalities in its own age profile
+(`top_up_regional_rows()`): the NUTS I regions add up to Portugal again. Exact
+Poisson intervals round the filled counts, as the planning module does.
 
 ### Why deaths come from the all-ages totals
 
@@ -1465,6 +1617,81 @@ Two schemes are offered in both the guided and advanced tabs:
 When the selected series is too short to leave at least three training years and one test year, selection falls back to the in-sample accuracy table and a note is shown. Out-of-sample errors are computed on the original rate scale (per 100,000), matching the forecasts and the holdout metrics. The evaluation refits models on the transformed modelling scale but scores back-transformed predictions.
 
 Backtesting can evaluate forecasts against a holdout period from the end of the observed series. Holdout errors are computed against the observed values for overlapping years.
+
+### Combining Models and Comparing Areas
+
+The guided forecast adds one candidate to the eight models: the equal-weight
+combination of the three that validated best (`combine_model_forecasts()`).
+Its point forecast is the mean of the three; its interval is that of the
+mixture of their forecast distributions, each recovered on the modelling scale
+from its own interval, so it widens where the members disagree as well as with
+each member's uncertainty - the part a single model's interval leaves out, and
+the reason long-horizon intervals were too narrow.
+
+It is scored like the other models in the rolling validation, with no
+hindsight: at each test year its members are the three with the lowest error
+over the earlier test years (the first year uses the in-sample ranking;
+`combination_rolling_predictions()`). It is recommended only when it validates
+best. Alentejo, standardised, 2001-2025: naive 41.9, combination 52.9, so naive
+is recommended. It needs the rolling validation; with the other methods it is
+not offered.
+
+With several locations, "Projectar cada um em separado" forecasts each on its
+own under one policy:
+
+- **combination** (default): the same method everywhere, so differences
+  between areas come from their data, not from which model won by chance in
+  each - with "best per area", Norte took ARIMA (-8.7% to 2029) while Centro and
+  Alentejo took the flat naive model;
+- **one common model**: the model with the lowest mean relative error (RMSE
+  over the area's mean level) among those every area could fit
+  (`choose_common_model()`);
+- **best per area**: each area's own recommendation, shown in any case in the
+  last column of the table.
+
+For one location the recommended model, which now includes the combination as
+a candidate, stays the default.
+
+### Trend: annual percentage change
+
+`R/trend.R` follows the US National Cancer Institute's Joinpoint method: a
+log-linear regression of the rate on the year, APC = 100 (exp(b) - 1), each
+year weighted by the inverse of the sampling variance of its log rate (from
+its 95% interval), with the residual variance estimated. Up to two joinpoints
+can be allowed; the line stays continuous (hinge terms), every candidate year
+leaving at least four years per segment is tried, and the number is chosen by
+BIC. The average annual percentage change (AAPC) weights each segment's slope
+by its length, with its interval from the same covariance matrix. Norte,
+standardised, 1995-2025, up to two joinpoints: -2.4% a year to 2017, +1.5%
+2017-2020, -2.8% 2020-2025; AAPC -2.1% (-2.2; -2.0).
+
+The observed tab shows it over the last 5, 10 or 15 years or all loaded, with
+the fitted line on the chart. The planning tab shows it for the location and
+its comparators over the chosen years, without joinpoints; a triennial
+indicator uses only non-overlapping triennia ending in the last year, since
+overlapping ones share two years and would make the interval far too narrow.
+
+### Infant Mortality in the Guided Forecast
+
+The guided forecast also projects infant mortality, per 1,000 live births, for
+one year or for periods of three or five years (`infant_annual_series()`,
+`infant_window_rates()`). For a period there are two methods:
+
+- **Annual series, aggregated** (default). The models are fitted to the yearly
+  rates; each projected period is then the births-weighted mean of the years it
+  contains, observed or projected, with projected years counting the last
+  observed births (`infant_window_forecast()`). The interval adds the yearly
+  limits as if the forecast errors were perfectly correlated across years,
+  which is conservative.
+- **Moving-average series.** The models are fitted to the period rates
+  directly. Neighbouring values share all but one year, so the series is smooth
+  by construction: models read that as signal and give intervals too narrow.
+  It is offered to compare with values computed that way (the CCDR table of
+  October 2026 did so).
+
+Norte, 2004-2025, five-year periods, to 2029: annual method 2.31 (1.63; 3.14),
+moving averages 2.29 (1.73; 2.93). Model selection uses the errors of whichever
+series was fitted.
 
 ### Diagnostics And Structural Breaks
 

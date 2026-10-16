@@ -52,8 +52,10 @@ for (app_file in c(
   "R/planning_export.R",
   "R/planning_charts.R",
   "R/planning_profile.R",
+  "R/planning_maps.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
+  "R/trend.R",
   "R/data_access.R",
   "R/ui_helpers.R"
 )) {
@@ -112,6 +114,26 @@ server <- function(input, output, session) {
     normalize_region_source(value_or_default_input(input$region_source, default_region_source()))
   })
 
+  # The denominator of every rate per inhabitant: the mean of two consecutive
+  # end-of-year estimates (INE) or the end-of-year estimate alone. App-wide,
+  # like the two above, so no tab divides by a different population.
+  active_population_basis <- reactive({
+    normalize_population_basis(value_or_default_input(input$population_basis, default_population_basis()))
+  })
+
+  # The planning tab recomputes on its own; the tabs that load on a button keep
+  # the rates they computed until the user loads again.
+  observeEvent(input$population_basis, {
+    showNotification(
+      paste0(
+        "População no denominador: ", population_basis_label(active_population_basis()), ". ",
+        "O separador de planeamento atualiza-se; nos separadores de mortalidade observada, previsões, ",
+        "métricas anuais e mortalidade evitável, volte a carregar os dados para recalcular."
+      ),
+      type = "message", duration = 12
+    )
+  }, ignoreInit = TRUE)
+
   # Applied immediately after every death load, so each tab gets the same
   # substitution without repeating it. Population is untouched.
   apply_region_source <- function(df, expanded_regions) {
@@ -135,14 +157,18 @@ server <- function(input, output, session) {
 
   # Seam and municipal warnings shared by every tab that loads regional data.
   notify_region_source_warnings <- function(selected_areas, expanded_regions, causes, years) {
+    # The rebuilt latest year is read for whole regions only, exactly; it is
+    # neither a seam between sources nor a municipal sum with ages missing.
+    years <- setdiff(as.integer(years), calendar_death_years)
+    if (length(years) == 0) return(invisible())
     seam <- region_source_seam_warning(expanded_regions, active_nuts_vintage(), years, active_region_source())
-    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20)
+    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20, id = "region-seam")
 
     municipal <- municipal_age_detail_warning(
       selected_areas, active_nuts_lookup(), causes, years,
       vintage = active_nuts_vintage(), source = active_region_source()
     )
-    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20)
+    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20, id = "municipal-age-detail")
   }
 
   # Swap the region entries of every area selector when the vintage changes.
@@ -344,6 +370,13 @@ server <- function(input, output, session) {
   # 2) Load one metric bundle (both population scopes, both rate outputs) for
   #    that query.
   # 3) Apply the final population/rate/year filter to get a reusable series.
+  # A ULS that shares a municipality is read by whole municipalities outside
+  # the planning tab's parish weights; say what that means for each one.
+  notify_uls_split <- function(areas) {
+    note <- uls_split_note(areas, "whole")
+    if (length(note) > 0) showNotification(paste(note, collapse = "\n"), type = "message", duration = 25, id = "uls-split")
+  }
+
   make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
     area_key <- sort(unique(area))
 
@@ -362,6 +395,7 @@ server <- function(input, output, session) {
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
     }
+    notify_uls_split(area_key)
 
     # Expand any selected region into its municipalities. This applies to every
     # tab that goes through a query spec - observed mortality and both forecast
@@ -383,223 +417,6 @@ server <- function(input, output, session) {
     list(
       area_key = resolved$areas,
       selected_areas = area_key,
-      area_label = selection_label,
-      expanded_regions = resolved$expanded,
-      cause = cause,
-      sex = sex,
-      data_source = normalize_data_source(data_source)
-    )
-  }
-
-
-  get_years_in_selected_range <- function(year_range, year_order = "asc") {
-    selected_bounds <- suppressWarnings(as.integer(year_range))
-    selected_bounds <- selected_bounds[!is.na(selected_bounds)]
-
-    validate(
-      need(length(selected_bounds) >= 2, "Seleccione um intervalo de anos para importar.")
-    )
-
-    lower_year <- min(selected_bounds)
-    upper_year <- max(selected_bounds)
-
-    validate(
-      need(lower_year <= upper_year, "O ano inicial não pode ser posterior ao ano final.")
-    )
-
-    selected_years <- year_of_interest[
-      year_of_interest >= lower_year &
-        year_of_interest <= upper_year
-    ]
-
-    validate(
-      need(length(selected_years) > 0, "O intervalo seleccionado não contém anos disponíveis nos indicadores.")
-    )
-
-    order_years(selected_years, year_order)
-  }
-
-  format_year_selection <- function(years) {
-    years <- sort(unique(as.integer(years)))
-
-    if (length(years) == 0) {
-      return("Nenhum")
-    }
-
-    if (identical(years, seq.int(min(years), max(years)))) {
-      return(glue::glue("{min(years)} - {max(years)}"))
-    }
-
-    paste(years, collapse = ", ")
-  }
-
-  snapshot_inventory_data <- reactive({
-    get_snapshot_inventory()
-  })
-  abort_if_cancelled <- function(kind, token) {
-    if (!identical(cancel_seq[[kind]], token)) {
-      validate(need(FALSE, "Operação interrompida. A cache foi preservada."))
-    }
-  }
-
-  year_load_state <- reactiveValues(
-    rates_range = NULL,
-    rates_order = "desc",
-    beginner_range = NULL,
-    beginner_order = "desc",
-    forecast_range = NULL,
-    forecast_order = "desc"
-  )
-
-  clean_year_range <- function(year_range) {
-    year_range <- suppressWarnings(as.integer(year_range))
-    year_range <- year_range[!is.na(year_range)]
-
-    if (length(year_range) < 2) {
-      return(NULL)
-    }
-
-    range(year_range)
-  }
-
-  detect_year_load_order <- function(previous_range, current_range) {
-    current_range <- clean_year_range(current_range)
-    previous_range <- clean_year_range(previous_range)
-
-    if (is.null(current_range) || is.null(previous_range)) {
-      return("desc")
-    }
-
-    current_mid <- mean(current_range)
-    previous_mid <- mean(previous_range)
-
-    if (current_mid < previous_mid) {
-      return("desc")
-    }
-    if (current_mid > previous_mid) {
-      return("asc")
-    }
-    if (current_range[[2]] < previous_range[[2]]) {
-      return("desc")
-    }
-    if (current_range[[1]] > previous_range[[1]]) {
-      return("asc")
-    }
-
-    "desc"
-  }
-
-  observeEvent(input$years_import, {
-    current_range <- clean_year_range(input$years_import)
-    year_load_state$rates_order <- detect_year_load_order(year_load_state$rates_range, current_range)
-    year_load_state$rates_range <- current_range
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-
-  observeEvent(input$years_fit, {
-    current_range <- clean_year_range(input$years_fit)
-    year_load_state$forecast_order <- detect_year_load_order(year_load_state$forecast_range, current_range)
-    year_load_state$forecast_range <- current_range
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-
-  observeEvent(input$beginner_years_fit, {
-    current_range <- clean_year_range(input$beginner_years_fit)
-    year_load_state$beginner_order <- detect_year_load_order(year_load_state$beginner_range, current_range)
-    year_load_state$beginner_range <- current_range
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-
-  get_rate_mapping <- function(rate_type, population = "Total") {
-    if (identical(rate_type, "crude")) {
-      list(
-        value_col = "crude_rate",
-        lower_col = "crude_lower",
-        upper_col = "crude_upper",
-        y_label = "Taxa Bruta por 100.000",
-        rate_label = "Bruta"
-      )
-    } else {
-      # The under-75 scope is standardised to the ESP-2013 0-74 sub-population
-      # (conventional premature mortality), a different standard from the
-      # all-age rate, so the label names the standard used to avoid implying
-      # the two standardised rates share one basis.
-      under75 <- identical(population, "Menos de 75 anos")
-      list(
-        value_col = "dsr",
-        lower_col = "dsr_lower",
-        upper_col = "dsr_upper",
-        y_label = if (under75) {
-          "Taxa Padronizada por 100.000 (padrão ESP 0-74)"
-        } else {
-          "Taxa Padronizada por 100.000"
-        },
-        rate_label = if (under75) "Padronizada (padrão ESP 0-74)" else "Padronizada"
-      )
-    }
-  }
-
-  # Every CSV and PNG this session writes says which data version produced it;
-  # the helpers themselves are in R/helpers.R.
-  current_export_stamp <- function() {
-    date <- tryCatch(latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))), error = function(e) NA_character_)
-    vintage <- tryCatch(active_nuts_vintage(), error = function(e) NULL)
-    export_stamp(date, vintage)
-  }
-
-  write_csv_utf8 <- function(x, file, stamp = current_export_stamp()) {
-    helpers_write_csv_utf8(x, file, stamp = stamp)
-  }
-
-  save_ggplot_png <- function(file, plot_obj, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
-    helpers_save_ggplot_png(file, plot_obj, width = width, height = height, res = res, stamp = stamp)
-  }
-
-  save_base_plot_png <- function(file, plot_expr, width = 1200, height = 800, res = 150, stamp = current_export_stamp()) {
-    helpers_save_base_plot_png(file, plot_expr, width = width, height = height, res = res, stamp = stamp)
-  }
-
-  # Shared historical-series pipeline:
-  # 1) Build a stable query spec with the inputs that determine which raw data
-  #    need to be downloaded and aggregated.
-  # 2) Load one metric bundle (both population scopes, both rate outputs) for
-  #    that query.
-  # 3) Apply the final population/rate/year filter to get a reusable series.
-  make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
-    area_key <- sort(unique(area))
-
-    # Selected areas are summed into one geography, so overlapping choices
-    # (Portugal with anything, a region with its own municipalities) would be
-    # counted twice. Warn rather than block: a user may knowingly want the
-    # combination, but should not get it by accident.
-    # A region belonging to the other vintage cannot be resolved and would
-    # otherwise reach the loader as an unknown place name.
-    validate(need(
-      is.null(vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())),
-      vintage_mismatch_message(area_key, active_nuts_vintage(), active_nuts_lookup())
-    ))
-
-    overlap <- overlapping_selection_warning(area_key, lookup = active_nuts_lookup())
-    if (!is.null(overlap)) {
-      showNotification(overlap, type = "warning", duration = 20)
-    }
-
-    # Expand any selected region into its municipalities. This applies to every
-    # tab that goes through a query spec - observed mortality and both forecast
-    # tabs - which previously used INE's regional rows directly and so carried
-    # the NUTS-2024 discontinuity into trends and projections.
-    resolved <- resolve_region_areas(
-      areas = area_key,
-      region_mode = default_region_mode(),
-      lookup = active_nuts_lookup(),
-      available_areas = get_available_areas(data_source)
-    )
-    for (message_text in resolved$warnings) {
-      showNotification(message_text, type = "warning", duration = 15)
-    }
-    # Label from what the user chose, not from the expansion: a region must stay
-    # named "Alentejo", not become a list of 47 municipalities.
-    selection_label <- get_selection_label(area_key, area_label)
-
-    list(
-      area_key = resolved$areas,
       area_label = selection_label,
       expanded_regions = resolved$expanded,
       cause = cause,
@@ -781,7 +598,7 @@ server <- function(input, output, session) {
     # crossing the population revision inherits its step.
     revision_warning <- population_revision_warning(selected_years, "crude")
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     c(
@@ -853,8 +670,24 @@ server <- function(input, output, session) {
       )
     }
 
+    # The latest year has deaths by age only for whole regions and all causes;
+    # elsewhere it is left out of the series, and said so.
+    calendar <- intersect(years_to_load, calendar_death_years)
+    if (length(calendar) > 0) {
+      if (calendar_selection_supported(query_spec$area_key, query_spec$cause, query_spec$sex)) {
+        showNotification(
+          paste0(paste(calendar, collapse = ", "), ": óbitos por idade reconstruídos a partir dos óbitos semanais do INE (provisório)."),
+          type = "message", duration = 10, id = "calendar-year"
+        )
+      } else {
+        years_to_load <- setdiff(years_to_load, calendar)
+        validate(need(length(years_to_load) > 0, calendar_gap_message(calendar)))
+        showNotification(calendar_gap_message(calendar), type = "warning", duration = 15, id = "calendar-year")
+      }
+    }
+
     notify_snapshot_request_warnings(
-      years = years_to_load,
+      years = setdiff(years_to_load, calendar_death_years),
       areas = query_spec$area_key,
       causes = query_spec$cause,
       data_source = query_spec$data_source
@@ -867,7 +700,8 @@ server <- function(input, output, session) {
         query_spec$cause,
         years_to_load,
         year_order = year_order,
-        data_source = query_spec$data_source
+        data_source = query_spec$data_source,
+        population_basis = active_population_basis()
       )
     )
 
@@ -984,7 +818,8 @@ server <- function(input, output, session) {
             ),
           by = "Ano"
         ) %>%
-          dplyr::arrange(Ano)
+          dplyr::arrange(Ano) %>%
+          dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
       )
     }
 
@@ -999,7 +834,8 @@ server <- function(input, output, session) {
       )
 
     dplyr::full_join(obs_fmt, fc_wide, by = c("Ano" = "year")) %>%
-      dplyr::arrange(Ano)
+      dplyr::arrange(Ano) %>%
+      dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
   }
 
   build_forecast_download_table <- function(dat, view_mode = "compare", selected_model = NULL) {
@@ -1041,7 +877,8 @@ server <- function(input, output, session) {
             ),
           by = "Ano"
         ) %>%
-          dplyr::arrange(Ano)
+          dplyr::arrange(Ano) %>%
+          dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
       )
     }
 
@@ -1056,7 +893,8 @@ server <- function(input, output, session) {
       )
 
     dplyr::full_join(obs_fmt, fc_wide, by = c("Ano" = "year")) %>%
-      dplyr::arrange(Ano)
+      dplyr::arrange(Ano) %>%
+      dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
   }
 
   get_diagnostic_fit <- function(dat, model_id = NULL) {
@@ -1203,6 +1041,15 @@ server <- function(input, output, session) {
   }
 
   rebuild_history_with_year_range <- function(history, year_range) {
+    # An infant series is already built over every year; the earlier years
+    # are a subset of it.
+    if (!is.null(history$infant)) {
+      year_range <- range(as.integer(year_range))
+      keep <- function(x) x[x$year >= year_range[[1]] & x$year <= year_range[[2]], , drop = FALSE]
+      history$series <- keep(history$series)
+      history$infant$annual <- history$infant$annual[history$infant$annual$year <= year_range[[2]], , drop = FALSE]
+      return(history)
+    }
     build_historical_series(
       metric_bundle = history$metric_bundle,
       series_spec = make_series_spec(
@@ -1643,7 +1490,8 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
-    seam_note <- describe_breaks_on_population_seams(break_info$break_years)
+    # Infant mortality is per live birth: INE's population revisions do not touch it.
+    seam_note <- if (is.null(history$infant)) describe_breaks_on_population_seams(break_info$break_years)
     seam_note <- if (is.null(seam_note)) "" else paste0(" ", seam_note)
 
     if (length(break_info$break_years) == 1) {
@@ -2609,6 +2457,46 @@ server <- function(input, output, session) {
     range(training_years)
   }
 
+  # The guided forecast's infant mortality series (R/forecast_helpers.R): the
+  # yearly rates when the models are to be fitted to them, the window rates
+  # when they are to be fitted to those. `infant` keeps what the window
+  # aggregation and the re-fits of the validation need.
+  build_infant_history <- function(query_spec, year_range, window, method) {
+    window <- as.integer(window)
+    years <- sort(intersect(get_years_in_selected_range(year_range), infant_mortality_years()))
+    validate(need(length(years) >= 3 + window - 1L, "Seleccione pelo menos 3 períodos com nados-vivos e óbitos infantis."))
+    undercount <- infant_undercount_message(years, query_spec$area_key)
+    if (!is.null(undercount)) showNotification(undercount, type = "warning", duration = 20)
+    annual <- infant_annual_series(years, query_spec$area_key)
+    validate(need(nrow(annual) >= 3, "Sem nados-vivos e óbitos infantis suficientes para esta selecção."))
+    fit_annual <- window == 1L || identical(method, "annual")
+    series <- infant_window_rates(annual, if (fit_annual) 1L else window)
+    period <- c("1" = "anual", "3" = "triénio", "5" = "quinquénio")[[as.character(window)]]
+    list(
+      spec = c(query_spec, list(population = "Total", rate_type = "infant", years = series$year, year_range = range(series$year))),
+      metric_bundle = NULL,
+      series = series[, c("year", "value", "lower", "upper")],
+      area_label = query_spec$area_label,
+      y_label = paste0("Mortalidade infantil (", period, "), por 1.000 nados-vivos"),
+      rate_label = "Mortalidade infantil",
+      unit_label = "por 1.000 nados-vivos",
+      measure_label = "a mortalidade infantil",
+      infant = list(annual = annual, window = window, method = if (fit_annual) "annual" else "rolling")
+    )
+  }
+
+  # Window rates in place of the yearly ones, once the models have run on them.
+  aggregate_infant_result <- function(result, history) {
+    info <- history$infant
+    if (is.null(info) || info$window == 1L || !identical(info$method, "annual")) return(result)
+    windowed <- infant_window_rates(info$annual, info$window)[, c("year", "value", "lower", "upper")]
+    result$fc <- infant_window_forecast(info$annual, result$fc, info$window)
+    result$obs <- windowed
+    result$full_history$series <- windowed
+    result$history$series <- windowed
+    result
+  }
+
   get_beginner_training_label <- function(training_history) {
     paste0("os anos ", format_year_selection(training_history$series$year))
   }
@@ -2734,16 +2622,19 @@ server <- function(input, output, session) {
       "Os diferentes modelos plausíveis divergem bastante quanto ao nível final."
     }
 
+    unit <- dat$history$unit_label %||% "por 100.000"
+    measure <- dat$history$measure_label %||% "a taxa de mortalidade"
+
     wellPanel(
       h4("Resumo em linguagem simples"),
       p(glue::glue(
-        "Usando {dat$training_label}, a previsão recomendada sugere que a taxa de mortalidade {trend_text} ao longo dos próximos {dat$horizon} anos."
+        "Usando {dat$training_label}, a previsão recomendada sugere que {measure} {trend_text} ao longo dos próximos {dat$horizon} anos."
       )),
       p(glue::glue(
-        "Em {final_forecast$year}, a projecção central é de {round(final_forecast$mean, 2)} por 100.000, em comparação com {round(last_observed$value, 2)} em {last_observed$year}."
+        "Em {final_forecast$year}, a projecção central é de {round(final_forecast$mean, 2)} {unit}, em comparação com {round(last_observed$value, 2)} em {last_observed$year}."
       )),
       p(glue::glue(
-        "Isto corresponde a uma variação de {sprintf('%+.2f', change_abs)} por 100.000{if (!is.na(change_pct)) paste0(' (', sprintf('%+.2f%%', change_pct), ')') else ''}."
+        "Isto corresponde a uma variação de {sprintf('%+.2f', change_abs)} {unit}{if (!is.na(change_pct)) paste0(' (', sprintf('%+.2f%%', change_pct), ')') else ''}."
       )),
       p(uncertainty_text),
       p(compare_text)
@@ -2889,6 +2780,7 @@ server <- function(input, output, session) {
     # overlapping choice double-counts exactly as it does on the other tabs.
     # Only reachable since NUTS I regions became selectable: before that every
     # offered region sat at one level and so was disjoint from the others.
+    notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
@@ -2917,15 +2809,18 @@ server <- function(input, output, session) {
     candidate <- seq.int(as.integer(year) - half, as.integer(year) + half)
     years <- sort(intersect(candidate, as.integer(year_of_interest)))
 
-    # A rate pools deaths against person-years, so a year contributing deaths
-    # without a population estimate would inflate the numerator against a
-    # denominator that never included it. Those years are dropped from the
-    # window rather than failing the whole request: a window centred on 2022
-    # reaches 2024, which has deaths but no published population, and refusing
-    # outright would disable pooling exactly where it is most useful. The
-    # period label reports the span actually used.
-    if (!is.null(metric_id) && metric_id %in% annual_metrics_needing_population) {
-      usable <- intersect(years, as.integer(population_years))
+    # A window is cut to the years that have what the metric needs, rather than
+    # failing the whole request: deaths for every metric but the infant ones,
+    # and population as well for a rate (deaths without person-years would
+    # inflate the numerator). Either side can run ahead - population now
+    # reaches 2025 while deaths by cause stop at 2024, so a window centred on
+    # 2024 reached 2025 and every metric was refused. The period label reports
+    # the span actually used.
+    if (!is.null(metric_id) && !metric_id %in% infant_metric_ids) {
+      # Counts reach the rebuilt latest year as rates do; whether the selection
+      # can use it is decided afterwards (calendar_selection_supported()).
+      have <- if (metric_id %in% annual_metrics_needing_population) rate_years else union(death_archive_years, calendar_death_years)
+      usable <- intersect(years, as.integer(have))
       if (length(usable) > 0) years <- usable
     }
 
@@ -2974,7 +2869,8 @@ server <- function(input, output, session) {
         cause = cause,
         years = years,
         year_order = "desc",
-        data_source = data_source
+        data_source = data_source,
+        population_basis = active_population_basis()
       )$full
     } else {
       get_death_data_for(
@@ -3039,6 +2935,22 @@ server <- function(input, output, session) {
 
     pooling_window <- normalize_pooling_window(pooling_window)
     years <- get_pooled_years(year, pooling_window, metric_id)
+
+    # The latest year has deaths by age only for whole regions and all causes
+    # (and the reference of an indirect rate must be one too). Outside that, a
+    # window reaching it is cut back to the years before; the year itself is
+    # refused.
+    calendar <- intersect(years, calendar_death_years)
+    calendar_ok <- FALSE
+    if (length(calendar) > 0 && !(metric_id %in% infant_metric_ids)) {
+      calendar_ok <- metric_id %in% c("deaths", "crude", "dsr", "smr", "isr", "ypll") &&
+        calendar_selection_supported(area_spec$areas, causes, sex) &&
+        (!metric_id %in% c("smr", "isr") || calendar_selection_supported(reference_areas, causes, sex))
+      if (!calendar_ok) {
+        validate(need(!as.integer(year) %in% calendar, calendar_gap_message(calendar)))
+        years <- setdiff(years, calendar)
+      }
+    }
     period_label <- make_period_label(min(years), max(years))
 
     # A rate needs a denominator for every year in the window. INE publishes
@@ -3060,7 +2972,7 @@ server <- function(input, output, session) {
     if (!(metric_id %in% infant_metric_ids)) {
       validate(
         need(
-          length(years_without_deaths(years)) == 0,
+          length(years_without_deaths(years, calendar_ok)) == 0,
           death_gap_message(years, get_annual_metric_label(metric_id))
         )
       )
@@ -3643,8 +3555,48 @@ server <- function(input, output, session) {
     plotly::config(gp, displaylogo = FALSE, modeBarButtonsToRemove = list("lasso2d", "select2d"))
   }
 
+  # Annual percentage change over the chosen span of the observed series.
+  observed_trend <- reactive({
+    dat <- observed_history()
+    series <- dat$series[is.finite(dat$series$value), , drop = FALSE]
+    span <- input$observed_trend_span %||% "10"
+    if (!identical(span, "all")) series <- series[series$year > max(series$year) - as.integer(span), , drop = FALSE]
+    trend_apc(series$year, series$value, series$lower, series$upper,
+              max_joinpoints = as.integer(input$observed_trend_joinpoints %||% "0"))
+  })
+
+  build_trend_table <- function(trend) {
+    rows <- trend$segments
+    if (nrow(rows) > 1) rows <- dplyr::bind_rows(rows, trend$aapc)
+    tibble::tibble(
+      `Período` = paste0(rows$from, "-", rows$to, ifelse(seq_len(nrow(rows)) > nrow(trend$segments), " (média, AAPC)", "")),
+      `Variação anual (IC 95%)` = vapply(seq_len(nrow(rows)), function(i) trend_label(rows[i, ]), character(1)),
+      Leitura = vapply(seq_len(nrow(rows)), function(i) trend_reading(rows[i, ]), character(1))
+    )
+  }
+
+  output$rateTrendTable <- renderTable({
+    trend <- observed_trend()
+    validate(need(!is.null(trend), "São precisos pelo menos 5 anos para estimar a tendência."))
+    build_trend_table(trend)
+  }, bordered = TRUE, spacing = "s")
+
+  output$rateTrendNote <- renderUI({
+    trend <- tryCatch(observed_trend(), error = function(e) NULL)
+    req(trend)
+    note <- trend_break_note(trend$fitted$year, trend$joinpoints)
+    if (is.null(note)) return(NULL)
+    tags$p(class = "text-warning", note)
+  })
+
   output$ratePlot <- plotly::renderPlotly({
-    to_interactive_plot(build_observed_rate_plot(observed_history()))
+    p <- build_observed_rate_plot(observed_history())
+    trend <- tryCatch(observed_trend(), error = function(e) NULL)
+    if (!is.null(trend)) {
+      p <- p + geom_line(data = trend$fitted, aes(x = year, y = fitted), inherit.aes = FALSE,
+                         linetype = "dashed", colour = "#eb6834", linewidth = 0.8)
+    }
+    to_interactive_plot(p)
   })
 
   output$downloadRatePlot <- downloadHandler(
@@ -3673,8 +3625,6 @@ server <- function(input, output, session) {
   # Beginner Forecasting
   # -------------------------
   beginner_training_history <- eventReactive(input$go_beginner_forecast, {
-    token <- isolate(cancel_seq$beginner)
-    year_order <- isolate(year_load_state$beginner_order)
     query_spec <- make_query_spec(
       input$beginner_area,
       input$beginner_area_label,
@@ -3682,6 +3632,16 @@ server <- function(input, output, session) {
       input$beginner_sex,
       input$beginner_data_source
     )
+    build_guided_history(query_spec, isolate(cancel_seq$beginner), isolate(year_load_state$beginner_order))
+  }, ignoreNULL = TRUE)
+
+  # The guided forecast's training series for one selection.
+  build_guided_history <- function(query_spec, token, year_order) {
+    if (identical(input$beginner_indicator, "infant")) {
+      return(build_infant_history(query_spec, input$beginner_years_fit,
+                                  value_or_default(input$beginner_infant_window, "5"),
+                                  value_or_default(input$beginner_infant_method, "annual")))
+    }
 
     shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
       metric_bundle <- load_metric_bundle(
@@ -3706,43 +3666,183 @@ server <- function(input, output, session) {
         )
       )
     })
-  }, ignoreNULL = TRUE)
+  }
+
+  # Adds the combination of the best models (R/forecast_helpers.R) as one more
+  # candidate. Its validation error is computed the same way as the others',
+  # choosing its members at each step from the earlier steps only, so it is
+  # recommended only when it does validate best. Needs the rolling validation.
+  add_forecast_combination <- function(result, validation) {
+    steps <- validation$plot_data$predictions
+    fitted <- get_successful_model_ids(result)
+    if (!identical(validation$method_used, "rolling") || is.null(steps) || nrow(steps) == 0 ||
+        length(fitted) < FORECAST_COMBINATION_SIZE) {
+      return(list(result = result, validation = validation))
+    }
+    initial <- result$accuracy %>% dplyr::filter(is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+    combo_steps <- combination_rolling_predictions(steps, initial$Model)
+    scale_denom <- mean(abs(diff(result$obs$value)), na.rm = TRUE)
+    combo_metrics <- compute_forecast_error_metrics(combo_steps$actual, combo_steps$predicted, scale_denom) %>%
+      dplyr::mutate(Model = FORECAST_COMBINATION_ID) %>%
+      dplyr::select(Model, ME, RMSE, MAE, MAPE, MASE)
+    members <- validation$metrics %>% dplyr::filter(Model %in% fitted, is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+    members <- utils::head(members$Model, FORECAST_COMBINATION_SIZE)
+    setup <- get_transformation_setup(result$obs$value, result$transform_method)
+    result$fc <- dplyr::bind_rows(result$fc, combine_model_forecasts(result$fc, members, setup$forward, setup$inverse, result$conf_level))
+    result$fitted_models <- c(fitted, FORECAST_COMBINATION_ID)
+    result$combination_members <- members
+    validation$metrics <- dplyr::bind_rows(validation$metrics, combo_metrics)
+    validation$ranking <- rank_model_metrics(validation$metrics)
+    validation$recommended_model <- choose_recommended_model(validation$metrics)
+    validation$plot_data$predictions <- dplyr::bind_rows(steps, combo_steps)
+    list(result = result, validation = validation)
+  }
+
+  # Fit, validate and combine for one training series.
+  run_guided_forecast <- function(training_history, token) {
+    guided_result <- run_forecast_models(
+      history = training_history,
+      model_ids = unname(forecast_model_choices),
+      horizon = input$beginner_horizon,
+      kind = "beginner",
+      token = token
+    )
+    validation <- evaluate_model_selection(
+      base_result = guided_result,
+      method = value_or_default(input$beginner_validation, "rolling"),
+      test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
+    )
+    combined <- add_forecast_combination(guided_result, validation)
+    guided_result <- combined$result
+    validation <- combined$validation
+    if (!is.null(validation$recommended_model)) {
+      guided_result$recommended_model <- validation$recommended_model
+    }
+    aggregate_infant_result(c(
+      guided_result,
+      list(
+        full_history = training_history,
+        horizon = input$beginner_horizon,
+        mode = input$beginner_mode,
+        training_label = get_beginner_training_label(training_history),
+        validation = validation
+      )
+    ), training_history)
+  }
 
   beginner_forecast <- eventReactive(input$go_beginner_forecast, {
     training_history <- beginner_training_history()
-
-    shiny::withProgress(message = "A ajustar e validar modelos...", value = 0, {
-      guided_result <- run_forecast_models(
-        history = training_history,
-        model_ids = unname(forecast_model_choices),
-        horizon = input$beginner_horizon,
-        kind = "beginner",
-        token = isolate(cancel_seq$beginner)
-      )
-      incProgress(0.5)
-
-      validation <- evaluate_model_selection(
-        base_result = guided_result,
-        method = value_or_default(input$beginner_validation, "rolling"),
-        test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
-      )
-      if (!is.null(validation$recommended_model)) {
-        guided_result$recommended_model <- validation$recommended_model
-      }
-      incProgress(0.5)
-
-      c(
-        guided_result,
-        list(
-          full_history = training_history,
-          horizon = input$beginner_horizon,
-          mode = input$beginner_mode,
-          training_label = get_beginner_training_label(training_history),
-          validation = validation
-        )
-      )
+    shiny::withProgress(message = "A ajustar e validar modelos...", value = 0.3, {
+      run_guided_forecast(training_history, isolate(cancel_seq$beginner))
     })
   }, ignoreNULL = TRUE)
+
+  # Several areas, each forecast on its own, under one model policy:
+  #   "combo"  the combination for every area - the same method everywhere,
+  #            so differences between areas come from their data;
+  #   "common" the single model with the lowest mean relative error across
+  #            the areas;
+  #   "best"   each area's own recommended model.
+  GUIDED_MAX_AREAS <- 12L
+  beginner_multi_forecast <- eventReactive(input$go_beginner_forecast, {
+    areas <- unique(as.character(input$beginner_area))
+    validate(need(length(areas) >= 2, "Seleccione pelo menos dois locais para os comparar."))
+    validate(need(length(areas) <= GUIDED_MAX_AREAS, paste("Seleccione no máximo", GUIDED_MAX_AREAS, "locais.")))
+    token <- isolate(cancel_seq$beginner)
+    order <- isolate(year_load_state$beginner_order)
+    results <- list()
+    shiny::withProgress(message = "A ajustar e validar modelos, área a área...", value = 0, {
+      for (area in areas) {
+        query_spec <- make_query_spec(area, "", input$beginner_cause, input$beginner_sex, input$beginner_data_source)
+        history <- build_guided_history(query_spec, token, order)
+        results[[area]] <- tryCatch(run_guided_forecast(history, token), error = function(e) {
+          if (inherits(e, "shiny.silent.error")) stop(e)
+          e
+        })
+        incProgress(1 / length(areas))
+      }
+    })
+    # An area whose models all failed validation has no recommended model; it
+    # is reported with the failures rather than stopping the comparison.
+    failed <- vapply(results, function(r) inherits(r, "error") || is.null(r$recommended_model), logical(1))
+    if (any(failed)) {
+      showNotification(paste("Sem previsão para:", paste(names(results)[failed], collapse = ", ")), type = "warning", duration = 15)
+    }
+    results <- results[!failed]
+    validate(need(length(results) > 0, "Nenhuma área pôde ser projectada."))
+
+    policy <- value_or_default(input$beginner_model_policy, "combo")
+    chosen <- vapply(results, function(r) r$recommended_model, character(1))
+    if (identical(policy, "combo")) {
+      has_combo <- vapply(results, function(r) FORECAST_COMBINATION_ID %in% r$fc$model, logical(1))
+      chosen[has_combo] <- FORECAST_COMBINATION_ID
+    } else if (identical(policy, "common")) {
+      common <- choose_common_model(
+        lapply(results, function(r) r$validation$metrics),
+        vapply(results, function(r) mean(r$obs$value, na.rm = TRUE), numeric(1))
+      )
+      if (!is.null(common)) chosen[] <- common
+    }
+    list(results = results, chosen = chosen, policy = policy)
+  }, ignoreNULL = TRUE)
+
+  beginner_multi_table <- reactive({
+    multi <- beginner_multi_forecast()
+    dplyr::bind_rows(lapply(names(multi$results), function(area) {
+      r <- multi$results[[area]]
+      model <- multi$chosen[[area]]
+      last <- utils::tail(r$full_history$series, 1)
+      end <- utils::tail(r$fc[r$fc$model == model, , drop = FALSE], 1)
+      tibble::tibble(
+        Local = area,
+        Modelo = get_model_labels(model),
+        `Último observado` = paste0(round(last$value, 2), " (", last$year, ")"),
+        `Projecção (IC)` = paste0(round(end$mean, 2), " (", round(end$lower, 2), "; ", round(end$upper, 2), ") em ", end$year),
+        `Variação` = sprintf("%+.1f%%", (end$mean / last$value - 1) * 100),
+        `Recomendado no local` = get_model_labels(r$recommended_model)
+      )
+    }))
+  })
+
+  output$beginnerMultiTable <- renderTable({
+    req(input$go_beginner_forecast > 0)
+    beginner_multi_table()
+  }, bordered = TRUE, spacing = "s")
+
+  output$downloadBeginnerMultiCSV <- downloadHandler(
+    filename = function() paste0("previsao_por_local_", Sys.Date(), ".csv"),
+    content = function(file) write_csv_utf8(beginner_multi_table(), file)
+  )
+
+  output$beginnerMultiNote <- renderUI({
+    req(input$go_beginner_forecast > 0)
+    multi <- beginner_multi_forecast()
+    policy <- c(combo = "a combinação dos três modelos que melhor previram os anos de teste em cada local",
+                common = paste0("o mesmo modelo em todos (", get_model_labels(unique(multi$chosen))[[1]], ", o de menor erro relativo médio)"),
+                best = "o modelo recomendado em cada local")[[multi$policy]]
+    helpText(paste0(
+      "Cada local é projectado em separado com ", policy, ". Linha cheia: observado; tracejada e faixa: projecção e ",
+      "intervalo. A última coluna diz qual seria o modelo recomendado olhando só para esse local."
+    ))
+  })
+
+  output$beginnerMultiPlot <- plotly::renderPlotly({
+    req(input$go_beginner_forecast > 0)
+    multi <- beginner_multi_forecast()
+    observed <- dplyr::bind_rows(lapply(names(multi$results), function(a) dplyr::mutate(multi$results[[a]]$full_history$series, local = a)))
+    projected <- dplyr::bind_rows(lapply(names(multi$results), function(a) {
+      r <- multi$results[[a]]
+      dplyr::mutate(r$fc[r$fc$model == multi$chosen[[a]], , drop = FALSE], local = a)
+    }))
+    p <- ggplot() +
+      geom_ribbon(data = projected, aes(x = year, ymin = lower, ymax = upper), fill = "#8fb8de", alpha = 0.35) +
+      geom_line(data = observed, aes(x = year, y = value), colour = "#1f4e79", linewidth = 0.8) +
+      geom_line(data = projected, aes(x = year, y = mean), colour = "#0b2e4f", linetype = "dashed", linewidth = 0.9) +
+      facet_wrap(~factor(local, levels = names(multi$results))) +
+      labs(x = "Ano", y = multi$results[[1]]$history$y_label) +
+      theme_minimal()
+    to_interactive_plot(p)
+  })
 
   output$beginnerForecastPlot <- plotly::renderPlotly({
     req(input$go_beginner_forecast > 0)
@@ -3863,7 +3963,7 @@ server <- function(input, output, session) {
     # A pooled window straddling 2020/2021 mixes the two population series.
     revision_warning <- population_revision_warning(pooled_years, selected_metric)
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     # The infant metrics are bounded by their own datasets, not by population:
@@ -4022,6 +4122,9 @@ server <- function(input, output, session) {
     year <- as.integer(input$avoidable_year)
     pooling_window <- normalize_pooling_window(input$avoidable_pooling)
     years <- get_pooled_years(year, pooling_window, "dsr")
+    # Avoidable mortality needs the causes, which the latest year does not have.
+    validate(need(!year %in% calendar_death_years, calendar_gap_message(year)))
+    years <- setdiff(years, calendar_death_years)
 
     validate(need(length(input$avoidable_area) > 0, "Seleccione pelo menos um local."))
     validate(need(
@@ -4041,6 +4144,7 @@ server <- function(input, output, session) {
     )
     validate(need(is.null(mismatch), mismatch))
 
+    notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
@@ -4058,7 +4162,7 @@ server <- function(input, output, session) {
     }
     revision_warning <- population_revision_warning(years, "dsr")
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     causes <- avoidable_required_causes()
@@ -4074,7 +4178,8 @@ server <- function(input, output, session) {
             cause = causes[[i]],
             years = years,
             year_order = "desc",
-            data_source = input$avoidable_data_source
+            data_source = input$avoidable_data_source,
+            population_basis = active_population_basis()
           )$full,
           area_spec$expanded
         ) %>%
@@ -4312,7 +4417,11 @@ server <- function(input, output, session) {
     # The benchmark is computed even when not shown, for the significance marks.
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age(), mode = planning_split_mode())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
+    # The rebuilt latest year exists for whole regions only; elsewhere it is a
+    # gap at the end of the line, not a point.
+    table <- table[!(table$year %in% planning_calendar_years() & is.na(table$value)), , drop = FALSE]
     planning_add_significance(table, benchmark)
   })
 
@@ -4347,18 +4456,22 @@ server <- function(input, output, session) {
     if (any(grepl("\\*", series$flag))) notes <- c(notes, "* taxa sobre menos de 1.000 nados-vivos no triénio: exacta, mas instável.")
     if (any(grepl("\u2020", series$flag))) notes <- c(notes, "\u2020 triénio com anos em que os óbitos com menos de 1 ano por município estão incompletos no INE (1995-2001): valor subestimado.")
     if (any(grepl("\u2021", series$flag))) notes <- c(notes, "\u2021 mais de 2% dos óbitos do triénio não tinham idade publicada por município e foram distribuídos pelas idades na proporção dos restantes.")
-    if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III.")
+    if (any(grepl(PLANNING_ESTIMATED_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, if (spec$id %in% c("employees", "earnings_mean")) {
+      "\u2248 inclui valores que o INE ocultou num município (segredo estatístico), recuperados do total publicado do Continente ou de Portugal menos os municípios publicados."
+    } else {
+      "\u2248 mais de 1% dos trabalhadores da área estão em sectores ocultados pelo INE (segredo estatístico) e foram repartidos na proporção do resto da NUTS III."
+    })
+    if (any(grepl(PLANNING_PROVISIONAL_FLAG, series$flag, fixed = TRUE))) notes <- c(notes, "p provisório: período com um ano que o INE ainda não publicou por causa de morte; óbitos por freguesia e, por idade, reconstruídos dos óbitos semanais (ver Notas).")
     if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) notes <- c(notes, paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
     if (spec$id %in% PLANNING_EDUCATION_IDS && planning_education_age() > 0) notes <- c(notes, PLANNING_EDUCATION_NOTE)
     if (any(planning_areas()$area %in% planning_parish_units())) {
-      notes <- c(notes, if (identical(planning_split_mode(), "parish")) {
-        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): valores repartidos pela população das freguesias nos Censos de 2021, ",
-               "por grupo etário. As partes somam o município; assume-se que as quotas de 2021 se mantêm e que, dentro de cada município e idade, ",
-               "as freguesias de cada ULS se comportam como as restantes.")
-      } else {
-        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): leva o município inteiro, como no ficheiro de apoio. ",
-               "Nada é estimado, mas estas ULS sobrepõem-se: somá-las conta Lisboa, Loures e Porto mais do que uma vez.")
-      })
+      notes <- c(notes, uls_split_note(planning_areas()$area, planning_split_mode()))
+      if (identical(planning_split_mode(), "parish")) {
+        notes <- c(notes, paste0(
+          "Ponderação por freguesias: as partes somam o município; os nascimentos e óbitos vêm dos registos por freguesia ",
+          "do INE desde 2014, e o resto da população das freguesias nos Censos de 2021, por grupo etário."
+        ))
+      }
     }
     if (any(!is.na(series$significance))) {
       notes <- c(notes, paste0(
@@ -4370,6 +4483,57 @@ server <- function(input, output, session) {
     if (nrow(breaks) > 0) notes <- c(notes, paste0("Linha pontilhada em ", breaks$year, ": ", breaks$note))
     if (length(notes) == 0) return(NULL)
     helpText(HTML(paste(htmltools::htmlEscape(notes), collapse = "<br>")))
+  })
+
+  # Annual percentage change of each area over the chosen years
+  # (R/trend.R). A triennial value shares two years with its neighbour, so
+  # only non-overlapping periods ending in the last year are used; otherwise
+  # the interval would be far too narrow.
+  planning_trend <- reactive({
+    spec <- planning_spec()
+    series <- planning_series()
+    series <- series[is.finite(series$value) & series$value > 0, , drop = FALSE]
+    validate(need(nrow(series) > 0, "Sem valores para estimar a tendência."))
+    window <- as.integer(spec$window)
+    areas <- planning_areas()
+    # One period for all: the last year every area has, so the rows compare
+    # (the rebuilt latest year exists for whole regions only).
+    shown <- series[series$area %in% areas$area, , drop = FALSE]
+    last <- min(tapply(shown$year, shown$area, max))
+    series <- series[series$year <= last, , drop = FALSE]
+    rows <- lapply(seq_len(nrow(areas)), function(i) {
+      own <- series[series$area == areas$area[[i]], , drop = FALSE]
+      if (nrow(own) == 0) return(NULL)
+      if (window > 1) own <- own[(last - own$year) %% window == 0, , drop = FALSE]
+      trend <- trend_apc(own$year, own$value, own$lower, own$upper, min_points = 4L)
+      if (is.null(trend)) return(NULL)
+      tibble::tibble(
+        Área = planning_series_name(areas$area[[i]], areas$level[[i]]),
+        `Período` = paste0(if (window > 1) paste0(trend$aapc$from - window + 1, "-") else "", trend$aapc$to,
+                           " (", trend$n, if (window > 1) " triénios)" else " anos)"),
+        `Variação anual (IC 95%)` = trend_label(trend$aapc),
+        Leitura = trend_reading(trend$aapc)
+      )
+    })
+    dplyr::bind_rows(rows)
+  })
+
+  output$planningTrendTable <- renderTable({
+    table <- planning_trend()
+    validate(need(nrow(table) > 0, "São precisos pelo menos 4 períodos para estimar a tendência."))
+    table
+  }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
+
+  output$planningTrendNote <- renderUI({
+    spec <- planning_spec()
+    helpText(paste0(
+      "Variação percentual anual (APC) de uma regressão log-linear ao longo dos anos escolhidos, cada ponto pesado ",
+      "pela sua precisão (método Joinpoint, sem mudanças de tendência). ",
+      if (spec$window > 1) "Valores trienais: só triénios que não se sobrepõem, terminando no último ano. " else "",
+      "Significativa quando o intervalo não inclui 0; não diz se a subida ou a descida é desejável. ",
+      "Com mudanças de tendência, veja o separador Mortalidade Observada. ",
+      trend_break_note(planning_year_range()) %||% ""
+    ))
   })
 
   output$planningIndicatorTable <- renderTable({
@@ -4384,7 +4548,8 @@ server <- function(input, output, session) {
     years <- seq.int(max(1991L, min(last - 4L, 10L * (last %/% 10L) + 1L)), last)
     benchmark <- planning_benchmark()
     table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                      education_min_age = planning_education_age(), mode = planning_split_mode())
+                                      education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
     planning_add_significance(table, benchmark)
   })
 
@@ -4415,7 +4580,9 @@ server <- function(input, output, session) {
 
   planning_ranking_year <- reactive({
     spec <- planning_spec()
-    available <- planning_indicator_years(spec$id)
+    # ULS, municipalities and NUTS III have no deaths by age in the rebuilt
+    # latest year: rank them on the last year INE published by cause.
+    available <- planning_small_area_years(spec$id)
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "Sem anos disponíveis para este indicador."))
     max(available)
@@ -4446,10 +4613,116 @@ server <- function(input, output, session) {
     units <- planning_uls_units("units")
     benchmark <- planning_benchmark()
     ranking <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = active_nuts_lookup(), benchmark = benchmark,
-                                        education_min_age = planning_education_age(), mode = planning_split_mode())
+                                        education_min_age = planning_education_age(), mode = planning_split_mode(),
+                                      basis = active_population_basis())
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level == "ULS"])
     planning_ranking_chart(ranking, spec, year, highlight = highlight, benchmark_area = benchmark)
+  })
+
+  # Maps of Portugal (R/planning_maps.R): up to four indicators side by side,
+  # every area of one level, the latest period of each up to the last year
+  # chosen.
+  planning_map_view <- reactive({
+    ids <- utils::head(input$planning_map_indicators, PLANNING_MAP_MAX_INDICATORS)
+    validate(need(length(ids) > 0, "Escolha pelo menos um indicador."))
+    level <- input$planning_map_level %||% "municipio"
+    lookup <- active_nuts_lookup()
+    boundaries <- planning_map_boundaries(level, active_nuts_vintage())
+    validate(need(!is.null(boundaries), "Faltam os limites dos mapas (data/boundaries): corra tools/build_boundaries.R."))
+    benchmark <- planning_benchmark()
+    values <- shiny::withProgress(message = "A calcular os indicadores de todas as áreas...", value = 0.3, {
+      planning_map_values(ids, level, lookup, max(planning_year_range()), benchmark = benchmark,
+                          smoothed = isTRUE(input$planning_map_smoothed), mode = planning_split_mode(),
+                          basis = active_population_basis())
+    })
+    validate(need(nrow(values) > 0, "Sem valores para estes indicadores nos anos escolhidos."))
+    list(values = values, boundaries = boundaries, level = level, benchmark = benchmark)
+  })
+
+  # The outline of the chosen location, apart from the values, so that moving
+  # it does not recompute every area of every indicator.
+  planning_map_highlight <- reactive({
+    level <- input$planning_map_level %||% "municipio"
+    lookup <- active_nuts_lookup()
+    units <- planning_map_units(level, lookup)
+    location <- planning_location()
+    if (location %in% units) {
+      location
+    } else if (identical(level, "municipio") && !location %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente")) {
+      intersect(planning_area_members(location, lookup), units)
+    } else {
+      character(0)
+    }
+  })
+
+  planning_map_plot <- function() {
+    view <- planning_map_view()
+    planning_map_chart(view$values, view$boundaries, input$planning_map_scale %||% "index",
+                       highlight = planning_map_highlight(), benchmark = view$benchmark)
+  }
+
+  output$planningMapPlot <- renderPlot(
+    planning_map_draw(planning_map_plot()),
+    height = function() if (length(unique(planning_map_view()$values$panel)) <= 2) 600 else 1150
+  )
+
+  output$downloadPlanningMapPNG <- downloadHandler(
+    filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".png"),
+    content = function(file) {
+      panels <- length(unique(planning_map_view()$values$panel))
+      grDevices::png(file, width = 10, height = if (panels <= 2) 6.5 else 12, units = "in", res = 150, bg = "white")
+      on.exit(grDevices::dev.off(), add = TRUE)
+      planning_map_draw(planning_map_plot())
+    }
+  )
+
+  output$downloadPlanningMapCSV <- downloadHandler(
+    filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".csv"),
+    content = function(file) {
+      v <- planning_map_view()$values
+      write_csv_utf8(tibble::tibble(
+        indicador = gsub("\n", " ", v$panel), area = v$area, valor = v$value, valor_observado = v$observed,
+        marca = v$flag, referencia = v$benchmark_value, indice_referencia_100 = round(v$index, 1), quintil = v$quintile
+      ), file)
+    }
+  )
+
+  output$planningMapNote <- renderUI({
+    view <- planning_map_view()
+    scale <- input$planning_map_scale %||% "index"
+    helpText(paste0(
+      if (identical(scale, "index")) {
+        paste0("Cada indicador face a ", view$benchmark, " (= 100), de 67 a 150 (os valores fora ficam na cor do extremo), ",
+               "colorido pelo que a diferença significa: vermelho onde a área está pior do que ", view$benchmark, ", azul onde está melhor ",
+               "- uma mortalidade alta e uma esperança de vida baixa ficam ambas a vermelho. Os indicadores sem melhor nem pior ",
+               "(estrutura etária, natalidade, sectores de emprego, taxa bruta de mortalidade, que depende sobretudo da idade da população) ",
+               "ficam a violeta abaixo e amarelo acima. Assim, indicadores em unidades diferentes lêem-se juntos. ")
+      } else {
+        "Cada indicador dividido em cinco grupos com o mesmo número de áreas: mostra a ordenação dentro do indicador, não a distância a Portugal nem se é melhor ou pior. "
+      },
+      "Cada mapa usa o último período disponível até ao último ano escolhido, indicado no título. ",
+      if (isTRUE(input$planning_map_smoothed)) "A suavização só se aplica às taxas com modelo de contagem (as do funil); os títulos dizem quais. " else "",
+      if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias (a Lomba na ULS Vila Nova de Gaia/Espinho). As ilhas não têm ULS. " else "",
+      "Cinzento: sem valor. Contorno escuro: o local escolhido. Clique numa área para ver os seus valores."
+    ))
+  })
+
+  output$planningMapClicked <- renderUI({
+    click <- input$planning_map_click
+    req(click)
+    view <- planning_map_view()
+    area <- planning_map_hit(view$boundaries, click$x, click$y)
+    req(area)
+    rows <- view$values[view$values$area == area, , drop = FALSE]
+    table <- tibble::tibble(
+      Indicador = gsub("\n", " · ", rows$panel),
+      Valor = paste0(planning_format_value(rows$value, rows$digits), ifelse(is.na(rows$flag), "", rows$flag)),
+      !!view$benchmark := planning_format_value(rows$benchmark_value, rows$digits),
+      `Índice` = planning_format_value(rows$index, 0),
+      Quintil = ifelse(is.na(rows$quintile), "—", as.character(rows$quintile))
+    )
+    tagList(h5(area), renderTable(table, striped = TRUE, bordered = TRUE, spacing = "s", align = "l"))
   })
 
   planning_funnel <- reactive({
@@ -4469,14 +4742,29 @@ server <- function(input, output, session) {
       levels$area[levels$level == kind]
     }
     benchmark <- planning_benchmark()
-    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark, mode = planning_split_mode())
+    table <- planning_indicator_table(c(benchmark, units), year, ids = spec$id, lookup = lookup, benchmark = benchmark, mode = planning_split_mode(),
+                                      basis = active_population_basis())
     data <- planning_funnel_data(table, spec, benchmark)
     validate(need(!is.null(data) && nrow(data) > 0, "Sem valores para o funil neste período."))
-    list(data = data, year = year, kind = kind, model = model)
+    list(data = planning_eb_smooth(data, model), year = year, kind = kind, model = model)
   })
+
+  planning_funnel_smoothed <- reactive(identical(input$planning_funnel_values %||% "observed", "smoothed"))
 
   output$planningFunnelNote <- renderUI({
     funnel <- planning_funnel()
+    if (planning_funnel_smoothed()) {
+      w <- funnel$data$shrinkage_weight
+      return(helpText(paste0(
+        "Suavização por Bayes empírico (Marshall, 1991): cada valor é aproximado da média de todas as unidades (",
+        planning_format_value(attr(funnel$data, "smoothing_mean"), planning_spec()$digits), ") tanto mais quanto menor ",
+        "o seu denominador, porque aí o acaso pesa mais. Círculo vazio: observado; cheio: suavizado; o traço é a deslocação. ",
+        "Nesta selecção, o valor próprio pesa de ", planning_format_value(100 * min(w, na.rm = TRUE), 0), "% a ",
+        planning_format_value(100 * max(w, na.rm = TRUE), 0), "%. Serve para ordenar ou mapear áreas pequenas com valores ",
+        "mais estáveis; não diz se uma unidade difere de ", planning_benchmark(), " - para isso, use o funil (valores observados). ",
+        "Os valores suavizados são estimativas e não substituem os observados em relatórios."
+      )))
+    }
     counts <- table(funnel$data$position)
     outside <- sum(counts[names(counts) != "Dentro dos limites"])
     helpText(paste0(
@@ -4494,6 +4782,10 @@ server <- function(input, output, session) {
     funnel <- planning_funnel()
     local <- planning_location()
     highlight <- c(local, planning_available_comparators()$area[planning_available_comparators()$level %in% c("ULS", funnel$kind)])
+    if (planning_funnel_smoothed()) {
+      return(planning_eb_chart(funnel$data, planning_spec(), funnel$year, planning_benchmark(), highlight = highlight,
+                               denominator_label = funnel$model$denominator_label))
+    }
     planning_funnel_chart(funnel$data, planning_spec(), funnel$year, planning_benchmark(), highlight = highlight,
                           denominator_label = funnel$model$denominator_label)
   })
@@ -4569,14 +4861,16 @@ server <- function(input, output, session) {
   }, striped = TRUE, bordered = TRUE, spacing = "s", align = "l")
 
   planning_cause_view <- reactive({
-    available <- planning_standardised_years()
+    # By cause: not the rebuilt latest year, which has all causes only.
+    available <- planning_cause_years()
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "A mortalidade por causa precisa de três anos de óbitos e população até ao ano escolhido."))
     end_year <- max(available)
     areas <- planning_areas_all_comparators()
     benchmark <- planning_benchmark()
     sex <- input$planning_cause_sex %||% "HM"
-    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex, mode = planning_split_mode())
+    table <- planning_cause_standardised(areas$area, end_year, lookup = active_nuts_lookup(), benchmark = benchmark, sex = sex, mode = planning_split_mode(),
+                                         basis = active_population_basis())
     validate(need(nrow(table) > 0 && any(is.finite(table$smr[table$area == areas$area[[1]]])), "Sem valores para este local neste triénio."))
     list(table = table, end_year = end_year, areas = areas, benchmark = benchmark, sex = sex)
   })
@@ -4743,6 +5037,7 @@ server <- function(input, output, session) {
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           focus = planning_location(), years = planning_year_range(),
           education_min_age = planning_education_age(), benchmark = planning_benchmark(), mode = planning_split_mode(),
+          basis = active_population_basis(),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
       })
@@ -4759,6 +5054,7 @@ server <- function(input, output, session) {
           file, planning_areas_all_comparators(),
           lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = planning_data_date(),
           benchmark = planning_benchmark(), education_min_age = planning_education_age(), mode = planning_split_mode(),
+          basis = active_population_basis(),
           last_year = max(planning_year_range()),
           progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
         )
@@ -4775,7 +5071,7 @@ server <- function(input, output, session) {
       cached <- file.path(
         get_app_dir(), ".mortality-shiny-cache", "exports",
         paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date),
-               "_metodo_", PLANNING_METHOD_VERSION, ".xlsx")
+               "_metodo_", PLANNING_METHOD_VERSION, "_populacao_", active_population_basis(), ".xlsx")
       )
       if (!file.exists(cached)) {
         dir.create(dirname(cached), recursive = TRUE, showWarnings = FALSE)
@@ -4783,7 +5079,7 @@ server <- function(input, output, session) {
           write_planning_workbook(
             paste0(cached, ".tmp.xlsx"), planning_full_export_areas(active_nuts_lookup()),
             lookup = active_nuts_lookup(), vintage = active_nuts_vintage(), data_date = date,
-            include_long = FALSE,
+            include_long = FALSE, basis = active_population_basis(),
             progress = function(value, detail = NULL) shiny::setProgress(value, detail = detail)
           )
           file.rename(paste0(cached, ".tmp.xlsx"), cached)

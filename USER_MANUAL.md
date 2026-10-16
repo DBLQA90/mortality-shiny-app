@@ -33,7 +33,7 @@ A ordem dos separadores é:
 
 O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
 
-Acima dos separadores há um controlo que se aplica a toda a aplicação, `Definição das regiões`. Escolhe se as regiões seguem a definição NUTS 2013 ou NUTS 2024. Não altera os dados lidos, apenas a forma como os municípios são agrupados — ver a secção *Definição das Regiões (NUTS)*.
+Acima dos separadores há controlos que se aplicam a toda a aplicação: `Definição das regiões`, `Óbitos das regiões` e `População no denominador` (ver a secção *População no Denominador*). O primeiro, `Definição das regiões`, escolhe se as regiões seguem a definição NUTS 2013 ou NUTS 2024. Não altera os dados lidos, apenas a forma como os municípios são agrupados — ver a secção *Definição das Regiões (NUTS)*.
 
 ## 2. Como Começar
 
@@ -162,7 +162,7 @@ ULS é a mesma nas duas definições NUTS.
 ULS ao nível da freguesia, e a aplicação não tem dados abaixo do município. Em vez de
 as mostrar individualmente com valores errados, aparecem os agrupamentos exactos:
 
-- `ULS Santo António + São João` — Gondomar, Maia, Porto, Valongo;
+- `ULS Santo António + São João` — Gondomar, Maia, Porto, Valongo (inclui a freguesia da Lomba, de Gondomar, que é da ULS Vila Nova de Gaia/Espinho; ver «ULS que partilham um município»);
 - `ULS Loures/Odivelas + Santa Maria + São José` — Lisboa, Loures, Mafra, Odivelas.
 
 Estes valores não são comparáveis com os que o ficheiro de indicadores PNS2030
@@ -205,6 +205,15 @@ Quando escolhe ambos os sexos, a aplicação soma os óbitos e a população ant
 `Total` usa todos os grupos etários disponíveis.
 
 `Menos de 75 anos` exclui os grupos etários a partir dos 75 anos. Esta opção pode ser útil quando o foco é mortalidade prematura ou potencialmente evitável, mas deixa de representar a mortalidade total da população.
+
+### População no Denominador
+
+O controlo `População no denominador`, no topo de qualquer página, escolhe a população pela qual se dividem os acontecimentos de um ano em todas as taxas por habitante:
+
+- **Média de dois fins de ano consecutivos (INE)** — a predefinição. As estimativas de população do INE referem-se a 31 de dezembro; a média da estimativa no fim do ano anterior e no fim desse ano aproxima a população a meio do ano, e é assim que o INE calcula as suas taxas. Com ela, a aplicação reproduz as taxas brutas publicadas pelo INE.
+- **População a 31 de dezembro do ano** — para continuidade com séries calculadas dessa forma. Quando a população cresce dá taxas mais baixas, e mais altas quando diminui: nas regiões, em 2019-2025, a diferença foi de −0,6% a +3,9%, consoante a taxa e a região.
+
+Aplica-se às taxas brutas e padronizadas, ao SMR e à taxa padronizada indirecta, às previsões, à mortalidade evitável e às taxas por habitante do separador de planeamento (natalidade, mortalidade, RSI, resíduos). Não se aplica à esperança de vida nem ao índice de fecundidade, que usam a população a meio do ano por definição, nem às contagens a 31 de dezembro (pensionistas). O separador de planeamento recalcula de imediato; nos outros, volte a carregar os dados depois de mudar a opção.
 
 ### Taxa
 
@@ -515,6 +524,18 @@ Cuidados:
 - em causas raras, pequenas flutuações podem produzir grandes variações nas taxas;
 - em áreas pequenas, observe sempre os intervalos de confiança.
 
+### Tendência
+
+Por baixo do gráfico, a **Tendência** dá a variação percentual anual (APC): o
+ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%.
+Escolha o período (últimos 5, 10 ou 15 anos, ou todos os carregados) e se a
+recta pode mudar de inclinação (até uma ou duas vezes, nos anos que melhor
+descrevem a série). Com mudanças, a última linha dá a variação média de todo o
+período (AAPC). A tendência é **significativa** quando o intervalo não inclui 0.
+A linha tracejada no gráfico é a tendência ajustada. É o método Joinpoint do
+National Cancer Institute (EUA): cada ano pesa conforme a sua precisão, pelo que
+um ano com poucos óbitos conta menos.
+
 ## 7. Separador Previsão Guiada
 
 ### O que é uma previsão
@@ -543,6 +564,11 @@ Controlos principais:
 - modo de previsão;
 - em `Mostrar opções avançadas` (opcional): o método de validação (`Como escolher o modelo recomendado`) e o `Tamanho do teste (% dos anos)`.
 
+Em `Indicador` pode escolher a taxa de mortalidade (por causa) ou a **mortalidade infantil** (por 1.000 nados-vivos), anual, por triénio ou por quinquénio. Para um triénio ou quinquénio há dois métodos:
+
+- **Projectar a série anual e agregar no fim** (recomendado): os modelos aprendem com as taxas de cada ano, com a sua variação real, e cada período projectado é a média, pesada pelos nascimentos, dos anos que contém;
+- **Projectar a série de médias móveis**: os modelos aprendem com a série de taxas de 3 ou 5 anos. Como cada valor partilha quase todos os anos com o anterior, a série é suave por construção e os intervalos ficam demasiado estreitos. Use-o para comparar com valores calculados dessa forma.
+
 Por predefinição, a aplicação usa boas escolhas automáticas, pelo que basta escolher local, causa e horizonte e clicar em `Gerar previsão`. As opções de validação só são necessárias para afinar como o modelo é escolhido e ficam escondidas até activar `Mostrar opções avançadas`.
 
 A `Janela de ajuste` define os anos usados para treinar o modelo. Se usar uma janela mais curta, a previsão fica mais focada na tendência recente. Se usar uma janela mais longa, fica mais influenciada pela história completa.
@@ -551,6 +577,26 @@ Modos típicos:
 
 - previsão recomendada;
 - comparação entre modelos disponíveis.
+
+### Combinação de modelos e vários locais
+
+Além dos oito modelos, a previsão guiada experimenta a **combinação**: a média
+dos três modelos que melhor previram os anos de teste. Raramente é a pior e
+muitas vezes é a melhor; o seu intervalo alarga-se quando os modelos discordam.
+Só é recomendada quando prevê de facto melhor os anos de teste.
+
+Com vários locais seleccionados pode **somá-los numa só selecção** (como
+sempre) ou **projectar cada um em separado, para comparar**. Neste caso escolha
+o modelo:
+
+- **Combinação** (recomendado para comparar ou fixar metas): o mesmo método em
+  todos, para que as diferenças venham dos dados e não de qual modelo ganhou por
+  acaso em cada local;
+- **O mesmo modelo para todos**: o que teve, em média, o menor erro relativo;
+- **O melhor de cada local**: cada um com o seu; a última coluna da tabela diz
+  qual seria em qualquer caso.
+
+Para olhar para um só local, a previsão recomendada chega.
 
 ### Como é Escolhido o Modelo Recomendado
 
@@ -977,6 +1023,23 @@ a ULS São José (as quatro freguesias a oriente, do centro de saúde de Sacavé
 a ULS Loures/Odivelas (as outras seis); o Porto entre a ULS Santo António (as
 quatro freguesias ocidentais) e a ULS São João (Bonfim, Campanhã e Paranhos).
 
+**Gondomar** é um caso à parte. A freguesia da Lomba pertence à ULS Vila Nova de
+Gaia/Espinho e o resto do município à ULS Santo António. Como a Lomba tem só
+0,8% dos residentes de Gondomar (1.284 de 164.257 nos Censos de 2021), dar o
+município inteiro também à ULS de Gaia/Espinho somar-lhe-ia 164 mil residentes
+por causa de uma freguesia. Por isso:
+
+- com **Município inteiro**, e em todos os outros separadores, Gondomar conta todo
+  na ULS Santo António, incluindo a Lomba;
+- com **Ponderação por freguesias**, a Lomba passa para a ULS Vila Nova de
+  Gaia/Espinho (em 2024, 1.331 residentes e 23 óbitos), e as ULS continuam a somar
+  exactamente o Continente;
+- o agrupamento exacto `ULS Santo António + São João` inclui a Lomba.
+
+Quando escolhe uma destas ULS, a aplicação diz o que ela partilha e como está a
+ser lida: nas notas do indicador, no separador Indicadores de Planeamento, e num
+aviso nos outros separadores.
+
 Estas seis ULS podem ser lidas de duas maneiras, à escolha:
 
 | Opção | O que faz | Quando usar |
@@ -1059,6 +1122,43 @@ para taxas de acontecimentos, binomial para proporções), interpolados
 nunca aparece como «significativamente baixo». O funil só existe para
 indicadores com um modelo de contagem; para as taxas brutas, a dispersão reflecte
 sobretudo a estrutura etária.
+
+Em **Valores: Suavizados (Bayes empírico)**, cada valor é aproximado da média de
+todas as unidades tanto mais quanto menor o seu denominador (Marshall, 1991): um
+município grande quase não se mexe; um com dois ou três acontecimentos fica perto
+da média. O gráfico mostra o observado (círculo vazio), o suavizado (cheio) e a
+deslocação entre ambos. Serve para ordenar ou comparar áreas pequenas com valores
+mais estáveis. Não diz se uma unidade difere de Portugal (para isso, use o funil
+com os valores observados) e não substitui os valores observados em relatórios.
+
+### Mapa
+
+O subseparador **Mapa** mostra Portugal com até quatro indicadores lado a lado,
+por município, NUTS III, ULS ou NUTS II, para comparar onde vários estão altos ou
+baixos ao mesmo tempo.
+
+- **Cores face a Portugal (= 100)**: todos os mapas de 67 a 150, coloridos pelo
+  que a diferença significa: **vermelho onde a área está pior** do que Portugal,
+  azul onde está melhor. Uma mortalidade alta e uma esperança de vida baixa ficam
+  ambas a vermelho, e indicadores em unidades diferentes lêem-se juntos. Os
+  indicadores sem melhor nem pior (estrutura etária, natalidade, sectores de
+  emprego, taxa bruta de mortalidade, que depende sobretudo da idade da população)
+  ficam a violeta abaixo e amarelo acima. Cada mapa tem a sua legenda.
+- **Quintis**: cada indicador em cinco grupos com o mesmo número de áreas; mostra
+  a ordenação, não a distância a Portugal.
+- **Suavizar**: as taxas de áreas pequenas aproximadas da média (Bayes empírico,
+  como no funil), só nos indicadores com modelo de contagem.
+
+Cada mapa usa o último período disponível até ao último ano escolhido (no
+título). Clique numa área para ver os seus valores; o local escolhido tem
+contorno escuro. Os limites são os oficiais (CAOP, Direção-Geral do Território).
+
+### Tendência do indicador
+
+Por baixo da tabela de valores, a variação percentual anual de cada área nos
+anos escolhidos, com intervalo de confiança (ver Tendência, no separador
+Mortalidade Observada). Nos indicadores trienais usa só triénios que não se
+sobrepõem.
 
 ### Escolaridade por idade
 
@@ -1251,6 +1351,25 @@ repartição está incompleta ao nível municipal, sobretudo em 2014. Contagens,
 taxas brutas e proporções de todas as idades não precisam da idade, pelo que
 aqui são exactas em qualquer nível.
 
+### O último ano (marca p)
+
+O INE publica os óbitos por causa e idade cerca de 15 meses depois do fim do ano.
+Até lá, a aplicação lê o último ano (hoje 2025) de duas fontes do INE que chegam
+antes: os óbitos por freguesia, que dão os óbitos de cada município, e os óbitos
+semanais por região e idade, que dão a repartição por idade.
+
+- A **taxa bruta de mortalidade** e os **óbitos** existem para todas as áreas.
+- A **esperança de vida**, as **taxas padronizadas de todas as causas** e a
+  **SMR** existem só para Portugal, o Continente, as regiões NUTS II e áreas feitas
+  de regiões inteiras (por exemplo Lisboa e Vale do Tejo, seleccionando as três
+  regiões), e só para ambos os sexos.
+- Por causa não há valores até o INE publicar.
+
+Esses valores têm a marca **p** (provisório). Nos separadores Mortalidade
+Observada, Previsão e Métricas Anuais vale a mesma regra: com uma região inteira e
+todas as causas, o último ano entra na série; num município, numa causa ou num
+sexo, fica de fora e a aplicação avisa.
+
 ### População média e lacunas nos dados do INE
 
 Nascimentos, óbitos, beneficiários do RSI e resíduos acontecem ao longo do ano,
@@ -1301,6 +1420,14 @@ ficheiro de apoio (ULS Matosinhos, 2013-2018).
 
 Cobertura: ganho médio desde 2011, trabalhadores por sector desde 2013. O ganho
 médio só é apresentado a partir de 2013, porque antes disso não há os pesos.
+
+Quando o INE oculta o total de um município (segredo estatístico), o valor é
+recuperado do total do Continente ou de Portugal, que ainda o inclui, menos os
+municípios publicados (marca ≈). Um só município oculto recupera o seu valor
+(São João da Madeira em 2015); vários partilham-no e só as áreas que os contêm a
+todos têm valor (em 2013, São João da Madeira e Vale de Cambra: Norte, Área
+Metropolitana do Porto e ULS Entre Douro e Vouga; em 2013-2014, os Açores como
+região). Os trabalhadores por sector desses municípios continuam em falta.
 
 ### Indicadores dos Censos
 

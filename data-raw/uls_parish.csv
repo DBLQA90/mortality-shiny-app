@@ -1,5 +1,5 @@
 # Parishes of the municipalities that the ULS reform split, and the ULS each
-# belongs to. Only these three municipalities are divided; every other
+# belongs to. Only these four municipalities are divided; every other
 # municipality belongs whole to one ULS (data/uls_lookup.rds).
 #
 # Source: Decreto-Lei n.º 102/2023, de 7 de novembro, which defines each ULS by
@@ -8,7 +8,10 @@
 #   ULS São José         = ACES Lisboa Central + Centro de Saúde de Sacavém (Loures)
 #   ULS Lisboa Ocidental = ACES Lisboa Ocidental e Oeiras (+ ACES Cascais)
 #   ULS Loures-Odivelas  = ACES Loures-Odivelas except the Centro de Saúde de Sacavém
-#   ULS Santo António    = ACES Grande Porto V - Porto Ocidental (+ Gondomar)
+#   ULS Santo António    = ACES Grande Porto V - Porto Ocidental (+ Gondomar,
+#                          except the parish of Lomba)
+#   ULS Vila Nova de Gaia/Espinho takes Lomba (Gondomar): confirmed by the
+#                          owner on 2026-10-16; geopt (CAOP health layer) agrees.
 #   ULS São João         = ACES Grande Porto VI - Porto Oriental (+ Maia, Valongo)
 # Parish lists: ULS Santa Maria (8 Lisboa parishes) and ULS São José (13 Lisboa
 # and 4 Loures parishes) as published by the ULS; the remaining 3 Lisboa
@@ -18,45 +21,59 @@
 # The assignment of the four eastern Loures parishes to ULS São José was
 # contested locally in December 2023; if it is revised, edit this file and run
 # tools/build_uls_parish.R.
-municipality,parish,uls
-Lisboa,Alvalade,ULS Santa Maria
-Lisboa,Avenidas Novas,ULS Santa Maria
-Lisboa,Benfica,ULS Santa Maria
-Lisboa,Campolide,ULS Santa Maria
-Lisboa,Carnide,ULS Santa Maria
-Lisboa,Lumiar,ULS Santa Maria
-Lisboa,São Domingos de Benfica,ULS Santa Maria
-Lisboa,Santa Clara,ULS Santa Maria
-Lisboa,Areeiro,ULS São José
-Lisboa,Arroios,ULS São José
-Lisboa,Beato,ULS São José
-Lisboa,Campo de Ourique,ULS São José
-Lisboa,Estrela,ULS São José
-Lisboa,Marvila,ULS São José
-Lisboa,Misericórdia,ULS São José
-Lisboa,Olivais,ULS São José
-Lisboa,Parque das Nações,ULS São José
-Lisboa,Penha de França,ULS São José
-Lisboa,Santa Maria Maior,ULS São José
-Lisboa,Santo António,ULS São José
-Lisboa,São Vicente,ULS São José
-Lisboa,Ajuda,ULS Lisboa Ocidental
-Lisboa,Alcântara,ULS Lisboa Ocidental
-Lisboa,Belém,ULS Lisboa Ocidental
-Loures,Camarate; Unhos e Apelação,ULS São José
-Loures,Moscavide e Portela,ULS São José
-Loures,Sacavém e Prior Velho,ULS São José
-Loures,Santa Iria de Azoia; São João da Talha e Bobadela,ULS São José
-Loures,Bucelas,ULS Loures/Odivelas
-Loures,Fanhões,ULS Loures/Odivelas
-Loures,Loures,ULS Loures/Odivelas
-Loures,Lousa,ULS Loures/Odivelas
-Loures,Santo Antão e São Julião do Tojal,ULS Loures/Odivelas
-Loures,Santo António dos Cavaleiros e Frielas,ULS Loures/Odivelas
-Porto,Aldoar; Foz do Douro e Nevogilde,ULS Santo António
-Porto,Cedofeita; Santo Ildefonso; Sé; Miragaia; São Nicolau e Vitória,ULS Santo António
-Porto,Lordelo do Ouro e Massarelos,ULS Santo António
-Porto,Ramalde,ULS Santo António
-Porto,Bonfim,ULS São João
-Porto,Campanhã,ULS São João
-Porto,Paranhos,ULS São João
+# `whole`: whether the ULS takes the municipality whole when the app reads
+# ULS by whole municipalities (the "Município inteiro" option and every tab but
+# the planning tab's parish weights). "não" for a part too small to justify it:
+# Lomba is 1,284 of Gondomar's 164,257 residents in the 2021 census (0.8%), and
+# giving all of Gondomar to ULS Vila Nova de Gaia/Espinho for it would add half
+# that ULS's population. Gondomar then counts whole in ULS Santo António only,
+# and Lomba goes to Gaia/Espinho only under the parish weights.
+municipality,parish,uls,whole
+Lisboa,Alvalade,ULS Santa Maria,sim
+Lisboa,Avenidas Novas,ULS Santa Maria,sim
+Lisboa,Benfica,ULS Santa Maria,sim
+Lisboa,Campolide,ULS Santa Maria,sim
+Lisboa,Carnide,ULS Santa Maria,sim
+Lisboa,Lumiar,ULS Santa Maria,sim
+Lisboa,São Domingos de Benfica,ULS Santa Maria,sim
+Lisboa,Santa Clara,ULS Santa Maria,sim
+Lisboa,Areeiro,ULS São José,sim
+Lisboa,Arroios,ULS São José,sim
+Lisboa,Beato,ULS São José,sim
+Lisboa,Campo de Ourique,ULS São José,sim
+Lisboa,Estrela,ULS São José,sim
+Lisboa,Marvila,ULS São José,sim
+Lisboa,Misericórdia,ULS São José,sim
+Lisboa,Olivais,ULS São José,sim
+Lisboa,Parque das Nações,ULS São José,sim
+Lisboa,Penha de França,ULS São José,sim
+Lisboa,Santa Maria Maior,ULS São José,sim
+Lisboa,Santo António,ULS São José,sim
+Lisboa,São Vicente,ULS São José,sim
+Lisboa,Ajuda,ULS Lisboa Ocidental,sim
+Lisboa,Alcântara,ULS Lisboa Ocidental,sim
+Lisboa,Belém,ULS Lisboa Ocidental,sim
+Loures,Camarate; Unhos e Apelação,ULS São José,sim
+Loures,Moscavide e Portela,ULS São José,sim
+Loures,Sacavém e Prior Velho,ULS São José,sim
+Loures,Santa Iria de Azoia; São João da Talha e Bobadela,ULS São José,sim
+Loures,Bucelas,ULS Loures/Odivelas,sim
+Loures,Fanhões,ULS Loures/Odivelas,sim
+Loures,Loures,ULS Loures/Odivelas,sim
+Loures,Lousa,ULS Loures/Odivelas,sim
+Loures,Santo Antão e São Julião do Tojal,ULS Loures/Odivelas,sim
+Loures,Santo António dos Cavaleiros e Frielas,ULS Loures/Odivelas,sim
+Porto,Aldoar; Foz do Douro e Nevogilde,ULS Santo António,sim
+Porto,Cedofeita; Santo Ildefonso; Sé; Miragaia; São Nicolau e Vitória,ULS Santo António,sim
+Porto,Lordelo do Ouro e Massarelos,ULS Santo António,sim
+Porto,Ramalde,ULS Santo António,sim
+Porto,Bonfim,ULS São João,sim
+Porto,Campanhã,ULS São João,sim
+Porto,Paranhos,ULS São João,sim
+Gondomar,Baguim do Monte (Rio Tinto),ULS Santo António,sim
+Gondomar,Rio Tinto,ULS Santo António,sim
+Gondomar,Fânzeres e São Pedro da Cova,ULS Santo António,sim
+Gondomar,Foz do Sousa e Covelo,ULS Santo António,sim
+Gondomar,"Gondomar (São Cosme), Valbom e Jovim",ULS Santo António,sim
+Gondomar,Melres e Medas,ULS Santo António,sim
+Gondomar,Lomba,ULS Vila Nova de Gaia/Espinho,não

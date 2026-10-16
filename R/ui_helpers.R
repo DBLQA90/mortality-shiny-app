@@ -45,6 +45,15 @@ population_help <- function() {
     "e não representa a mortalidade total."
   )
 }
+trend_help <- function() {
+  helpText(
+    "Variação percentual anual (APC): o ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%, ",
+    "de uma regressão log-linear em que cada ano pesa conforme a sua precisão (método Joinpoint do National Cancer ",
+    "Institute). Com mudanças de tendência, a recta pode quebrar em até um ou dois anos, escolhidos pelo critério BIC, ",
+    "e a última linha dá a variação média anual (AAPC) de todo o período. Uma tendência é significativa quando o ",
+    "intervalo não inclui 0. A linha tracejada no gráfico é a tendência ajustada."
+  )
+}
 horizon_help <- function() {
   helpText("Número de anos a projectar para o futuro. Quanto maior o horizonte, maior a incerteza.")
 }
@@ -158,6 +167,33 @@ nuts_vintage_control <- function() {
         width = "100%"
       )
     ),
+    # The denominator of every rate per inhabitant, in every tab. Life
+    # expectancy and the fertility index keep mid-year person-years.
+    # Label and control in one block, so that they wrap together.
+    tags$div(
+      style = "display:flex; align-items:center; gap:0.6rem;",
+    tags$label(
+      "População no denominador:",
+      `for` = "population_basis",
+      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
+    ),
+    tags$div(
+      style = "min-width:19rem;",
+      title = paste(
+        "As estimativas de população do INE referem-se a 31 de dezembro.",
+        "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
+        "A população a 31 de dezembro sozinha dá taxas mais baixas quando a população cresce e mais altas quando diminui (nas regiões, em 2019-2025, até cerca de 4%).",
+        "Não se aplica à esperança de vida nem ao índice de fecundidade."
+      ),
+      selectInput(
+        "population_basis",
+        label = NULL,
+        choices = population_basis_choices,
+        selected = default_population_basis(),
+        width = "100%"
+      )
+    )
+    ),
     data_version_badge()
   )
 }
@@ -172,6 +208,27 @@ transform_help <- function() {
   helpText(
     "A transformação log estabiliza séries positivas e evita previsões negativas; ",
     "'Sem transformação' modela a taxa directamente."
+  )
+}
+model_policy_help <- function() {
+  helpText(
+    "Para comparar locais ou fixar metas, use o mesmo método em todos: com «o melhor de cada local», um local pode ",
+    "ficar com uma tendência e o vizinho com uma linha plana só porque o acaso favoreceu modelos diferentes. A ",
+    "combinação (média dos três modelos que melhor previram os anos de teste) é a escolha mais robusta; «o mesmo ",
+    "modelo» usa o que teve, em média, o menor erro relativo em todos os locais. Para olhar para um só local, ",
+    "a previsão recomendada (que já considera a combinação) é suficiente."
+  )
+}
+infant_method_help <- function() {
+  helpText(
+    "Série anual: os modelos são ajustados às taxas de cada ano, com a variação real de ano para ano, e cada ",
+    "período projectado é depois a média, pesada pelos nascimentos, dos anos que contém (os anos futuros com os ",
+    "nascimentos do último ano observado). O intervalo trata os erros dos anos como totalmente correlacionados, ",
+    "pelo que é conservador. ",
+    "Médias móveis: os modelos são ajustados directamente à série de taxas de 3 ou 5 anos. Cada valor partilha ",
+    "quase todos os anos com o anterior, pelo que a série é suave por construção: os modelos tendem a ver ",
+    "tendências onde há acaso e dão intervalos demasiado estreitos. Fica disponível para comparar com valores ",
+    "calculados dessa forma. Em ambos, a escolha do modelo usa os erros da série ajustada."
   )
 }
 beginner_validation_help <- function() {
@@ -269,21 +326,72 @@ beginner_forecast_controls_panel <- function() {
       selected = get_default_area_selection()
     ),
     textInput("beginner_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
-    selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
-    selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
     radioButtons(
-      "beginner_population",
-      "População:",
-      choices = c("Total", "Menos de 75 anos")
+      "beginner_areas_mode",
+      "Com vários locais:",
+      choices = c("Somá-los numa só selecção" = "pooled", "Projectar cada um em separado, para comparar" = "separate"),
+      selected = "pooled"
     ),
-    population_help(),
+    conditionalPanel(
+      "input.beginner_areas_mode == 'separate'",
+      radioButtons(
+        "beginner_model_policy",
+        "Modelo em cada local:",
+        choices = c(
+          "Combinação dos melhores modelos (recomendado para comparar)" = "combo",
+          "O mesmo modelo para todos" = "common",
+          "O melhor modelo de cada local" = "best"
+        ),
+        selected = "combo"
+      ),
+      model_policy_help()
+    ),
     radioButtons(
-      "beginner_rate_type",
-      "Taxa:",
-      choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+      "beginner_indicator",
+      "Indicador:",
+      choices = c("Taxa de mortalidade" = "mortality", "Mortalidade infantil (por 1.000 nados-vivos)" = "infant"),
+      selected = "mortality"
     ),
-    rate_type_help(),
-    region_aggregation_note(),
+    conditionalPanel(
+      "input.beginner_indicator == 'mortality'",
+      selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
+      selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
+      radioButtons(
+        "beginner_population",
+        "População:",
+        choices = c("Total", "Menos de 75 anos")
+      ),
+      population_help(),
+      radioButtons(
+        "beginner_rate_type",
+        "Taxa:",
+        choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+      ),
+      rate_type_help(),
+      region_aggregation_note()
+    ),
+    conditionalPanel(
+      "input.beginner_indicator == 'infant'",
+      selectInput(
+        "beginner_infant_window",
+        "Período de cada valor:",
+        choices = c("Anual" = "1", "Triénio" = "3", "Quinquénio" = "5"),
+        selected = "5"
+      ),
+      conditionalPanel(
+        "input.beginner_infant_window != '1'",
+        radioButtons(
+          "beginner_infant_method",
+          "Como projectar:",
+          choices = c(
+            "Projectar a série anual e agregar no fim (recomendado)" = "annual",
+            "Projectar a série de médias móveis" = "rolling"
+          ),
+          selected = "annual"
+        ),
+        infant_method_help()
+      )
+    ),
     data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",
@@ -550,7 +658,7 @@ glossary_tab_ui <- function() {
   )
 
   geography_terms <- list(
-    list("ULS (Unidade Local de Saúde)", "A unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios. Cinco ULS partilham municípios ao nível da freguesia e aparecem em dois agrupamentos exactos."),
+    list("ULS (Unidade Local de Saúde)", "A unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios. Seis ULS partilham Lisboa, Loures ou Porto ao nível da freguesia e aparecem também em dois agrupamentos exactos; a freguesia da Lomba, de Gondomar, pertence à ULS Vila Nova de Gaia/Espinho."),
     list("ARS", "As cinco regiões de saúde (Norte, Centro, Lisboa e Vale do Tejo, Alentejo, Algarve) que agrupam as ULS. Não coincidem com as regiões NUTS com o mesmo nome."),
     list("NUTS", "A nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (Continente, Açores, Madeira) e NUTS II (as regiões)."),
     list("Definição das regiões (NUTS 2013 / NUTS 2024)", "As duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes: seis nomes existem nas duas e significam coisas diferentes em cada uma."),
@@ -644,6 +752,22 @@ observed_mortality_tab_ui <- function() {
         br(),
         downloadButton("downloadRatePlot", "Descarregar gráfico (PNG)"),
         br(),
+        h4("Tendência"),
+        fluidRow(
+          column(6, selectInput(
+            "observed_trend_span", "Período da tendência:",
+            choices = c("Últimos 10 anos" = "10", "Últimos 5 anos" = "5", "Últimos 15 anos" = "15", "Todos os anos carregados" = "all"),
+            selected = "10"
+          )),
+          column(6, selectInput(
+            "observed_trend_joinpoints", "Mudanças de tendência:",
+            choices = c("Nenhuma (uma só recta)" = "0", "Até 1" = "1", "Até 2" = "2"),
+            selected = "0"
+          ))
+        ),
+        tableOutput("rateTrendTable"),
+        uiOutput("rateTrendNote"),
+        trend_help(),
         h4("Série anual observada"),
         tableOutput("rateTable"),
         downloadButton("downloadRateTableCSV", "Descarregar tabela (CSV)")
@@ -660,6 +784,16 @@ beginner_forecasting_tab_ui <- function() {
         beginner_forecast_controls_panel()
       ),
       mainPanel(
+        conditionalPanel(
+          "input.beginner_areas_mode == 'separate'",
+          h4("Previsão por local"),
+          plotly::plotlyOutput("beginnerMultiPlot", height = "560px"),
+          uiOutput("beginnerMultiNote"),
+          div(style = "overflow-x:auto;", tableOutput("beginnerMultiTable")),
+          downloadButton("downloadBeginnerMultiCSV", "Descarregar tabela (CSV)")
+        ),
+        conditionalPanel(
+          "input.beginner_areas_mode != 'separate'",
         plotly::plotlyOutput("beginnerForecastPlot", height = "400px"),
         helpText(
           "Azul: taxa observada usada no ajuste. Cinzento: restante histórico. ",
@@ -678,6 +812,7 @@ beginner_forecasting_tab_ui <- function() {
         h4("Tabela da previsão"),
         tableOutput("beginnerForecastTable"),
         downloadButton("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)")
+        )
       )
     )
   )
@@ -767,8 +902,9 @@ avoidable_tab_ui <- function() {
         selectInput(
           "avoidable_year",
           "Ano:",
-          choices = sort(rate_years),
-          selected = max(rate_years)
+          # By cause: not the latest year, rebuilt for all causes only.
+          choices = sort(setdiff(rate_years, calendar_death_years)),
+          selected = max(setdiff(rate_years, calendar_death_years))
         ),
         selectInput(
           "avoidable_area",
@@ -840,19 +976,9 @@ planning_tab_ui <- function() {
           "as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
           "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
           "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
-          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha."
-        ),
-        radioButtons(
-          "planning_split_mode", "ULS que partilham um município:",
-          choices = PLANNING_SPLIT_MODES, selected = PLANNING_DEFAULT_SPLIT_MODE
-        ),
-        helpText(
-          "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
-          "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas as seis ",
-          "ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
-          "«Ponderação por freguesias»: cada município é repartido pela população das suas freguesias ",
-          "nos Censos de 2021, por grupo etário — as partes somam o país, assumindo que as quotas se mantêm. ",
-          "Os agrupamentos exactos de ULS não dependem desta escolha."
+          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha. ",
+          "Gondomar é a excepção: a freguesia da Lomba (0,8%) é da ULS Vila Nova de Gaia/Espinho, mas ",
+          "com «Município inteiro» Gondomar conta todo na ULS Santo António; ver as notas do indicador."
         ),
         radioButtons(
           "planning_portugal", "Portugal:",
@@ -888,7 +1014,10 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
             uiOutput("planningIndicatorNotes"),
             h5("Valores"),
-            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable"))
+            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
+            h5("Tendência nos anos escolhidos"),
+            div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
+            uiOutput("planningTrendNote")
           ),
           tabPanel(
             "Resumo do local",
@@ -907,12 +1036,41 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningRankingPlot", height = "820px")
           ),
           tabPanel(
+            "Mapa",
+            br(),
+            fluidRow(
+              column(6, selectizeInput(
+                "planning_map_indicators", "Indicadores (até 4):",
+                choices = planning_map_indicator_choices(), multiple = TRUE,
+                selected = c("smr_all", "dsr_premature", "ageing_index", "purchasing_power"),
+                options = list(maxItems = PLANNING_MAP_MAX_INDICATORS)
+              )),
+              column(3, radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio")),
+              column(3, radioButtons(
+                "planning_map_scale", "Cores:",
+                choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index", "Quintis de cada indicador" = "quintile"),
+                selected = "index"
+              ))
+            ),
+            checkboxInput("planning_map_smoothed", "Suavizar as taxas de áreas pequenas (Bayes empírico)", value = FALSE),
+            uiOutput("planningMapNote"),
+            plotOutput("planningMapPlot", height = "auto", click = "planning_map_click"),
+            uiOutput("planningMapClicked"),
+            downloadButton("downloadPlanningMapCSV", "Descarregar valores (CSV)"),
+            downloadButton("downloadPlanningMapPNG", "Descarregar mapas (PNG)")
+          ),
+          tabPanel(
             "Funil",
             br(),
             radioButtons(
               "planning_funnel_units", "Unidades:",
               choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
               selected = "ULS", inline = TRUE
+            ),
+            radioButtons(
+              "planning_funnel_values", "Valores:",
+              choices = c("Observados (funil)" = "observed", "Suavizados (Bayes empírico)" = "smoothed"),
+              selected = "observed", inline = TRUE
             ),
             uiOutput("planningFunnelNote"),
             plotly::plotlyOutput("planningFunnelPlot", height = "560px")
@@ -1021,6 +1179,7 @@ planning_method_notes <- function() {
     h4("Portugal, significância e funil"),
     tags$ul(
       tags$li("ULS que partilham um município: Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia (Decreto-Lei n.º 102/2023). «Município inteiro» dá a cada ULS o município todo, sem estimar nada, mas as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez (em 2024, mais 18.186 óbitos do que o Continente). «Ponderação por freguesias» reparte cada município pela população das suas freguesias nos Censos de 2021, por grupo etário: as partes somam o município e o país, assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha e não assumem nada."),
+      tags$li("A freguesia da Lomba (Gondomar, 0,8% dos residentes) pertence à ULS Vila Nova de Gaia/Espinho, mas só a ponderação por freguesias a separa: com «Município inteiro» Gondomar conta todo na ULS Santo António, porque dar o município inteiro também à de Gaia/Espinho somaria 164 mil residentes a esta ULS. Pela mesma razão, o agrupamento exacto ULS Santo António + São João inclui a Lomba."),
       tags$li("Portugal pode ser o total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos), ou a soma dos 308 municípios, que compara igual com igual. A escolha vale para comparadores, significância, classificação das ULS, funil e perfil."),
       tags$li("\u25b2 / \u25bc / = : o intervalo de confiança de 95% fica inteiramente acima, abaixo ou inclui o valor de Portugal no mesmo período (critério do PHE Fingertips). Só para indicadores comparáveis com intervalo; não diz se a diferença é boa ou má. Na classificação das ULS: laranja acima, azul abaixo, cinzento sem diferença."),
       tags$li("Funil: cada unidade contra o tamanho do denominador, com os limites do que o acaso produziria à volta de Portugal (95% e 99,8%), calculados pelos quantis exactos da contagem (Poisson ou binomial, Spiegelhalter 2005). Só para taxas de acontecimentos e proporções de nascimentos."),
@@ -1057,6 +1216,12 @@ planning_method_notes <- function() {
       tags$li("Poder de compra per capita (Portugal = 100): a quota de cada município no poder de compra nacional, dividida pela sua quota implícita de população. Para um agrupamento é a soma das quotas sobre a soma das quotas de população, e não a média dos índices municipais."),
       tags$li("Resíduos urbanos por habitante: toneladas recolhidas vezes 1.000, sobre a população média do ano. Loures e Odivelas têm um serviço conjunto (SIMAR) que o INE regista todo em Loures: o indicador só existe para áreas que contenham os dois municípios.")
     ),
+    h4("O último ano (provisório, p)"),
+    tags$ul(
+      tags$li("O INE publica os óbitos por causa e idade cerca de 15 meses depois do fim do ano. Até lá, o último ano é lido de duas fontes do INE que chegam antes: os óbitos por freguesia de residência (0012542), que dão os óbitos de todas as causas de cada município, e os óbitos semanais por região e idade (0012100), que dão a repartição por idade. Em 2020-2024 a soma das freguesias coincide exactamente com os totais do INE; os óbitos por idade reconstruídos ficaram a 0,13% dos publicados, e a taxa padronizada a 0,03%."),
+      tags$li("Com isso, a taxa bruta de mortalidade e os óbitos existem para todas as áreas; a esperança de vida, as taxas padronizadas de todas as causas e a SMR, só para Portugal, o Continente, as regiões NUTS II e as áreas feitas de regiões inteiras (Lisboa e Vale do Tejo), e só para ambos os sexos. Por causa (evitável, prematura por causa, mortalidade por causa) não há valores até o INE publicar."),
+      tags$li("Os valores cujo período inclui esse ano têm a marca p. A classificação das ULS, o funil e a mortalidade por causa usam o último ano publicado por causa.")
+    ),
     h4("Mudanças de série"),
     tags$ul(
       tags$li("Pensões: em 2017 a Série 2017 da segurança social substitui a Série 1990-2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois não são directamente comparáveis; o gráfico de evolução marca a mudança."),
@@ -1065,7 +1230,8 @@ planning_method_notes <- function() {
     ),
     h4("Lacunas nos dados municipais do INE"),
     tags$ul(
-      tags$li("Uma célula em branco no INE não é um zero. Nos dados publicados para todos os municípios (resíduos, pensões, trabalhadores, ganho médio), um município sem valor deixa sem valor todas as áreas que o contêm, em vez de desaparecer da soma: por exemplo, os Açores não têm trabalhadores por conta de outrem em 2013-2014, nem ganho médio em 2011-2014."),
+      tags$li("Uma célula em branco no INE não é um zero. Nos dados publicados para todos os municípios (resíduos, pensões, trabalhadores, ganho médio), um município sem valor deixa sem valor todas as áreas que o contêm, em vez de desaparecer da soma."),
+      tags$li("Trabalhadores por conta de outrem e ganho médio: o total do Continente e o de Portugal publicados pelo INE incluem o que ficou oculto nos municípios, pelo que o valor oculto é o total menos os municípios publicados (assinalado com \u2248). Um só município oculto recupera o seu valor (São João da Madeira em 2015); vários partilham-no, e só as áreas que os contêm a todos têm valor (São João da Madeira e Vale de Cambra em 2013: Norte, Área Metropolitana do Porto e ULS Entre Douro e Vouga; os 19 municípios dos Açores em 2013-2014: a Região Autónoma). Os trabalhadores por sector desses municípios continuam em falta. Nas pensões e nos resíduos não é possível, porque aí os totais do INE também deixam de fora os municípios ocultos."),
       tags$li("Odivelas, Trofa e Vizela foram criados em 1998, a partir de Loures, Santo Tirso e Guimarães. A população está estimada com os limites actuais, mas os nascimentos, os óbitos e o Censo de 1991 até 1998 estão registados no município de origem. Até 1998 (e nos triénios que incluem esses anos) os indicadores só existem para áreas que contenham os dois municípios de cada par."),
       tags$li("Óbitos de todas as causas: em alguns municípios e anos (Vimioso em 2024; Alfândega da Fé e Miranda do Douro em 2015) o INE deixa em branco o total de todas as idades, embora publique os grupos etários. O total é então a soma desses grupos."),
       tags$li("Trabalhadores por sector: o INE oculta dois dos três sectores quando um deles revelaria uma empresa (6 municípios em 2024, 41-49 em 2013-2016). O remanescente é repartido pelos sectores ocultos na proporção do resto da NUTS III nesse ano; as quotas com mais de 1% de trabalhadores estimados são marcadas com \u2248.")
@@ -1080,7 +1246,7 @@ planning_method_notes <- function() {
     h4("Porque podem diferir do ficheiro de apoio aos PLS"),
     tags$ul(
       tags$li("A população de 2021 em diante é a série revista pelo INE; valores calculados com a estimativa anterior ficam desactualizados (por exemplo, índices de envelhecimento mais altos)."),
-      tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
+      tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto e, numa freguesia, Gondomar) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
       tags$li("As regiões são somadas a partir dos municípios, pelo que excluem os acontecimentos de residência desconhecida, que só entram nos totais de Portugal e do Continente."),
       tags$li("Poder de compra e mortalidade neonatal: nalgumas ULS os valores do ficheiro não coincidem com os publicados pelo INE para os seus municípios (por exemplo, o poder de compra de Matosinhos em 2021 é 118,1 no INE e 130,6 no ficheiro), e a mortalidade neonatal e pós-neonatal do ficheiro não soma a infantil. A aplicação calcula a partir dos valores municipais do INE.")
     )

@@ -65,6 +65,7 @@ write_planning_workbook <- function(path,
                                     education_min_age = 0L,
                                     benchmark = "Portugal",
                                     mode = PLANNING_DEFAULT_SPLIT_MODE,
+                                    basis = default_population_basis(),
                                     progress = function(value, detail = NULL) invisible(NULL)) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("The openxlsx package is required to write Excel files.", call. = FALSE)
@@ -74,7 +75,8 @@ write_planning_workbook <- function(path,
   years <- if (is.null(years)) all_years else intersect(as.integer(years), all_years)
 
   progress(0.05, "indicadores")
-  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode) %>%
+  table <- planning_indicator_table(union(areas$area, benchmark), years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode,
+                                    basis = basis) %>%
     planning_add_significance(benchmark) %>%
     dplyr::filter(.data$area %in% areas$area) %>%
     dplyr::left_join(areas, by = "area")
@@ -90,8 +92,8 @@ write_planning_workbook <- function(path,
   readme <- c(
     "Indicadores de apoio aos Planos Locais de Saúde",
     "",
-    paste0("ULS que partilham um município (Lisboa, Loures, Porto): ",
-           if (identical(mode, "parish")) "repartidas pela população das freguesias nos Censos de 2021, por grupo etário; as partes somam o município e o país." else "cada ULS leva o município inteiro; as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez."),
+    paste0("ULS que partilham um município (Lisboa, Loures, Porto; Gondomar só na freguesia da Lomba): ",
+           if (identical(mode, "parish")) "repartidas pela população das freguesias nos Censos de 2021, por grupo etário; as partes somam o município e o país; a Lomba entra na ULS Vila Nova de Gaia/Espinho." else "cada ULS leva o município inteiro; as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. Gondomar conta todo na ULS Santo António, incluindo a Lomba (0,8%), que é da ULS Vila Nova de Gaia/Espinho."),
     paste0("Portugal de referência (comparadores e significância): ",
            if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "soma dos 308 municípios, sem os acontecimentos de residência desconhecida." else "total publicado pelo INE, que inclui os acontecimentos de residência desconhecida."),
     if (education_min_age > 0) paste0("Escolaridade [I24]: população com ", education_min_age, " e mais anos (Censos de 2011 e 2021; o INE não publica a escolaridade por idade e município em 1991 e 2001).") else "Escolaridade [I24]: toda a população, como no ficheiro de apoio.",
@@ -104,6 +106,7 @@ write_planning_workbook <- function(path,
     paste0("Dados importados do INE até: ", ifelse(is.na(data_date), "desconhecido", data_date)),
     paste0("Ficheiro gerado em: ", format(Sys.time(), "%Y-%m-%d %H:%M")),
     paste0("Definição das regiões: NUTS ", vintage),
+    paste0("População no denominador das taxas por habitante: ", population_basis_label(basis), "."),
     paste0("Âmbito: ", if (is.null(focus)) paste0("todas as áreas (", nrow(areas), ")") else paste0(focus, " e comparadores")),
     paste0("Anos: ", min(years), "-", max(years)),
     paste0("Versão do método: ", PLANNING_METHOD_VERSION, " (nota metodológica)"),
@@ -307,14 +310,14 @@ write_planning_workbook <- function(path,
   }
 
   # --- Mortality by cause group, standardised --------------------------------------
-  cause_years <- planning_standardised_years()
+  cause_years <- planning_cause_years()
   cause_years <- cause_years[cause_years <= max(years) & cause_years >= min(years)]
   # Every triennium for a selection; the latest one for the file of all areas.
   if (!include_long) cause_years <- utils::tail(cause_years, 1)
   if (length(cause_years) > 0) {
     progress(0.96, "mortalidade por causa")
     causes <- dplyr::bind_rows(lapply(cause_years, function(y) {
-      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark, mode = mode)
+      planning_cause_standardised(union(areas$area, benchmark), y, lookup = lookup, benchmark = benchmark, mode = mode, basis = basis)
     })) %>%
       dplyr::filter(.data$area %in% areas$area) %>%
       dplyr::left_join(areas, by = "area") %>%

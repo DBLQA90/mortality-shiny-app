@@ -44,6 +44,7 @@ write_planning_profile <- function(path,
                                    benchmark = "Portugal",
                                    education_min_age = 0L,
                                    mode = PLANNING_DEFAULT_SPLIT_MODE,
+                                   basis = default_population_basis(),
                                    last_year = NULL,
                                    progress = function(value, detail = NULL) invisible(NULL)) {
   for (pkg in c("officer", "flextable", "ggplot2")) {
@@ -58,7 +59,8 @@ write_planning_profile <- function(path,
   years <- sort(unique(c(years, utils::tail(census, 1))))
 
   progress(0.1, "indicadores")
-  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode) %>%
+  table <- planning_indicator_table(areas$area, years, lookup = lookup, education_min_age = education_min_age, benchmark = benchmark, mode = mode,
+                                    basis = basis) %>%
     planning_add_significance(benchmark)
   summary <- planning_profile_summary(table, areas, education_min_age)
 
@@ -67,7 +69,8 @@ write_planning_profile <- function(path,
   doc <- officer::body_add_par(doc, paste0(
     "Indicadores de apoio aos Planos Locais de Saúde. Gerado em ", format(Sys.Date(), "%d/%m/%Y"),
     "; dados do INE importados até ", ifelse(is.na(data_date), "data desconhecida", data_date),
-    "; regiões NUTS ", vintage, "; método ", PLANNING_METHOD_VERSION, ". Referência: ", benchmark, "."
+    "; regiões NUTS ", vintage, "; método ", PLANNING_METHOD_VERSION, ". Referência: ", benchmark,
+    ". População no denominador das taxas: ", tolower(population_basis_label(basis)), "."
   ), style = "Normal")
 
   # 1. In short --------------------------------------------------------------
@@ -131,7 +134,7 @@ write_planning_profile <- function(path,
 
   # 5. Among the ULS -----------------------------------------------------------------
   progress(0.7, "posição entre as ULS")
-  ranked <- planning_profile_ranking(local, areas, lookup, last_year, benchmark, mode)
+  ranked <- planning_profile_ranking(local, areas, lookup, last_year, benchmark, mode, basis)
   if (!is.null(ranked)) {
     doc <- officer::body_add_par(doc, paste0("Posição de ", ranked$unit, " entre as ULS do Continente"), style = "heading 2")
     ft <- flextable::flextable(ranked$table)
@@ -145,12 +148,12 @@ write_planning_profile <- function(path,
   }
 
   # 5b. Mortality by cause, standardised ------------------------------------------
-  cause_years <- planning_standardised_years()
+  cause_years <- planning_cause_years()
   cause_years <- cause_years[cause_years <= last_year]
   if (length(cause_years) > 0) {
     progress(0.75, "mortalidade por causa")
     end_year <- max(cause_years)
-    causes <- planning_cause_standardised(c(local, benchmark), end_year, lookup = lookup, benchmark = benchmark, mode = mode)
+    causes <- planning_cause_standardised(c(local, benchmark), end_year, lookup = lookup, benchmark = benchmark, mode = mode, basis = basis)
     own <- causes[causes$area == local & is.finite(causes$smr), , drop = FALSE]
     if (nrow(own) > 0) {
       doc <- officer::body_add_par(doc, paste0("Mortalidade padronizada por causa, ", end_year - 2L, "-", end_year), style = "heading 2")
@@ -262,7 +265,7 @@ write_planning_profile <- function(path,
   doc <- officer::body_add_par(doc, "Notas", style = "heading 2")
   notes <- c(
     "Cada área é a soma dos seus municípios e cada indicador a razão dessas somas. As ULS e ARS usam a composição actual, aplicada a todos os anos.",
-    if (identical(mode, "parish")) "ULS que partilham um município (Lisboa, Loures, Porto): repartidas pela população das freguesias nos Censos de 2021, por grupo etário." else "ULS que partilham um município (Lisboa, Loures, Porto): cada ULS leva o município inteiro, pelo que as seis se sobrepõem.",
+    if (identical(mode, "parish")) "ULS que partilham um município (Lisboa, Loures, Porto; Gondomar só na freguesia da Lomba): repartidas pela população das freguesias nos Censos de 2021, por grupo etário." else "ULS que partilham um município (Lisboa, Loures, Porto): cada ULS leva o município inteiro, pelo que as seis se sobrepõem. Gondomar conta todo na ULS Santo António, incluindo a freguesia da Lomba (0,8%), que é da ULS Vila Nova de Gaia/Espinho.",
     if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "Portugal: soma dos 308 municípios, sem os acontecimentos de residência desconhecida (compara igual com igual)." else "Portugal: total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos).",
     "Significância: um valor está acima (abaixo) de Portugal quando todo o seu intervalo de confiança de 95% fica acima (abaixo) do valor de Portugal no mesmo período, como no PHE Fingertips. Só para taxas, proporções e esperança de vida.",
     paste("* Ganho médio e trabalhadores por sector:", PLANNING_INDICATOR_NOTES[["earnings_mean"]]),
@@ -364,7 +367,8 @@ planning_profile_trends <- function(table, areas) {
 
 # The location's ULS (the location itself when it is one) ranked among all ULS
 # on the event rates. NULL when the location has no single ULS.
-planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark, mode = PLANNING_DEFAULT_SPLIT_MODE) {
+planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark, mode = PLANNING_DEFAULT_SPLIT_MODE,
+                                     basis = default_population_basis()) {
   units <- planning_uls_units("units")
   # The smallest ULS holding every municipality of the location (a ULS with
   # the same municipalities is not offered as a comparator, but ranks here).
@@ -379,11 +383,12 @@ planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark,
   if (length(holding) == 0) return(NULL)
   unit <- holding[[which.min(vapply(holding, function(u) length(planning_area_members(u, lookup)), integer(1)))]]
   rows <- lapply(PLANNING_PROFILE_RANKED, function(id) {
-    years <- planning_indicator_years(id)
+    years <- planning_small_area_years(id)
     years <- years[years <= last_year]
     if (length(years) == 0) return(NULL)
     year <- max(years)
-    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark, mode = mode) %>% planning_add_significance(benchmark)
+    t <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark, mode = mode,
+                                  basis = basis) %>% planning_add_significance(benchmark)
     ranked <- t[t$area %in% units & !is.na(t$value), , drop = FALSE]
     ranked <- ranked[order(-ranked$value), , drop = FALSE]
     position <- match(unit, ranked$area)

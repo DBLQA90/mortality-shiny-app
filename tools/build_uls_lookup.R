@@ -93,7 +93,16 @@ mapping <- mapping %>%
 # Lisboa.
 parish_path <- "data/uls_parish.rds"
 if (file.exists(parish_path)) {
-  parish <- readRDS(parish_path) %>% distinct(uls = .data$unit, municipality = .data$municipality)
+  # A ULS holding only a part flagged `whole = FALSE` (Lomba, for Gondomar)
+  # does not take that municipality whole; it gets its share only under the
+  # planning tab's parish weights.
+  parish <- readRDS(parish_path)
+  if (!"whole" %in% names(parish)) parish$whole <- TRUE
+  parish <- parish %>%
+    group_by(uls = .data$unit, municipality = .data$municipality) %>%
+    summarise(whole = any(.data$whole), .groups = "drop") %>%
+    filter(.data$whole) %>%
+    select(-"whole")
   extra <- anti_join(parish, mapping, by = c("uls", "municipality"))
   if (nrow(extra) > 0) {
     message("  From the parish table: ", paste(paste0(extra$uls, " <- ", extra$municipality), collapse = "; "))

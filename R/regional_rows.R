@@ -261,6 +261,9 @@ substitute_regional_deaths <- function(df,
         dplyr::group_by(dplyr::across(dplyr::all_of(key))) %>%
         dplyr::summarise(deaths = sum(.data$deaths, na.rm = TRUE), .groups = "drop")
       if (nrow(regional) == 0) next
+      # The rows cover the region's members less those added below, plus those
+      # taken away.
+      regional <- top_up_regional_rows(regional, union(setdiff(region_members, plus), minus), year)
 
       municipal_part <- function(areas, frame) {
         frame[frame$year == year & frame$area %in% areas, c(key, "deaths"), drop = FALSE] %>%
@@ -330,6 +333,29 @@ substitute_regional_deaths <- function(df,
   df <- df %>% dplyr::arrange(.data$year, .data$area, .data$sex, .data$age_band)
   attr(df, "regional_substitutions") <- applied
   df
+}
+
+# INE's regional rows by age leave out the deaths without a recorded age, which
+# its all-ages totals keep (Continente 2021: 119,589 in the bands, 119,595 in
+# total). The municipal frames and Portugal's own row are filled to those totals
+# (fill_death_ages() in R/data_access.R), so a region from its rows is topped up
+# to the total of its municipalities, in proportion to its own age profile -
+# otherwise the NUTS I regions would not add up to Portugal. Only upwards, and
+# only where the death totals have the year.
+top_up_regional_rows <- function(regional, members, year) {
+  totals <- if (exists("death_totals_for", mode = "function")) {
+    tryCatch(death_totals_for(year, unique(regional$cause)), error = function(e) NULL)
+  }
+  if (is.null(totals) || nrow(regional) == 0) return(regional)
+  totals <- totals[totals$area %in% members, , drop = FALSE]
+  target <- tapply(totals$deaths, paste(totals$sex, totals$cause, sep = "\r"), sum, na.rm = TRUE)
+  key <- paste(regional$sex, regional$cause, sep = "\r")
+  bands <- tapply(regional$deaths, key, sum, na.rm = TRUE)
+  want <- as.numeric(target[key])
+  have <- as.numeric(bands[key])
+  scale <- ifelse(is.finite(want) & is.finite(have) & have > 0 & want > have, want / have, 1)
+  regional$deaths <- regional$deaths * scale
+  regional
 }
 
 # A region whose series mixes INE rows and municipal sums steps where the source

@@ -120,6 +120,100 @@ planning_death_indicator <- function(year) {
   if (is.null(path)) NULL else basename(dirname(dirname(path)))
 }
 
+# ---------------------------------------------------------
+# The latest year: all-cause deaths by age from weekly deaths
+# ---------------------------------------------------------
+# Deaths by age and cause arrive with 0013166 in March of year n+2. For the year
+# in between, tools/build_calendar_deaths_by_age.R rebuilds all-cause deaths by
+# age for the NUTS II 2024 regions, the autonomous regions, Portugal and the
+# Continente from INE's weekly and parish deaths
+# (data/snapshots/calendar_deaths_by_age). A year with that file but no
+# by-cause files gets a block whose municipal deaths are NA: only areas made of
+# whole regions - Portugal, the Continente, a NUTS II region, Lisboa e Vale do
+# Tejo as three of them - have a value, and only for all causes and both sexes.
+# Everything else stays empty rather than estimated.
+planning_calendar_deaths <- function(year) {
+  key <- paste(infant_snapshot_root(), "calendar", year, sep = "|")
+  if (!exists(key, envir = planning_cache, inherits = FALSE)) {
+    path <- file.path(infant_snapshot_root(), "calendar_deaths_by_age", paste0("year_", year, ".rds"))
+    assign(key, if (file.exists(path)) readRDS(path) else NULL, envir = planning_cache)
+  }
+  get(key, envir = planning_cache, inherits = FALSE)
+}
+
+# Years with the rebuilt deaths and no by-cause files yet.
+planning_calendar_years <- function() {
+  files <- list.files(file.path(infant_snapshot_root(), "calendar_deaths_by_age"), pattern = "^year_\\d{4}\\.rds$")
+  sort(setdiff(as.integer(sub("^year_(\\d{4})\\.rds$", "\\1", files)), life_death_years()))
+}
+
+# All-cause deaths by band of an area made of whole calendar regions, or NULL.
+planning_calendar_area_deaths <- function(area, year, lookup = get_nuts_lookup(), sex = "HM") {
+  calendar <- planning_calendar_deaths(year)
+  if (is.null(calendar) || !identical(sex, "HM")) return(NULL)
+  rows <- calendar[calendar$sex == "HM" & calendar$age_band %in% age_levels, , drop = FALSE]
+  by_band <- function(names) {
+    take <- rows$area %in% names
+    v <- tapply(rows$deaths[take], factor(rows$age_band[take], levels = age_levels), sum)
+    v[is.na(v)] <- 0
+    stats::setNames(as.numeric(v), age_levels)
+  }
+  if (area %in% planning_published_areas) return(if (area %in% rows$area) by_band(area) else NULL)
+  if (is.null(lookup)) return(NULL)
+  members <- planning_area_members(area, lookup)
+  reference <- get_nuts_lookup("2024")
+  regions <- unique(reference$nuts2[reference$municipality %in% members])
+  if (length(regions) == 0 || !all(regions %in% rows$area)) return(NULL)
+  if (!setequal(members, reference$municipality[reference$nuts2 %in% regions])) return(NULL)
+  by_band(regions)
+}
+
+# The block of a calendar year, in the shape of planning_cause_age_block() (with
+# `measures`) or life_year_block() (without): deaths NA except Portugal's and
+# the Continente's own rows, nothing spread, the year's population and infant
+# deaths. The regions are read by planning_regional_area_deaths().
+planning_calendar_block <- function(year, municipalities, measures = NULL) {
+  pop <- read_year_file("population", year)
+  if (is.null(pop) || is.null(planning_calendar_deaths(year))) return(NULL)
+  infant <- read_year_file("infant_totals", year)
+  labels <- unique(c(municipalities, planning_published_areas))
+  bands <- age_levels
+  by_sex <- lapply(c("HM", "H", "M"), function(sex) {
+    population <- matrix(0, length(labels), length(bands), dimnames = list(labels, bands))
+    rows <- pop[pop$sex == sex & pop$area %in% labels & pop$age_band %in% bands, , drop = FALSE]
+    summed <- rowsum(rows$pop, paste(rows$area, rows$age_band, sep = "\r"), reorder = FALSE)
+    population[do.call(rbind, strsplit(rownames(summed), "\r", fixed = TRUE))] <- summed[, 1]
+    deaths <- matrix(NA_real_, length(labels), length(bands), dimnames = list(labels, bands))
+    own <- stats::setNames(rep(FALSE, length(labels)), labels)
+    for (area in intersect(labels, planning_published_areas)) {
+      d <- planning_calendar_area_deaths(area, year, NULL, sex)
+      if (!is.null(d)) {
+        deaths[area, ] <- d
+        own[[area]] <- TRUE
+      }
+    }
+    infant_deaths <- stats::setNames(rep(0, length(labels)), labels)
+    if (!is.null(infant)) {
+      rows <- infant[infant$sex == sex & infant$area %in% labels, , drop = FALSE]
+      if (nrow(rows) > 0) {
+        agg <- tapply(rows$deaths, rows$area, sum)
+        infant_deaths[names(agg)] <- agg
+      }
+    }
+    spread <- stats::setNames(rep(0, length(labels)), labels)
+    if (!is.null(measures)) {
+      all_measures <- array(NA_real_, c(length(labels), length(bands), length(measures)), dimnames = list(labels, bands, measures))
+      all_measures[, , "all"] <- deaths
+      deaths <- all_measures
+      spread <- matrix(0, length(labels), length(measures), dimnames = list(labels, measures))
+    }
+    list(deaths = deaths, spread = spread, population = population, infant = infant_deaths,
+         has_row = own, has_population = rowSums(population) > 0, calendar = TRUE)
+  })
+  names(by_sex) <- c("HM", "H", "M")
+  by_sex
+}
+
 # INE's own regional rows by age band, summed into the tab's measures: one
 # matrix per measure, region code by band. Their bands add up to their totals,
 # so a region built from them needs no deaths spread over ages at all.
@@ -180,6 +274,14 @@ planning_regional_row_parts <- function(area, year, sex, vintage = default_nuts_
 # from its own all-cause matrix.
 planning_regional_area_deaths <- function(area, year, sex, block, vintage = default_nuts_vintage(),
                                           lookup = get_nuts_lookup(), measure = NULL) {
+  if (isTRUE(block$calendar)) {
+    deaths <- planning_calendar_area_deaths(area, year, lookup, sex)
+    if (is.null(deaths) || !is.null(measure)) return(deaths)
+    measures <- dimnames(block$deaths)[[3]]
+    out <- matrix(NA_real_, length(deaths), length(measures), dimnames = list(names(deaths), measures))
+    out[, "all"] <- deaths
+    return(out)
+  }
   parts <- planning_regional_row_parts(area, year, sex, vintage, lookup)
   if (is.null(parts)) return(NULL)
   municipal <- block$deaths
@@ -188,6 +290,20 @@ planning_regional_area_deaths <- function(area, year, sex, block, vintage = defa
   add <- function(names) {
     if (is.null(measure)) apply(municipal[names, , , drop = FALSE], c(2, 3), sum)
     else colSums(municipal[names, , drop = FALSE])
+  }
+  # The rows leave out deaths without a recorded age. They are topped up, in
+  # their own age profile, to what the municipalities they cover hold once
+  # theirs are filled in (see top_up_regional_rows() in R/regional_rows.R):
+  # the area's members, less those added to the rows, plus those taken away.
+  members <- intersect(planning_area_members(area, lookup), rownames(municipal))
+  if (length(members) > 0) {
+    covered <- add(members)
+    if (length(parts$plus) > 0) covered <- covered - add(parts$plus)
+    if (length(parts$minus) > 0) covered <- covered + add(parts$minus)
+    target <- if (is.null(measure)) colSums(covered) else sum(covered)
+    have <- if (is.null(measure)) colSums(total) else sum(total)
+    scale <- ifelse(is.finite(target) & have > 0 & target > have, target / have, 1)
+    total <- if (is.null(measure)) sweep(total, 2, scale, `*`) else total * scale
   }
   if (length(parts$plus) > 0) total <- total + add(parts$plus)
   if (length(parts$minus) > 0) total <- total - add(parts$minus)
@@ -208,8 +324,9 @@ planning_cause_age_block <- function(year, municipalities) {
   totals <- read_death_totals_year(year)
   files <- lapply(stats::setNames(causes, causes), planning_death_cause_file, year = year)
   if (is.null(pop) || is.null(files[[planning_all_causes]])) {
-    assign(key, NULL, envir = planning_cache)
-    return(NULL)
+    value <- if (is.null(pop)) NULL else planning_calendar_block(year, municipalities, c(names(measures), "avoidable"))
+    assign(key, value, envir = planning_cache)
+    return(value)
   }
   frames <- lapply(files, function(f) if (is.null(f)) NULL else readRDS(f))
   infant <- read_year_file("infant_totals", year)
@@ -285,7 +402,8 @@ planning_standardised_years <- function() life_expectancy_years()
 # measure, person-years, deaths spread, infant deaths. NULL when a year is
 # missing.
 planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLANNING_DEFAULT_SPLIT_MODE,
-                                       vintage = planning_lookup_vintage(lookup)) {
+                                       vintage = planning_lookup_vintage(lookup), basis = default_population_basis()) {
+  end_of_year <- identical(normalize_population_basis(basis), "end")
   # 0/1 here: planning_band_product() applies the parish weights per age band.
   membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
@@ -327,9 +445,16 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
     }
     for (area in published) if (isTRUE(block$has_row[[area]])) s[area, ] <- block$spread[area, ]
     spread <- spread + s
-    mid <- (block$population + before$population) / 2
+    # Person-years: the mean of the two year-ends around the year, as INE does,
+    # or the end-of-year estimate alone (population_basis_choices).
+    mid <- if (end_of_year) block$population else (block$population + before$population) / 2
     py <- planning_band_product(membership, mid, mode)
-    for (area in published) if (sum(mid[area, ]) > 0) py[area, ] <- mid[area, ]
+    # The published row only where every year-end it uses has it: Continente
+    # first appears in the 2021 estimates (0012918), so for 2021 the mean with an
+    # absent 2020 row would be half the population and double the rate.
+    for (area in published) {
+      if (sum(block$population[area, ]) > 0 && (end_of_year || sum(before$population[area, ]) > 0)) py[area, ] <- mid[area, ]
+    }
     person_years <- person_years + py
     inf <- planning_weighted_sum(membership, block$infant, "female_15_49", mode, window[[j]])
     for (area in published) if (block$infant[[area]] > 0) inf[match(area, areas)] <- block$infant[[area]]
@@ -370,7 +495,7 @@ planning_band_upper <- function(bands) {
 # `end_years`, in the shape of planning_indicator_table().
 planning_standardised_table <- function(areas, end_years, ids = standardised_ids, lookup = get_nuts_lookup(),
                                         benchmark = "Portugal", sex = "HM", mode = PLANNING_DEFAULT_SPLIT_MODE,
-                                        vintage = planning_lookup_vintage(lookup)) {
+                                        vintage = planning_lookup_vintage(lookup), basis = default_population_basis()) {
   wanted <- STANDARDISED_INDICATORS[STANDARDISED_INDICATORS$id %in% ids, , drop = FALSE]
   areas <- unique(as.character(areas))
   all_areas <- unique(c(areas, benchmark))
@@ -381,7 +506,7 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
 
   rows <- list()
   for (end_year in as.integer(end_years)) {
-    pool <- if (end_year %in% available) planning_standardised_pool(all_areas, end_year, sex, lookup, mode, vintage) else NULL
+    pool <- if (end_year %in% available) planning_standardised_pool(all_areas, end_year, sex, lookup, mode, vintage, basis) else NULL
     for (i in seq_len(nrow(wanted))) {
       spec <- wanted[i, ]
       value <- lower <- upper_ci <- numerator <- denominator <- rep(NA_real_, length(areas))
@@ -441,9 +566,10 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
 # Mortality by cause group for one triennium: observed, expected, SMR against
 # the benchmark, and the standardised rates at all ages and under 75.
 planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_lookup(), benchmark = "Portugal", sex = "HM",
-                                        mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup)) {
+                                        mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup),
+                                        basis = default_population_basis()) {
   areas <- unique(as.character(areas))
-  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage)
+  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis)
   if (is.null(pool)) return(tibble::tibble())
   measures <- planning_standardised_measures()
   measures <- measures[!names(measures) %in% c("preventable", "treatable")]

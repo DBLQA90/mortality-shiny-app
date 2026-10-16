@@ -121,3 +121,137 @@ build_fitted_values_df <- function(obs, fits, inverse = function(x) as.numeric(x
     )
   }))
 }
+
+# ---------------------------------------------------------
+# Infant mortality over several years
+# ---------------------------------------------------------
+# Infant mortality is usually reported over three or five years, because a
+# region has a few dozen infant deaths a year. Two ways to project it:
+#   "annual"  fit the models to the yearly rates and add up the projected years
+#             into each window afterwards (infant_window_forecast());
+#   "rolling" fit them to the series of window rates itself.
+# The rolling series shares four of its five years with its neighbour, so it is
+# smooth by construction: the models read that smoothness as signal, choose
+# trends too readily, and give intervals far narrower than the yearly
+# variation warrants. The annual fit sees the real year-to-year noise.
+
+# Under-1 deaths and live births of a selection, by year.
+infant_annual_series <- function(years, areas) {
+  rows <- lapply(as.integer(years), function(year) {
+    tibble::tibble(year = year, deaths = infant_deaths_total(year, areas), births = get_births_total(year, areas))
+  })
+  out <- dplyr::bind_rows(rows)
+  out[is.finite(out$deaths) & is.finite(out$births) & out$births > 0, , drop = FALSE]
+}
+
+# Rate per 1,000 live births over the `window` years ending in each year, with
+# an exact Poisson interval; only years whose whole window is present.
+infant_window_rates <- function(annual, window = 1L) {
+  annual <- annual[order(annual$year), , drop = FALSE]
+  window <- as.integer(window)
+  rows <- lapply(annual$year, function(year) {
+    span <- seq.int(year - window + 1L, year)
+    if (!all(span %in% annual$year)) return(NULL)
+    take <- annual$year %in% span
+    r <- compute_infant_mortality(sum(annual$deaths[take]), sum(annual$births[take]))
+    tibble::tibble(year = year, value = r$value, lower = r$lower, upper = r$upper,
+                   deaths = r$deaths, births = r$births)
+  })
+  dplyr::bind_rows(rows)
+}
+
+# Window rates from forecasts of the yearly rate (`fc`: year, model, mean,
+# lower, upper, per 1,000). Each window adds the observed years it still holds
+# to the projected ones; projected years count with the last observed births,
+# so the rate is a births-weighted mean. The interval adds the yearly limits as
+# if the forecast errors were perfectly correlated across years - conservative,
+# and close for the trend and random-walk models, whose errors are.
+infant_window_forecast <- function(annual, fc, window) {
+  window <- as.integer(window)
+  annual <- annual[order(annual$year), , drop = FALSE]
+  last_births <- utils::tail(annual$births, 1)
+  rows <- lapply(split(fc, fc$model), function(f) {
+    f <- f[order(f$year), , drop = FALSE]
+    dplyr::bind_rows(lapply(f$year, function(year) {
+      span <- seq.int(year - window + 1L, year)
+      observed <- annual[annual$year %in% span, , drop = FALSE]
+      projected <- f[f$year %in% span, , drop = FALSE]
+      if (nrow(observed) + nrow(projected) < window) return(NULL)
+      births <- sum(observed$births) + last_births * nrow(projected)
+      combine <- function(rate) (sum(observed$deaths) + sum(rate) / 1000 * last_births) / births * 1000
+      tibble::tibble(year = year, model = f$model[[1]], mean = combine(projected$mean),
+                     lower = combine(projected$lower), upper = combine(projected$upper))
+    }))
+  })
+  dplyr::bind_rows(rows)
+}
+
+# ---------------------------------------------------------
+# Combining models
+# ---------------------------------------------------------
+# An equal-weight combination of the `k` models that validated best. Averages
+# of a few good models are rarely the worst and often the best forecast (the
+# M-competitions); they also stop the chosen method from changing from one area
+# to the next for reasons of noise, which matters when areas are compared.
+#
+# The point forecast is the mean of the members' means. The interval is that of
+# the mixture of their forecast distributions, read on the modelling scale
+# (`forward`/`inverse` from the transformation): each member's distribution is
+# recovered from its interval, and the mixture's quantiles are found
+# numerically. Where the members disagree the mixture is wider than any of
+# them, so the interval grows with the models' disagreement as well as with
+# each model's own uncertainty - the part a single model leaves out.
+FORECAST_COMBINATION_ID <- "combo"
+FORECAST_COMBINATION_SIZE <- 3L
+
+combine_model_forecasts <- function(fc, members, forward, inverse, level = 95) {
+  z <- stats::qnorm(1 - (1 - level / 100) / 2)
+  alpha <- (1 - level / 100) / 2
+  rows <- fc[fc$model %in% members, , drop = FALSE]
+  dplyr::bind_rows(lapply(split(rows, rows$year), function(r) {
+    lo <- forward(r$lower); hi <- forward(r$upper)
+    mu <- (lo + hi) / 2
+    s <- pmax((hi - lo) / (2 * z), 1e-9)
+    cdf <- function(q) mean(stats::pnorm((q - mu) / s))
+    span <- c(min(mu - 10 * s), max(mu + 10 * s))
+    quantile_at <- function(p) stats::uniroot(function(q) cdf(q) - p, span, tol = 1e-10)$root
+    tibble::tibble(year = r$year[[1]], model = FORECAST_COMBINATION_ID, mean = mean(r$mean),
+                   lower = inverse(quantile_at(alpha)), upper = inverse(quantile_at(1 - alpha)))
+  }))
+}
+
+# The members at each step of a rolling validation, chosen without hindsight:
+# the `k` models with the lowest error over the earlier steps only (the first
+# step uses `initial_order`, the in-sample ranking). `steps`: model, year,
+# predicted, actual. Returns the combination's own predictions, to be scored
+# like any model's.
+combination_rolling_predictions <- function(steps, initial_order, k = FORECAST_COMBINATION_SIZE) {
+  years <- sort(unique(steps$year))
+  dplyr::bind_rows(lapply(seq_along(years), function(i) {
+    current <- steps[steps$year == years[[i]], , drop = FALSE]
+    earlier <- steps[steps$year %in% years[seq_len(i - 1L)], , drop = FALSE]
+    order <- if (nrow(earlier) == 0) {
+      intersect(initial_order, current$model)
+    } else {
+      rmse <- tapply((earlier$predicted - earlier$actual)^2, earlier$model, function(x) sqrt(mean(x)))
+      intersect(names(sort(rmse)), current$model)
+    }
+    members <- utils::head(order, k)
+    tibble::tibble(model = FORECAST_COMBINATION_ID, year = years[[i]],
+                   predicted = mean(current$predicted[current$model %in% members]),
+                   actual = current$actual[[1]])
+  }))
+}
+
+# One model for several areas: the one with the lowest mean relative error
+# (RMSE over the mean of the area's series, so large and small areas count
+# alike) among the models every area could fit. `metrics`: one table per area
+# (Model, RMSE); `levels`: each area's mean observed value.
+choose_common_model <- function(metrics, levels) {
+  shared <- Reduce(intersect, lapply(metrics, function(m) m$Model[is.finite(m$RMSE)]))
+  if (length(shared) == 0) return(NULL)
+  relative <- vapply(shared, function(model) {
+    mean(mapply(function(m, level) m$RMSE[m$Model == model][[1]] / level, metrics, levels))
+  }, numeric(1))
+  names(which.min(relative))
+}

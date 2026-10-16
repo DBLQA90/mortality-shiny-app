@@ -14,7 +14,10 @@ required_packages <- c(
   "strucchange",
   "memoise",
   "cachem",
-  "later"
+  "later",
+  # The Word profile of the planning tab.
+  "officer",
+  "flextable"
 )
 
 get_cran_repos <- function() {

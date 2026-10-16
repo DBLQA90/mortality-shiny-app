@@ -301,7 +301,7 @@ planning_series_display <- function(series, spec, areas) {
   shown$column <- columns[match(shown$area, areas$area)]
   shown %>%
     dplyr::select(year, `Período`, column, cell) %>%
-    tidyr::pivot_wider(names_from = column, values_from = cell) %>%
+    tidyr::pivot_wider(names_from = column, values_from = cell, values_fill = "—") %>%
     dplyr::arrange(dplyr::desc(.data$year)) %>%
     dplyr::select(-year) %>%
     dplyr::select(dplyr::any_of(c("Período", columns)))
@@ -408,6 +408,70 @@ planning_funnel_data <- function(table, spec, benchmark_area) {
   attr(units, "reference") <- reference
   attr(units, "model") <- model
   units
+}
+
+# Empirical Bayes smoothing (Marshall, Biometrics 1991, global estimator): each
+# unit's rate is pulled towards the mean of all units by as much as its own
+# denominator leaves it unreliable. With m the pooled rate, the variance
+# between units is what the rates spread beyond the sampling variance a
+# Poisson (or binomial) count of the mean size would give; a unit keeps the
+# share w = between / (between + sampling) of its distance from m. A large unit
+# barely moves; one with a handful of events lands near m. It does not decide
+# whether a unit differs (the funnel does that) - it gives a steadier figure to
+# rank or map small areas by. The mean is the units' own, not the benchmark's.
+planning_eb_smooth <- function(units, model) {
+  n <- units$denominator
+  rate <- units$value / model$multiplier
+  ok <- is.finite(rate) & is.finite(n) & n > 0
+  m <- sum((rate * n)[ok]) / sum(n[ok])
+  sampling <- function(size) if (identical(model$model, "binomial")) m * (1 - m) / size else m / size
+  between <- max(sum((n * (rate - m)^2)[ok]) / sum(n[ok]) - sampling(mean(n[ok])), 0)
+  weight <- ifelse(ok, between / (between + sampling(n)), NA_real_)
+  units$smoothed <- (m + weight * (rate - m)) * model$multiplier
+  units$shrinkage_weight <- weight
+  attr(units, "smoothing_mean") <- m * model$multiplier
+  units
+}
+
+# Observed (hollow) and smoothed (filled) value of each unit against its
+# denominator, the funnel's axes, joined by the shift smoothing made.
+planning_eb_chart <- function(units, spec, year, benchmark_area, highlight = character(0), denominator_label = "Denominador") {
+  reference <- attr(units, "reference")
+  mean_all <- attr(units, "smoothing_mean")
+  units$hover <- paste0("<b>", units$area, "</b><br>Observado: ", planning_format_value(units$value, spec$digits),
+                        "<br>Suavizado: ", planning_format_value(units$smoothed, spec$digits),
+                        "<br>Peso do valor próprio: ", planning_format_value(100 * units$shrinkage_weight, 0), "%",
+                        "<br>", denominator_label, ": ", planning_format_value(units$denominator, 0))
+  units$highlighted <- units$area %in% highlight
+  segments <- data.frame(
+    x = rep(units$denominator, each = 3),
+    y = as.vector(rbind(units$value, units$smoothed, NA))
+  )
+  p <- plotly::plot_ly()
+  p <- plotly::add_lines(p, data = segments, x = ~x, y = ~y, name = "Deslocação", connectgaps = FALSE,
+                         line = list(color = PLANNING_INK$muted, width = 1), hoverinfo = "skip")
+  p <- plotly::add_lines(p, x = range(units$denominator), y = c(reference, reference),
+                         name = paste0(benchmark_area, ": ", planning_format_value(reference, spec$digits)),
+                         line = list(color = PLANNING_LEVEL_COLOURS[["Portugal"]], width = 2), hoverinfo = "skip")
+  p <- plotly::add_markers(p, data = units, x = ~denominator, y = ~value, name = "Observado", text = ~hover, hoverinfo = "text",
+                           marker = list(color = "rgba(0,0,0,0)", size = 8, line = list(color = PLANNING_INK$muted, width = 1)))
+  p <- plotly::add_markers(p, data = units, x = ~denominator, y = ~smoothed, name = "Suavizado (Bayes empírico)", text = ~hover,
+                           hoverinfo = "text",
+                           marker = list(color = "#2a78d6", size = 8,
+                                         line = list(color = ifelse(units$highlighted, PLANNING_INK$primary, "#ffffff"),
+                                                     width = ifelse(units$highlighted, 2.5, 0.5))))
+  marked <- units[units$highlighted, , drop = FALSE]
+  annotations <- lapply(seq_len(nrow(marked)), function(i) list(
+    x = log10(marked$denominator[[i]]), y = marked$smoothed[[i]], text = marked$area[[i]], showarrow = TRUE, arrowhead = 0,
+    ax = 30, ay = -25, font = list(color = PLANNING_INK$primary, size = 11)
+  ))
+  planning_plotly_layout(
+    p, annotations = annotations,
+    xaxis = list(title = paste0(denominator_label, " (escala logarítmica)"), type = "log"),
+    yaxis = list(title = paste0(spec$label, " (", spec$unit, "), ", planning_period_label(spec$id, year)),
+                 range = c(min(0, min(units$value)), max(units$value, reference, mean_all) * 1.1)),
+    margin = list(b = 90)
+  )
 }
 
 # The same three colours; beyond 99.8% is told apart from beyond 95% by the

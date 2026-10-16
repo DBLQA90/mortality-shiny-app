@@ -28,8 +28,12 @@ safe_filename_token <- function(x) {
   gsub("[^[:alnum:]_]+", "_", iconv(x, to = "ASCII//TRANSLIT"))
 }
 
+# Models the guided forecast builds from the others, not fitted on their own.
+forecast_derived_model_labels <- c("Combinação (média dos 3 melhores)" = "combo")
+
 get_model_labels <- function(model_ids) {
-  labels <- names(forecast_model_choices)[match(model_ids, forecast_model_choices)]
+  choices <- c(forecast_model_choices, forecast_derived_model_labels)
+  labels <- names(choices)[match(model_ids, choices)]
   labels[is.na(labels)] <- model_ids[is.na(labels)]
   labels
 }
