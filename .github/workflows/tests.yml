@@ -68,7 +68,10 @@ jobs:
       # The project does not auto-activate renv, so point the next steps at the
       # library it restored.
       - name: Use the restored library
-        run: echo "R_LIBS_USER=$(Rscript -e 'cat(renv::paths$library(project = getwd()))')" >> "$GITHUB_ENV"
+        run: |
+          # Only the path, on its own line: renv may print notices first.
+          lib=$(Rscript -e 'suppressMessages(cat(renv::paths$library(project = getwd()), sep = "\n"))' 2>/dev/null | tail -n 1)
+          echo "R_LIBS_USER=${lib}" >> "$GITHUB_ENV"
 
       - name: Package versions
         run: Rscript -e 'for (p in c("shiny", "forecast", "plotly", "dplyr", "testthat")) cat(p, as.character(packageVersion(p)), "\n")'

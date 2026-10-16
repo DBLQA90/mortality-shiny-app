@@ -1369,8 +1369,14 @@ planning_indicator_table <- function(areas, years, ids = PLANNING_INDICATORS$id,
   # previous year's population for its mid-year denominator.
   # The census change compares with the census ten years before, whatever the
   # range asked for: without it, 2021 read blank unless 2011 was requested too.
-  lookback <- if ("census_population_change" %in% ids) max(max_window, 10L) else max_window
-  component_years <- seq.int(min(years) - lookback, max(years))
+  component_years <- seq.int(min(years) - max_window, max(years))
+  # The census change looks up the census before, whatever the range asked
+  # for; only that census year is added, not the ten years in between (which
+  # made every table read a decade of components it did not use).
+  if ("census_population_change" %in% ids) {
+    census <- planning_extra_years("census_population")
+    component_years <- sort(union(component_years, census[census >= min(years) - 10L & census < min(component_years)]))
+  }
   components <- if (length(setdiff(ids, c(life_expectancy_ids, standardised_ids))) > 0) planning_components(areas, component_years, lookup, mode) else NULL
 
   undercount <- if (any(c("infant_rate") %in% ids)) {
