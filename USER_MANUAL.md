@@ -1137,10 +1137,13 @@ O subseparador **Mapa** mostra Portugal com até quatro indicadores lado a lado,
 por município, NUTS III, ULS ou NUTS II, para comparar onde vários estão altos ou
 baixos ao mesmo tempo.
 
-- **Cores face a Portugal (= 100)**: todos os mapas na mesma escala, azul abaixo
-  e vermelho acima, de 67 a 150. Indicadores em unidades diferentes lêem-se
-  juntos. Acima de Portugal não quer dizer pior: uma esperança de vida alta e uma
-  mortalidade alta ficam ambas a vermelho.
+- **Cores face a Portugal (= 100)**: todos os mapas de 67 a 150, coloridos pelo
+  que a diferença significa: **vermelho onde a área está pior** do que Portugal,
+  azul onde está melhor. Uma mortalidade alta e uma esperança de vida baixa ficam
+  ambas a vermelho, e indicadores em unidades diferentes lêem-se juntos. Os
+  indicadores sem melhor nem pior (estrutura etária, natalidade, sectores de
+  emprego, taxa bruta de mortalidade, que depende sobretudo da idade da população)
+  ficam a violeta abaixo e amarelo acima. Cada mapa tem a sua legenda.
 - **Quintis**: cada indicador em cinco grupos com o mesmo número de áreas; mostra
   a ordenação, não a distância a Portugal.
 - **Suavizar**: as taxas de áreas pequenas aproximadas da média (Bayes empírico,

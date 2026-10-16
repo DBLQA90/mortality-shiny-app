@@ -45,3 +45,23 @@ test_that("a click finds the area under it", {
   expect_equal(planning_map_hit(b, -8.68, 41.2), "Matosinhos")
   expect_null(planning_map_hit(b, -12, 36))
 })
+
+test_that("maps colour by meaning: red is worse whichever way the indicator runs", {
+  expect_equal(planning_indicator_direction(c("dsr_premature", "life_expectancy_65", "ageing_index")), c("worse", "better", "neutral"))
+  b <- planning_map_boundaries("nuts2", "2024")
+  values <- tibble::tibble(
+    indicator = c("dsr_premature", "life_expectancy_65"), direction = c("worse", "better"),
+    panel = c("a", "b"), area = "Norte", value = c(1, 1), observed = c(1, 1), flag = "", digits = 1,
+    benchmark_value = c(1, 1), index = c(150, 150), quintile = 5L
+  )
+  chart <- planning_map_chart(values, b, "index")
+  expect_s3_class(chart, "planning_map")
+  expect_length(chart$plots, 2)
+  fill_of <- function(p) {
+    built <- ggplot2::ggplot_build(p)$data[[1]]
+    unique(built$fill[built$group %in% which(levels(factor(p$data$piece)) %in% p$data$piece[p$data$id == "Norte"])])
+  }
+  # 150 on a "worse" indicator is the red end; on a "better" one, the blue end.
+  expect_equal(toupper(fill_of(chart$plots[[1]])), toupper(PLANNING_MAP_DIVERGING[["high"]]))
+  expect_equal(toupper(fill_of(chart$plots[[2]])), toupper(PLANNING_MAP_DIVERGING[["low"]]))
+})

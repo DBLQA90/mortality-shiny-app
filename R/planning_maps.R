@@ -4,14 +4,18 @@
 #
 # Small multiples of the country by municipality, NUTS III, NUTS II or ULS, one
 # map per indicator. By default every indicator is shown against the benchmark
-# (Portugal = 100) on one common diverging scale - blue below, red above, grey
-# at Portugal - so maps of different indicators, in different units, can be read
-# together as a heatmap: where several are high at once. The alternative is
-# each indicator's own quintiles, which shows its internal ranking whatever its
-# spread.
+# (Portugal = 100) on the same log-symmetric range, 67 to 150, coloured by what
+# the difference means (PLANNING_INDICATOR_DIRECTION): red where the area is
+# worse than Portugal and blue where it is better - so a high mortality and a
+# low life expectancy are both red, and maps of different indicators, in
+# different units, read together as a heatmap of where things are worse. An
+# indicator with no better or worse direction (age structure, births,
+# employment sectors) is drawn violet below and yellow above, a pair that
+# carries no judgement. The alternative is each indicator's own quintiles,
+# which shows its internal ranking whatever its spread.
 #
-# Above Portugal is not worse: a high life expectancy and a high mortality rate
-# are both red. The note under the maps says so.
+# Each map has its own legend, so the panels are separate plots laid out with
+# grid (planning_map_draw()).
 #
 # The boundaries are plain coordinate tables built once by
 # tools/build_boundaries.R from the geopt package (CAOP, DGT); drawing them
@@ -22,6 +26,30 @@ PLANNING_MAP_MAX_INDICATORS <- 4L
 # The diverging pair and neutral midpoint of the chart palette; the index is
 # drawn on a log scale so that 150 and 67 sit at the same distance from 100.
 PLANNING_MAP_DIVERGING <- c(low = "#256abf", mid = "#f0efec", high = "#e34948")
+# Neutral indicators: violet and yellow, distinct from the blue/red of better
+# and worse (OKLab distance x100 between them: 42 in normal vision, 33 or more
+# under each colour-vision deficiency).
+PLANNING_MAP_NEUTRAL <- c(low = "#6250d6", mid = "#f0efec", high = "#eda100")
+
+# Which way is better, for the indicators where that is not a matter of
+# opinion. Everything else - age structure and dependency, births and
+# fertility, employment sectors, pensioners, waste per inhabitant, the crude
+# death rate (which mostly measures how old the population is) - is neutral.
+PLANNING_INDICATOR_DIRECTION <- c(
+  smr_all = "worse", dsr_all = "worse", dsr_premature = "worse", dsr_preventable = "worse", dsr_treatable = "worse",
+  ypll_rate = "worse", infant_rate = "worse", neonatal_rate = "worse", early_neonatal_rate = "worse",
+  postneonatal_rate = "worse", late_fetal_rate = "worse", perinatal_rate = "worse", preterm_pct = "worse",
+  low_birth_weight_pct = "worse", teen_births_pct = "worse", pct_education_none = "worse", illiteracy_rate = "worse",
+  rsi_rate = "worse",
+  life_expectancy = "better", life_expectancy_men = "better", life_expectancy_women = "better",
+  life_expectancy_65 = "better", life_expectancy_65_men = "better", life_expectancy_65_women = "better",
+  purchasing_power = "better", earnings_mean = "better", pension_mean = "better", pct_education_higher = "better",
+  waste_selective_per_capita = "better"
+)
+planning_indicator_direction <- function(id) {
+  direction <- unname(PLANNING_INDICATOR_DIRECTION[id])
+  ifelse(is.na(direction), "neutral", direction)
+}
 PLANNING_MAP_INDEX_LIMITS <- c(2 / 3, 3 / 2)
 PLANNING_MAP_QUINTILES <- c("#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
 
@@ -98,6 +126,7 @@ planning_map_values <- function(ids, level, lookup, max_year, benchmark = "Portu
     }
     tibble::tibble(
       indicator = id,
+      direction = planning_indicator_direction(id),
       panel = paste0(paste(strwrap(spec$label, 46), collapse = "\n"), "\n", spec$unit, ", ", planning_period_label(id, year),
                      if (identical(method, "suavizado")) ", suavizado" else ""),
       area = rows$area,
@@ -112,56 +141,78 @@ planning_map_values <- function(ids, level, lookup, max_year, benchmark = "Portu
   }))
 }
 
-# Small multiples, two per row. `scale`: "index" (Portugal = 100, common to
-# every map) or "quintile" (each indicator's own fifths).
+# One map per indicator, each with its own legend, as a list that
+# planning_map_draw() lays out two per row. `scale`: "index" (against the
+# benchmark, coloured by meaning) or "quintile" (each indicator's own fifths).
 planning_map_chart <- function(values, boundaries, scale = "index", highlight = character(0), benchmark = "Portugal") {
   polygons <- boundaries$polygons
-  panels <- unique(values$panel)
-  drawn <- dplyr::bind_rows(lapply(panels, function(p) {
-    v <- values[values$panel == p, c("area", "index", "quintile"), drop = FALSE]
-    out <- dplyr::left_join(polygons, v, by = c("id" = "area"))
-    out$panel <- p
-    out
-  }))
-  drawn$panel <- factor(drawn$panel, levels = panels)
   frames <- boundaries$frames
-  if (identical(scale, "quintile")) {
-    drawn$quintile <- factor(drawn$quintile, levels = 1:5)
-    plot <- ggplot2::ggplot(drawn, ggplot2::aes(x = .data$x, y = .data$y, group = .data$piece, subgroup = .data$hole)) +
-      ggplot2::geom_polygon(ggplot2::aes(fill = .data$quintile), colour = "#ffffff", linewidth = 0.08) +
-      ggplot2::scale_fill_manual(values = stats::setNames(PLANNING_MAP_QUINTILES, 1:5), na.value = "#d9d8d3", drop = FALSE,
-                                 breaks = as.character(1:5), labels = c("1 (mais baixo)", "2", "3", "4", "5 (mais alto)"),
-                                 name = "Quintil (cinzento: sem valor)")
-  } else {
-    drawn$log_index <- log(pmin(pmax(drawn$index / 100, PLANNING_MAP_INDEX_LIMITS[1]), PLANNING_MAP_INDEX_LIMITS[2]))
-    breaks <- c(67, 80, 100, 125, 150)
-    plot <- ggplot2::ggplot(drawn, ggplot2::aes(x = .data$x, y = .data$y, group = .data$piece, subgroup = .data$hole)) +
-      ggplot2::geom_polygon(ggplot2::aes(fill = .data$log_index), colour = "#ffffff", linewidth = 0.08) +
-      ggplot2::scale_fill_gradient2(
-        low = PLANNING_MAP_DIVERGING[["low"]], mid = PLANNING_MAP_DIVERGING[["mid"]], high = PLANNING_MAP_DIVERGING[["high"]],
-        midpoint = 0, limits = log(PLANNING_MAP_INDEX_LIMITS), breaks = log(breaks / 100), labels = breaks,
-        na.value = "#d9d8d3", name = paste0(benchmark, " = 100 (cinzento: sem valor)")
+  panels <- unique(values$panel)
+  plots <- lapply(panels, function(p) {
+    v <- values[values$panel == p, , drop = FALSE]
+    drawn <- dplyr::left_join(polygons, v[, c("area", "index", "quintile")], by = c("id" = "area"))
+    direction <- v$direction[[1]]
+    base <- function(data) ggplot2::ggplot(data, ggplot2::aes(x = .data$x, y = .data$y, group = .data$piece, subgroup = .data$hole))
+    if (identical(scale, "quintile")) {
+      drawn$quintile <- factor(drawn$quintile, levels = 1:5)
+      plot <- base(drawn) +
+        ggplot2::geom_polygon(ggplot2::aes(fill = .data$quintile), colour = "#ffffff", linewidth = 0.08) +
+        ggplot2::scale_fill_manual(values = stats::setNames(PLANNING_MAP_QUINTILES, 1:5), na.value = "#d9d8d3", drop = FALSE,
+                                   breaks = as.character(1:5), labels = c("1 (mais baixo)", "2", "3", "4", "5 (mais alto)"),
+                                   name = "Quintil")
+    } else {
+      drawn$log_index <- log(pmin(pmax(drawn$index / 100, PLANNING_MAP_INDEX_LIMITS[1]), PLANNING_MAP_INDEX_LIMITS[2]))
+      colours <- switch(direction,
+                        worse = PLANNING_MAP_DIVERGING,
+                        better = c(low = PLANNING_MAP_DIVERGING[["high"]], mid = PLANNING_MAP_DIVERGING[["mid"]], high = PLANNING_MAP_DIVERGING[["low"]]),
+                        PLANNING_MAP_NEUTRAL)
+      meaning <- switch(direction, worse = "vermelho: pior", better = "vermelho: pior", "sem melhor nem pior")
+      breaks <- c(67, 80, 100, 125, 150)
+      plot <- base(drawn) +
+        ggplot2::geom_polygon(ggplot2::aes(fill = .data$log_index), colour = "#ffffff", linewidth = 0.08) +
+        ggplot2::scale_fill_gradient2(
+          low = colours[["low"]], mid = colours[["mid"]], high = colours[["high"]],
+          midpoint = 0, limits = log(PLANNING_MAP_INDEX_LIMITS), breaks = log(breaks / 100), labels = breaks,
+          na.value = "#d9d8d3", name = paste0(benchmark, " = 100\n", meaning)
+        )
+    }
+    if (length(highlight) > 0) {
+      marked <- drawn[drawn$id %in% highlight, , drop = FALSE]
+      plot <- plot + ggplot2::geom_polygon(data = marked, fill = NA, colour = "#0b0b0b", linewidth = 0.6)
+    }
+    if (!is.null(frames) && nrow(frames) > 0) {
+      plot <- plot + ggplot2::geom_path(data = frames, ggplot2::aes(x = .data$x, y = .data$y, group = .data$group),
+                                        inherit.aes = FALSE, colour = "#898781", linewidth = 0.3)
+    }
+    plot +
+      ggplot2::coord_quickmap() +
+      ggplot2::labs(title = p) +
+      ggplot2::theme_void(base_size = 12) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 11, colour = "#0b0b0b", hjust = 0.5, lineheight = 1.1),
+        legend.position = "bottom", legend.key.width = grid::unit(1.4, "cm"),
+        legend.title = ggplot2::element_text(size = 9, colour = "#52514e", lineheight = 1),
+        legend.text = ggplot2::element_text(size = 8, colour = "#52514e")
       )
+  })
+  structure(list(plots = plots, caption = boundaries$meta$attribution), class = "planning_map")
+}
+
+# Draws the maps two per row, with the boundaries' attribution underneath.
+planning_map_draw <- function(chart) {
+  n <- length(chart$plots)
+  columns <- min(2L, n)
+  rows <- ceiling(n / columns)
+  grid::grid.newpage()
+  layout <- grid::grid.layout(rows + 1L, columns, heights = grid::unit(c(rep(1, rows), 1.5), c(rep("null", rows), "lines")))
+  grid::pushViewport(grid::viewport(layout = layout))
+  for (i in seq_len(n)) {
+    print(chart$plots[[i]], vp = grid::viewport(layout.pos.row = (i - 1L) %/% columns + 1L, layout.pos.col = (i - 1L) %% columns + 1L))
   }
-  if (length(highlight) > 0) {
-    marked <- drawn[drawn$id %in% highlight, , drop = FALSE]
-    plot <- plot + ggplot2::geom_polygon(data = marked, fill = NA, colour = "#0b0b0b", linewidth = 0.6)
-  }
-  if (!is.null(frames) && nrow(frames) > 0) {
-    plot <- plot + ggplot2::geom_path(data = frames, ggplot2::aes(x = .data$x, y = .data$y, group = .data$group),
-                                      inherit.aes = FALSE, colour = "#898781", linewidth = 0.3)
-  }
-  plot +
-    ggplot2::facet_wrap(~panel, ncol = min(2L, length(panels))) +
-    ggplot2::coord_quickmap() +
-    ggplot2::labs(caption = boundaries$meta$attribution) +
-    ggplot2::theme_void(base_size = 12) +
-    ggplot2::theme(
-      strip.text = ggplot2::element_text(size = 11, colour = "#0b0b0b", margin = ggplot2::margin(4, 0, 4, 0), lineheight = 1.1),
-      legend.position = "bottom", legend.key.width = grid::unit(2.2, "cm"),
-      plot.caption = ggplot2::element_text(colour = "#52514e", size = 9),
-      panel.spacing = grid::unit(1, "lines")
-    )
+  grid::pushViewport(grid::viewport(layout.pos.row = rows + 1L, layout.pos.col = seq_len(columns)))
+  grid::grid.text(chart$caption, x = 0.98, hjust = 1, gp = grid::gpar(fontsize = 9, col = "#52514e"))
+  grid::popViewport(2)
+  invisible(chart)
 }
 
 # The area under a click, by ray casting on the polygons (outline in, holes out).

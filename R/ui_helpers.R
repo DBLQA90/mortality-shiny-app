@@ -762,6 +762,7 @@ observed_mortality_tab_ui <- function() {
           ))
         ),
         tableOutput("rateTrendTable"),
+        uiOutput("rateTrendNote"),
         trend_help(),
         h4("Série anual observada"),
         tableOutput("rateTable"),
@@ -1043,7 +1044,7 @@ planning_tab_ui <- function() {
               column(3, radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio")),
               column(3, radioButtons(
                 "planning_map_scale", "Cores:",
-                choices = c("Face a Portugal (= 100), comum a todos" = "index", "Quintis de cada indicador" = "quintile"),
+                choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index", "Quintis de cada indicador" = "quintile"),
                 selected = "index"
               ))
             ),

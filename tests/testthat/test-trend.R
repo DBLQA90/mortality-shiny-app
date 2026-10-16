@@ -41,3 +41,11 @@ test_that("an imprecise year counts less", {
   weighted <- trend_apc(years, values, lower, upper)
   expect_lt(abs(weighted$aapc$apc + 3), abs(precise$aapc$apc + 3))
 })
+
+test_that("a period crossing 2020/2021 carries the COVID-19 and population-revision warning", {
+  expect_null(trend_break_note(2010:2019))
+  expect_null(trend_break_note(2021:2025))
+  expect_match(trend_break_note(2015:2024), "COVID-19")
+  expect_match(trend_break_note(1995:2025, joinpoints = c(2017, 2020)), "2020 pode reflectir")
+  expect_false(grepl("2017", trend_break_note(1995:2025, joinpoints = c(2017, 2020))))
+})

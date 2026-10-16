@@ -3570,6 +3570,14 @@ server <- function(input, output, session) {
     build_trend_table(trend)
   }, bordered = TRUE, spacing = "s")
 
+  output$rateTrendNote <- renderUI({
+    trend <- tryCatch(observed_trend(), error = function(e) NULL)
+    req(trend)
+    note <- trend_break_note(trend$fitted$year, trend$joinpoints)
+    if (is.null(note)) return(NULL)
+    tags$p(class = "text-warning", note)
+  })
+
   output$ratePlot <- plotly::renderPlotly({
     p <- build_observed_rate_plot(observed_history())
     trend <- tryCatch(observed_trend(), error = function(e) NULL)
@@ -4505,7 +4513,8 @@ server <- function(input, output, session) {
       "pela sua precisão (método Joinpoint, sem mudanças de tendência). ",
       if (spec$window > 1) "Valores trienais: só triénios que não se sobrepõem, terminando no último ano. " else "",
       "Significativa quando o intervalo não inclui 0; não diz se a subida ou a descida é desejável. ",
-      "Com mudanças de tendência, veja o separador Mortalidade Observada."
+      "Com mudanças de tendência, veja o separador Mortalidade Observada. ",
+      trend_break_note(planning_year_range()) %||% ""
     ))
   })
 
@@ -4630,7 +4639,7 @@ server <- function(input, output, session) {
   }
 
   output$planningMapPlot <- renderPlot(
-    planning_map_plot(),
+    planning_map_draw(planning_map_plot()),
     height = function() if (length(unique(planning_map_view()$values$panel)) <= 2) 600 else 1150
   )
 
@@ -4638,7 +4647,9 @@ server <- function(input, output, session) {
     filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".png"),
     content = function(file) {
       panels <- length(unique(planning_map_view()$values$panel))
-      ggplot2::ggsave(file, planning_map_plot(), width = 10, height = if (panels <= 2) 6.5 else 12, dpi = 150, bg = "white")
+      grDevices::png(file, width = 10, height = if (panels <= 2) 6.5 else 12, units = "in", res = 150, bg = "white")
+      on.exit(grDevices::dev.off(), add = TRUE)
+      planning_map_draw(planning_map_plot())
     }
   )
 
@@ -4658,12 +4669,14 @@ server <- function(input, output, session) {
     scale <- input$planning_map_scale %||% "index"
     helpText(paste0(
       if (identical(scale, "index")) {
-        paste0("Cada indicador face a ", view$benchmark, " (= 100), na mesma escala para todos: azul abaixo, vermelho acima, ",
-               "de 67 a 150 (os valores fora ficam na cor do extremo). Assim, indicadores em unidades diferentes lêem-se juntos. ")
+        paste0("Cada indicador face a ", view$benchmark, " (= 100), de 67 a 150 (os valores fora ficam na cor do extremo), ",
+               "colorido pelo que a diferença significa: vermelho onde a área está pior do que ", view$benchmark, ", azul onde está melhor ",
+               "- uma mortalidade alta e uma esperança de vida baixa ficam ambas a vermelho. Os indicadores sem melhor nem pior ",
+               "(estrutura etária, natalidade, sectores de emprego, taxa bruta de mortalidade, que depende sobretudo da idade da população) ",
+               "ficam a violeta abaixo e amarelo acima. Assim, indicadores em unidades diferentes lêem-se juntos. ")
       } else {
-        "Cada indicador dividido em cinco grupos com o mesmo número de áreas: mostra a ordenação dentro do indicador, não a distância a Portugal. "
+        "Cada indicador dividido em cinco grupos com o mesmo número de áreas: mostra a ordenação dentro do indicador, não a distância a Portugal nem se é melhor ou pior. "
       },
-      "Acima de Portugal não quer dizer pior: uma esperança de vida alta e uma mortalidade alta ficam ambas a vermelho. ",
       "Cada mapa usa o último período disponível até ao último ano escolhido, indicado no título. ",
       if (isTRUE(input$planning_map_smoothed)) "A suavização só se aplica às taxas com modelo de contagem (as do funil); os títulos dizem quais. " else "",
       if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias (a Lomba na ULS Vila Nova de Gaia/Espinho). As ilhas não têm ULS. " else "",

@@ -1335,10 +1335,17 @@ so the six that share Lisboa, Loures and Porto are exact; their values are
 computed with the parish weights whatever the split option.
 
 By default each indicator is shown against the benchmark (Portugal = 100) on
-one diverging scale common to all maps, log-symmetric from 67 to 150: maps of
-indicators in different units can then be read together, as a heatmap. The
-alternative is each indicator's quintiles. Above Portugal is not worse in
-itself (high life expectancy and high mortality are both red). Rates with a
+the same log-symmetric range, 67 to 150, coloured by what the difference means
+(`PLANNING_INDICATOR_DIRECTION`): red where the area is worse than Portugal,
+blue where it is better, so high mortality and low life expectancy are both red
+and maps of indicators in different units read together as a heatmap.
+Indicators with no better or worse direction - age structure and dependency,
+births and fertility, employment sectors, pensioners, waste per inhabitant, and
+the crude death rate, which mostly measures age - are drawn violet below and
+yellow above, a pair distinct from blue/red under every colour-vision
+deficiency (OKLab distance x100 of 33 or more). Each map has its own legend
+(`planning_map_draw()` lays the panels out with grid). The alternative is each
+indicator's quintiles. Rates with a
 count model can be smoothed by empirical Bayes; life expectancy and the
 standardised rates use, below NUTS II, the last year published by cause.
 

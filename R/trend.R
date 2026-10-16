@@ -123,3 +123,24 @@ trend_reading <- function(row) {
   if (!is.finite(row$lower) || !is.finite(row$upper)) return("")
   if (row$upper < 0) "descida significativa" else if (row$lower > 0) "subida significativa" else "sem tendência significativa"
 }
+
+# A warning when the period crosses 2020/2021, where two things move every
+# rate at once: COVID-19 (2020-2022) and INE's revised population series from
+# 2021, which steps the denominator by about 1.7% (METHODOLOGY.md). A straight
+# line through them absorbs both; a joinpoint near those years may be them
+# rather than a change of trend.
+trend_break_note <- function(years, joinpoints = numeric(0)) {
+  years <- as.integer(years)
+  if (length(years) == 0 || min(years) > 2020L || max(years) < 2021L) return(NULL)
+  near <- joinpoints[joinpoints >= 2019 & joinpoints <= 2022]
+  paste0(
+    "O período atravessa 2020-2021: a COVID-19 (2020-2022) e a série de população revista do INE a partir de 2021 ",
+    "(um degrau de cerca de 1,7% no denominador) afectam a tendência. ",
+    if (length(near) > 0) {
+      paste0("A mudança de tendência em ", paste(near, collapse = " e "), " pode reflectir isso e não uma mudança real. ")
+    } else {
+      ""
+    },
+    "Compare com o período anterior a 2020 antes de concluir."
+  )
+}
