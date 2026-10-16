@@ -100,13 +100,33 @@ load_previous_population <- function(years, basis, loader) {
 # as the deaths added to each area and band. Adding it, rather than replacing
 # the frame's values, leaves frames loaded live from INE their own recorded
 # deaths. NULL where the snapshot lacks the year or the cause.
+death_totals_raw <- function(year) {
+  key <- paste(infant_snapshot_root(), "totalsraw", year, sep = "|")
+  if (!exists(key, envir = planning_cache, inherits = FALSE)) {
+    value <- NULL
+    for (indicator in c("0013166", "0008206")) {
+      path <- file.path(death_totals_dir(), indicator, paste0("year_", year, ".rds"))
+      if (file.exists(path)) {
+        value <- readRDS(path)
+        break
+      }
+    }
+    assign(key, value, envir = planning_cache)
+  }
+  get(key, envir = planning_cache, inherits = FALSE)
+}
+
 death_age_fill <- function(year, cause) {
   key <- paste(infant_snapshot_root(), "agefill", year, cause, sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
   value <- NULL
   path <- planning_death_cause_file(year, cause)
   pop <- planning_read("population", year)
-  totals <- read_death_totals_year(year)
+  # The totals as published, not repaired: repair_death_totals() reads the
+  # age bands of every cause group to replace blank totals with their band sum,
+  # which costs most of the time here and changes nothing - a blank total gives
+  # no missing deaths in planning_complete_by_age() either way.
+  totals <- death_totals_raw(year)
   if (!is.null(path) && !is.null(pop) && !is.null(totals)) {
     labels <- unique(c(sort(unique(get_nuts_lookup("2024")$municipality)), planning_published_areas))
     bands <- age_levels
