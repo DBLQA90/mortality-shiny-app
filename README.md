@@ -88,6 +88,7 @@ The required runtime packages are:
 - `memoise`
 - `cachem`
 - `later`
+- `officer`, `flextable` (the Word profile)
 
 ## Reproducible Environment (Optional)
 
@@ -100,10 +101,11 @@ install.packages("renv")
 renv::restore()
 ```
 
-`renv.lock` records the recursive dependency closure from CRAN, so restoring installs the exact pinned versions. Regenerate it after changing dependencies with:
+`renv.lock` records the recursive dependency closure from CRAN, so restoring installs the exact pinned versions. The CI restores it too (`.github/workflows/tests.yml`), so the tests on GitHub run on the same versions as here. Regenerate it after changing dependencies or updating packages locally, from the app root:
 
 ```r
-renv::snapshot(packages = required_packages)
+source("R/dependencies.R")
+renv::snapshot(packages = c(required_packages, "testthat", "withr"), prompt = FALSE)
 ```
 
 The recorded R version is the one the snapshot was taken with; `renv::restore()` warns but proceeds on a different R version.

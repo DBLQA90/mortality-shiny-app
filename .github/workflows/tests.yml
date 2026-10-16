@@ -42,33 +42,26 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: release
+          # The R version recorded in renv.lock.
+          r-version: renv
           use-public-rspm: true
 
-      # The app is not a package, so the dependencies are listed here rather
-      # than read from a DESCRIPTION. They are R/dependencies.R's
-      # required_packages, plus what the Word profile and the tests need.
-      # pak installs the system libraries they require.
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      # The exact package versions of renv.lock, the ones the app and the tests
+      # were verified against locally, so CI fails on our changes rather than
+      # on a new CRAN release. Binaries come from Posit's public package
+      # manager (use-public-rspm above); the restored library is cached by
+      # lockfile. Regenerate the lockfile as the README says.
+      - uses: r-lib/actions/setup-renv@v2
         with:
           cache-version: 1
-          packages: |
-            any::glue
-            any::PHEindicatormethods
-            any::tidyverse
-            any::shiny
-            any::plotly
-            any::openxlsx
-            any::forecast
-            any::ineptr2
-            any::strucchange
-            any::memoise
-            any::cachem
-            any::later
-            any::officer
-            any::flextable
-            any::testthat
-            any::withr
+
+      # The project does not auto-activate renv, so point the next steps at the
+      # library it restored.
+      - name: Use the restored library
+        run: echo "R_LIBS_USER=$(Rscript -e 'cat(renv::paths$library(project = getwd()))')" >> "$GITHUB_ENV"
+
+      - name: Package versions
+        run: Rscript -e 'for (p in c("shiny", "forecast", "plotly", "dplyr", "testthat")) cat(p, as.character(packageVersion(p)), "\n")'
 
       - name: Unit tests
         run: Rscript run_tests.R
