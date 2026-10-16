@@ -1,6 +1,6 @@
 # Valores de referência de tools/regression_check.R.
 # Gerado com --update; cada linha é uma medida e a tolerância com que é comparada.
-# Gerado em 2026-10-15 | método 1.9 | última importação 2026-10-13T16:31:40+0100
+# Gerado em 2026-10-15 | método 2.0 | última importação 2026-10-13T16:31:40+0100
 # Anos fixados: indicadores 2024, triénio 2024, censo 2021
 "key","kind","value","tol","note"
 "amplitude.fertility_index.max","valor",3.16770186335404,0.01,""

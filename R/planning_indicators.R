@@ -193,7 +193,10 @@ planning_significance_mark <- function(significance) {
 
 # Version of the method, as in the methodological note. Part of the cache key of
 # the all-areas export: raise it whenever a change alters published values.
-PLANNING_METHOD_VERSION <- "1.9"
+# 2.0 (October 2026): deaths without a published age filled in every tab and
+# INE's regional rows topped up to their totals; the latest year from weekly and
+# parish deaths; suppressed employees and earnings recovered from the totals.
+PLANNING_METHOD_VERSION <- "2.0"
 
 planning_cache <- new.env(parent = emptyenv())
 

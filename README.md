@@ -10,6 +10,18 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 
 ## Current Version Highlights
 
+Method version 2.0 (October 2026), which changes published values:
+
+- **The same deaths in every tab.** INE's municipal deaths by age do not always add up to the all-ages total (deaths with no recorded age, small cells suppressed; in 2024, 28 municipalities lose more than 10%). The planning tab filled them in; the other tabs now do the same (`fill_death_ages()`), and INE's regional rows, which leave the same deaths out, are topped up to their municipalities' totals.
+- **The latest year before INE's causes of death.** 2025 deaths by age, rebuilt from INE's weekly and parish deaths, serve Portugal, the Continente and whole NUTS II regions (all causes, both sexes) in every tab; all-cause deaths and the crude death rate reach 2025 for every area. Such values are marked `p`.
+- **Suppressed employees and earnings** are recovered from INE's Continente and Portugal totals (marked `≈`).
+- **Forecasts:** infant mortality (one, three or five years, two methods); a combination of the best models as a candidate, scored without hindsight; several locations forecast separately, under one model policy, for comparisons and targets.
+- **Trend:** annual percentage change with its interval (Joinpoint method, optional joinpoints) in the observed and planning tabs.
+- **Small areas:** empirical Bayes smoothing in the funnel, and maps of Portugal with up to four indicators side by side (`Mapa`), on boundaries from the geopt package (CAOP, DGT).
+- **Checks:** unit and smoke tests on every push (GitHub Actions), and an invariant sweep after every scheduled refresh.
+
+Earlier:
+
 - Replaced `ineptR` with the CRAN package `ineptr2`.
 - Uses INE indicators `0012918`, `0008273` and `0003182` for population. `0012918` is the NUTS-2024 series, 2021-2025, and is a **revision** rather than a continuation: it runs +1.71% above the older series for 2021, rising to +5.31% for 2023. It is used across its whole range so the single seam falls at 2020/2021 rather than a 5.3% cliff at 2023/2024, and the app warns when a rate series crosses it. Every rate from 2021 onward changed as a result — Portugal's 2023 crude mortality reads 1,056 per 100,000 against 1,112 before.
 - Uses INE indicators `0008206` and `0013166` for deaths by cause.
@@ -41,7 +53,7 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 - Builds every region by summing its municipalities, so the NUTS-2024 boundary change does not break the series. Applies to the observed, forecast and annual tabs alike.
 - **Adds ULS and ARS as a geography in every tab**: 34 ULS, 5 ARS and two exact groups for the five ULS that share Lisboa, Loures or Porto at parish level. Built from the PNS2030 planning workbook's municipality mapping (`tools/build_uls_lookup.R`). ULS do not nest in NUTS, so they are selectable alongside NUTS regions rather than derived from them. Seven ULS and two ARS coincide with an INE subregion or region and use its complete rows; the rest are municipal sums.
 - **Takes regional deaths from INE's own regional rows by default.** INE publishes cause-specific municipal deaths with incomplete age breakdowns, so summing municipalities under-counts - every year, worst in small regions (lung cancer 2013: Açores −18%, Madeira −12%, Alentejo −9%) and catastrophically in 2014 (−31% to −84%). Regional rows are complete. Redrawn regions are composed from NUTS III subregion rows in the years their own row does not exist, so every region is on INE rows in every year except Grande Lisboa and Península de Setúbal before 2022. Each composition equals the directly published row exactly in 2022, the year both indicators overlap. `Soma dos municípios` remains available as the second option in the page header; population is the municipal sum under both.
-- Adds the NUTS I level: `Continente`, plus `R.A. dos Açores` and `R.A. da Madeira`, which the islands already carried at NUTS II. Built like every other region, from municipalities, under both vintages. The three partition the country exactly — 119,589 + 2,366 + 2,875 = 124,830 for 2021, which is INE's national row to the death.
+- Adds the NUTS I level: `Continente`, plus `R.A. dos Açores` and `R.A. da Madeira`, which the islands already carried at NUTS II. Built like every other region, from municipalities, under both vintages. The three partition the country: 119,595 + 2,366 + 2,875 = 124,836 for 2021, INE's national row (124,841) less the 5 deaths of unknown residence that only it holds.
 - Repaired `0013166` for 2022 and 2023, which were missing three municipalities entirely (`Calheta (R.A.A.)`, `Calheta (R.A.M.)`, `Lagoa (R.A.A.)`) because they were fetched area-by-area against a stale area list. Açores read 7.0% low and Madeira 6.5% low for those years. Both now reconcile to the national row exactly.
 - Makes the NUTS vintage a selection: **NUTS 2013** (7 regions, `Área Metropolitana de Lisboa`, Lezíria inside `Alentejo`) or **NUTS 2024** (9 regions, `Grande Lisboa` + `Península de Setúbal`, `Oeste e Vale do Tejo`). One selector in the page header, applying app-wide. Both cover the same 308 municipalities, so switching regroups the data rather than changing what is read, and either vintage gives a series continuous across 2022. Under NUTS 2013 the municipal sums reproduce INE's published regional rows exactly (`Norte` 37,121 and `Alentejo` 11,742 for 2021, seven regions summing to the national 124,830).
 
@@ -108,8 +120,10 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 - `R/metrics.R`: mortality-rate, direct-standardisation, and AVPP calculations.
 - `R/standardisation.R`: indirect standardisation (SMR/ISR) and multi-year pooling (unit tested).
 - `R/regions.R`: NUTS vintage handling and municipal rebuilds of regional aggregates (unit tested).
-- `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers (unit tested).
-- `R/data_access.R`: shared data assembly for snapshot and live INE sources.
+- `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers, infant mortality windows and the combination of models (unit tested).
+- `R/trend.R`: annual percentage change, Joinpoint-style (unit tested).
+- `R/planning_maps.R`: the maps of the planning tab (unit tested).
+- `R/data_access.R`: shared data assembly for snapshot and live INE sources, including the fill of deaths without a published age and the latest year's rebuilt deaths.
 - `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
 
 ## Running Tests
@@ -133,7 +147,25 @@ Rscript tests/smoke_app.R
 It needs no browser and makes no network calls. Wiring bugs live here rather
 than in the calculation modules: it caught a pooled window reaching into a year
 with no population estimate, and rate metrics being offered for years that have
-none.
+none. It exits non-zero when any check fails.
+
+Both run on every push and pull request in GitHub Actions
+(`.github/workflows/tests.yml`), on the committed snapshots, without calling
+INE; a run takes about 15-20 minutes.
+
+The invariant sweep runs the planning module and the annual tab across areas,
+years, pooling windows and both denominators, and flags what should never
+happen (a blank where data exist, Portugal not adding up, a server error):
+
+```sh
+Rscript tools/invariant_sweep.R              # both parts, about 25 minutes
+Rscript tools/invariant_sweep.R --planning   # planning module only, about 2 minutes
+Rscript tools/invariant_sweep.R --update     # accept the current flags
+```
+
+Flags already reviewed as true of the data are listed, with their reason, in
+`data/invariant_sweep_expected.csv`; only new flags or server errors fail it.
+The scheduled refresh runs it after the regression check.
 
 ## Optional RDS Snapshots
 
@@ -208,6 +240,7 @@ Explore historical mortality rates by geography, cause of death, sex, and popula
 
 Outputs include:
 
+- the trend as annual percentage change with its 95% interval, over the last 5, 10 or 15 years or all loaded, optionally with up to two joinpoints
 - mortality rates per 100,000
 - Poisson 95% confidence intervals for crude rates
 - directly standardised rates using ESP 2013
@@ -231,6 +264,11 @@ The user can choose:
 - training window
 - how the recommended model is chosen: rolling validation (default) or a single train/test split, with a test-set size in percent of the selected years (falls back to in-sample fit when the series is too short)
 - recommended model or model comparison mode
+- the indicator: the mortality rate, or infant mortality for one, three or five years, projecting either the yearly series aggregated afterwards (default) or the moving-average series
+- with several locations, whether to sum them or forecast each separately, with the combination of the best models for all (default), one common model, or each one's best
+
+With rolling validation the combination of the three best models is one more
+candidate, recommended only when it validates best.
 
 Guided and advanced forecasts can project up to 30 years beyond the last observed year.
 
@@ -296,6 +334,17 @@ municipal all-ages totals (`data/snapshots/death_totals`), which are complete,
 rather than from the age breakdown, which is not. The engine is
 `R/planning_indicators.R`.
 
+The `Mapa` view draws up to four indicators side by side for every
+municipality, NUTS III, ULS or NUTS II, each against Portugal (= 100) on one
+common scale or by its own quintiles. The boundaries are the official CAOP
+limits (Direção-Geral do Território), taken from the
+[geopt](https://github.com/c-matos/geopt) package by `tools/build_boundaries.R`
+and stored in `data/boundaries/`; the app draws them with ggplot2 and needs
+neither geopt nor sf at run time. Rebuilding them needs both
+(`Rscript tools/build_boundaries.R`). The indicator view also gives each area's
+trend over the chosen years, and the funnel can show empirical Bayes smoothed
+values.
+
 ### Data Availability
 
 Inspect the local RDS snapshot inventory before loading an analysis. The tab summarises available population and death chunks, then checks selected years, areas, and causes against `data/snapshots/snapshot_inventory.rds`.
@@ -330,6 +379,11 @@ parish (`0012450`/`0012542` and earlier editions,
 
 Weekly deaths by NUTS III and age: `0012100` (NUTS 2024, from 2021) and
 `0010112` (NUTS 2013, 2018-2024), fetched by `tools/fetch_weekly_deaths.R`.
+With the parish deaths they rebuild the latest year's deaths by age per region
+(`tools/build_calendar_deaths_by_age.R`).
+
+Map boundaries: CAOP, Direção-Geral do Território, via the geopt package
+(`data/boundaries/`).
 
 Primary care per ULS, from the SNS Transparency portal
 (transparencia.sns.gov.pt, public Opendatasoft API, no key): registered users
@@ -489,9 +543,11 @@ mortality only, and refused for everything else with an explanatory message.
   after ~135 s, while the same call answers a normal connection in under two
   seconds. The workflow checks this and fails fast; run
   `tools/refresh_snapshots.R` locally, or register a self-hosted runner.
-- **2025 has population but no deaths by cause.** `0013166` ends at 2024, so
-  2025 supports infant mortality only. 2025 deaths exist in `0013331` and
-  `0013332` but carry no cause dimension. All rates work for 2024.
+- **2025 has population but no deaths by cause.** `0013166` ends at 2024. For
+  2025 the app rebuilds all-cause deaths by age from weekly and parish deaths,
+  for Portugal, the Continente and whole NUTS II regions only, both sexes; by
+  cause, by sex and for smaller areas the year stays empty (the crude death rate
+  and death counts reach every area). These values are marked `p`.
 - **The population series changes basis at 2021**, by about 1.7%. See
   [METHODOLOGY.md](METHODOLOGY.md); the app warns when a series crosses it.
 - Regional totals in the mortality tabs are municipal sums and do not match
