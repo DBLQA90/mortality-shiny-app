@@ -100,8 +100,8 @@ load_previous_population <- function(years, basis, loader) {
 # as the deaths added to each area and band. Adding it, rather than replacing
 # the frame's values, leaves frames loaded live from INE their own recorded
 # deaths. NULL where the snapshot lacks the year or the cause.
-death_age_fill <- function(year, cause, sex) {
-  key <- paste(infant_snapshot_root(), "agefill", year, cause, sex, sep = "|")
+death_age_fill <- function(year, cause) {
+  key <- paste(infant_snapshot_root(), "agefill", year, cause, sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
   value <- NULL
   path <- planning_death_cause_file(year, cause)
@@ -110,7 +110,8 @@ death_age_fill <- function(year, cause, sex) {
   if (!is.null(path) && !is.null(pop) && !is.null(totals)) {
     labels <- unique(c(sort(unique(get_nuts_lookup("2024")$municipality)), planning_published_areas))
     bands <- age_levels
-    matrix_of <- function(frame, value) {
+    deaths <- readRDS(path)
+    matrix_of <- function(frame, value, sex) {
       out <- matrix(0, length(labels), length(bands), dimnames = list(labels, bands))
       rows <- frame[frame$sex == sex & frame$area %in% labels & frame$age_band %in% bands, , drop = FALSE]
       if (nrow(rows) > 0) {
@@ -120,14 +121,16 @@ death_age_fill <- function(year, cause, sex) {
       }
       out
     }
-    recorded <- matrix_of(readRDS(path), "deaths")
-    population <- matrix_of(pop, "pop")
-    total <- stats::setNames(rep(NA_real_, length(labels)), labels)
-    rows <- totals[totals$sex == sex & totals$cause == cause & totals$area %in% labels, , drop = FALSE]
-    total[rows$area] <- rows$deaths
-    if (sum(population["Portugal", ]) > 0) {
-      value <- planning_complete_by_age(recorded, population, total, labels)$deaths - recorded
-    }
+    value <- lapply(stats::setNames(c("HM", "H", "M"), c("HM", "H", "M")), function(sex) {
+      recorded <- matrix_of(deaths, "deaths", sex)
+      population <- matrix_of(pop, "pop", sex)
+      if (sum(population["Portugal", ]) <= 0) return(NULL)
+      total <- stats::setNames(rep(NA_real_, length(labels)), labels)
+      rows <- totals[totals$sex == sex & totals$cause == cause & totals$area %in% labels, , drop = FALSE]
+      total[rows$area] <- rows$deaths
+      list(added = planning_complete_by_age(recorded, population, total, labels)$deaths - recorded,
+           recorded = rowSums(recorded))
+    })
   }
   assign(key, value, envir = planning_cache)
   value
@@ -137,16 +140,40 @@ death_age_fill <- function(year, cause, sex) {
 # deaths), and records them in `deaths_filled` so a table can say how much of a
 # figure was estimated. Areas outside the snapshot's municipalities and
 # national rows (INE's regional rows, which are complete) are left as they are.
-fill_death_ages <- function(df_death) {
+#
+# The fill is computed on the snapshot. A frame loaded live from INE is filled
+# only where its recorded deaths are the snapshot's (`check_recorded`): if INE
+# has revised a year since, adding the snapshot's gap could count deaths twice,
+# so that area is left as published and a warning says so.
+fill_death_ages <- function(df_death, check_recorded = FALSE) {
   df_death$deaths_filled <- 0
   if (nrow(df_death) == 0) return(df_death)
-  keys <- unique(df_death[, c("year", "cause", "sex")])
+  keys <- unique(df_death[, c("year", "cause")])
+  unfilled <- character(0)
   for (i in seq_len(nrow(keys))) {
-    added <- tryCatch(death_age_fill(keys$year[[i]], keys$cause[[i]], keys$sex[[i]]), error = function(e) NULL)
-    if (is.null(added)) next
-    rows <- which(df_death$year == keys$year[[i]] & df_death$cause == keys$cause[[i]] & df_death$sex == keys$sex[[i]] &
-                    df_death$area %in% rownames(added) & as.character(df_death$age_band) %in% colnames(added))
-    df_death$deaths_filled[rows] <- added[cbind(df_death$area[rows], as.character(df_death$age_band[rows]))]
+    fill <- tryCatch(death_age_fill(keys$year[[i]], keys$cause[[i]]), error = function(e) {
+      warning("Deaths without a published age not filled for ", keys$cause[[i]], " ", keys$year[[i]], ": ",
+              conditionMessage(e), call. = FALSE)
+      NULL
+    })
+    if (is.null(fill)) next
+    for (sex in intersect(names(fill), unique(df_death$sex))) {
+      part <- fill[[sex]]
+      if (is.null(part)) next
+      rows <- which(df_death$year == keys$year[[i]] & df_death$cause == keys$cause[[i]] & df_death$sex == sex &
+                      df_death$area %in% rownames(part$added) & as.character(df_death$age_band) %in% colnames(part$added))
+      if (check_recorded && length(rows) > 0) {
+        loaded <- tapply(df_death$deaths[rows], df_death$area[rows], sum)
+        differs <- names(loaded)[abs(loaded - part$recorded[names(loaded)]) > 0.5]
+        unfilled <- c(unfilled, differs)
+        rows <- rows[!df_death$area[rows] %in% differs]
+      }
+      df_death$deaths_filled[rows] <- part$added[cbind(df_death$area[rows], as.character(df_death$age_band[rows]))]
+    }
+  }
+  if (length(unfilled) > 0) {
+    warning("INE's live deaths differ from the snapshot for ", paste(utils::head(unique(unfilled), 5), collapse = ", "),
+            "; their deaths without a published age were not filled.", call. = FALSE)
   }
   df_death$deaths <- df_death$deaths + df_death$deaths_filled
   df_death
@@ -315,7 +342,7 @@ get_death_data_for <- function(area, cause, years = year_of_interest, year_order
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     dplyr::select(-source_priority) %>%
-    fill_death_ages() %>%
+    fill_death_ages(check_recorded = TRUE) %>%
     add_calendar_deaths(years, area, cause)
 }
 
@@ -385,7 +412,7 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     dplyr::select(-source_priority) %>%
-    fill_death_ages() %>%
+    fill_death_ages(check_recorded = TRUE) %>%
     add_calendar_deaths(years, area, cause)
 
   # Combine

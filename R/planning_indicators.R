@@ -278,10 +278,15 @@ planning_parish_death_totals <- function(year) {
   out
 }
 
+# Cached: every indicator table asks, through planning_mark_provisional().
 planning_parish_death_years <- function() {
-  path <- file.path(infant_snapshot_root(), "parish_vitals", "deaths.rds")
-  if (!file.exists(path)) return(integer(0))
-  sort(setdiff(unique(as.integer(readRDS(path)$year)), death_totals_years()))
+  key <- paste(infant_snapshot_root(), "parishdeathyears", sep = "|")
+  if (!exists(key, envir = planning_cache, inherits = FALSE)) {
+    path <- file.path(infant_snapshot_root(), "parish_vitals", "deaths.rds")
+    years <- if (file.exists(path)) sort(setdiff(unique(as.integer(readRDS(path)$year)), death_totals_years())) else integer(0)
+    assign(key, years, envir = planning_cache)
+  }
+  get(key, envir = planning_cache, inherits = FALSE)
 }
 
 # INE leaves the all-ages cell blank for a few municipality-years (Vimioso
@@ -373,6 +378,16 @@ planning_indicator_years <- function(id) {
   }
   sort(as.integer(years))
 }
+
+# The rebuilt latest year (planning_calendar_years()) has deaths by age for
+# whole NUTS II regions only, all causes. Views of smaller areas - ULS,
+# municipalities, NUTS III - and views by cause take their years from these.
+planning_small_area_years <- function(id) {
+  years <- planning_indicator_years(id)
+  if (id %in% c(standardised_ids, life_expectancy_ids)) years <- setdiff(years, planning_calendar_years())
+  years
+}
+planning_cause_years <- function() setdiff(planning_standardised_years(), planning_calendar_years())
 
 planning_proportional_years <- function(window = 3L) {
   years <- death_totals_years()

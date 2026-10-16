@@ -2808,7 +2808,9 @@ server <- function(input, output, session) {
     # 2024 reached 2025 and every metric was refused. The period label reports
     # the span actually used.
     if (!is.null(metric_id) && !metric_id %in% infant_metric_ids) {
-      have <- if (metric_id %in% annual_metrics_needing_population) rate_years else death_archive_years
+      # Counts reach the rebuilt latest year as rates do; whether the selection
+      # can use it is decided afterwards (calendar_selection_supported()).
+      have <- if (metric_id %in% annual_metrics_needing_population) rate_years else union(death_archive_years, calendar_death_years)
       usable <- intersect(years, as.integer(have))
       if (length(usable) > 0) years <- usable
     }
@@ -3751,7 +3753,9 @@ server <- function(input, output, session) {
         incProgress(1 / length(areas))
       }
     })
-    failed <- vapply(results, inherits, logical(1), "error")
+    # An area whose models all failed validation has no recommended model; it
+    # is reported with the failures rather than stopping the comparison.
+    failed <- vapply(results, function(r) inherits(r, "error") || is.null(r$recommended_model), logical(1))
     if (any(failed)) {
       showNotification(paste("Sem previsão para:", paste(names(results)[failed], collapse = ", ")), type = "warning", duration = 15)
     }
@@ -4562,10 +4566,9 @@ server <- function(input, output, session) {
 
   planning_ranking_year <- reactive({
     spec <- planning_spec()
-    available <- planning_indicator_years(spec$id)
     # ULS, municipalities and NUTS III have no deaths by age in the rebuilt
     # latest year: rank them on the last year INE published by cause.
-    if (spec$id %in% c(standardised_ids, life_expectancy_ids)) available <- setdiff(available, planning_calendar_years())
+    available <- planning_small_area_years(spec$id)
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "Sem anos disponíveis para este indicador."))
     max(available)
@@ -4620,22 +4623,29 @@ server <- function(input, output, session) {
                           basis = active_population_basis())
     })
     validate(need(nrow(values) > 0, "Sem valores para estes indicadores nos anos escolhidos."))
+    list(values = values, boundaries = boundaries, level = level, benchmark = benchmark)
+  })
+
+  # The outline of the chosen location, apart from the values, so that moving
+  # it does not recompute every area of every indicator.
+  planning_map_highlight <- reactive({
+    level <- input$planning_map_level %||% "municipio"
+    lookup <- active_nuts_lookup()
     units <- planning_map_units(level, lookup)
     location <- planning_location()
-    highlight <- if (location %in% units) {
+    if (location %in% units) {
       location
     } else if (identical(level, "municipio") && !location %in% c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente")) {
       intersect(planning_area_members(location, lookup), units)
     } else {
       character(0)
     }
-    list(values = values, boundaries = boundaries, level = level, benchmark = benchmark, highlight = highlight)
   })
 
   planning_map_plot <- function() {
     view <- planning_map_view()
     planning_map_chart(view$values, view$boundaries, input$planning_map_scale %||% "index",
-                       highlight = view$highlight, benchmark = view$benchmark)
+                       highlight = planning_map_highlight(), benchmark = view$benchmark)
   }
 
   output$planningMapPlot <- renderPlot(
@@ -4838,7 +4848,7 @@ server <- function(input, output, session) {
 
   planning_cause_view <- reactive({
     # By cause: not the rebuilt latest year, which has all causes only.
-    available <- setdiff(planning_standardised_years(), planning_calendar_years())
+    available <- planning_cause_years()
     available <- available[available <= max(planning_year_range())]
     validate(need(length(available) > 0, "A mortalidade por causa precisa de três anos de óbitos e população até ao ano escolhido."))
     end_year <- max(available)

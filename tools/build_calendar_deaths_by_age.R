@@ -97,7 +97,18 @@ build_year <- function(year) {
     if (nrow(p) == 0 || length(total) != 1) stop("Missing data for ", area, " in ", year, call. = FALSE)
     tibble(area = area, code = REGIONS[[area]], age_band = p$band, deaths = p$deaths * total / sum(p$deaths))
   }))
+  # Portugal keeps the weekly total, deaths without a recorded age included:
+  # its known-age profile is scaled to it, as the regions are to their parish
+  # totals (11 deaths of unknown age in 2025).
   national <- profile[profile$code == "PT", ]
+  national_total <- weekly %>%
+    filter(code == "PT", age_group == "Total") %>%
+    inner_join(share, by = c("year", "week")) %>%
+    summarise(total = sum(deaths * days / 7)) %>%
+    pull(total)
+  if (length(national_total) == 1 && is.finite(national_total) && national_total > 0) {
+    national$deaths <- national$deaths * national_total / sum(national$deaths)
+  }
   out <- bind_rows(
     regional,
     regional %>% filter(area %in% MAINLAND) %>% group_by(age_band) %>%

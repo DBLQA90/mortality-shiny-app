@@ -85,9 +85,11 @@ planning_map_indicator_choices <- function() {
 # The latest year of each indicator up to `max_year`. The rebuilt latest year
 # exists only for whole regions, so for life expectancy and standardised rates
 # the smaller levels keep the last year INE published by cause.
-planning_map_year <- function(id, max_year, level) {
-  years <- planning_indicator_years(id)
-  if (id %in% c(standardised_ids, life_expectancy_ids) && level != "nuts2") years <- setdiff(years, planning_calendar_years())
+planning_map_year <- function(id, max_year, level, vintage = "2024") {
+  # Only the NUTS II regions of 2024 are made of the rebuilt year's regions;
+  # under NUTS 2013, Centro and Alentejo are not.
+  whole_regions <- identical(level, "nuts2") && identical(normalize_nuts_vintage(vintage), "2024")
+  years <- if (whole_regions) planning_indicator_years(id) else planning_small_area_years(id)
   years <- years[years <= max_year]
   if (length(years) == 0) NA_integer_ else max(years)
 }
@@ -102,7 +104,7 @@ planning_map_values <- function(ids, level, lookup, max_year, benchmark = "Portu
   if (identical(level, "uls")) mode <- "parish"
   dplyr::bind_rows(lapply(ids, function(id) {
     spec <- planning_indicator_spec(id)
-    year <- planning_map_year(id, max_year, level)
+    year <- planning_map_year(id, max_year, level, planning_lookup_vintage(lookup))
     if (is.na(year)) return(NULL)
     table <- planning_indicator_table(c(benchmark, units), year, ids = id, lookup = lookup, benchmark = benchmark,
                                       mode = mode, basis = basis)

@@ -310,7 +310,7 @@ write_planning_workbook <- function(path,
   }
 
   # --- Mortality by cause group, standardised --------------------------------------
-  cause_years <- planning_standardised_years()
+  cause_years <- planning_cause_years()
   cause_years <- cause_years[cause_years <= max(years) & cause_years >= min(years)]
   # Every triennium for a selection; the latest one for the file of all areas.
   if (!include_long) cause_years <- utils::tail(cause_years, 1)

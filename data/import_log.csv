@@ -5188,3 +5188,4 @@
 "2026-10-05T093907","2026-10-05T09:43:29+0100","snapshots/sns/saude-da-mulher-e-crianca.rds","sns/saude-da-mulher-e-crianca",,"replaced",28612,28768,"value",7016360.32237,7071910.61462,"archive/2026-10-05T093907/snapshots/sns/saude-da-mulher-e-crianca.rds","fetch_sns.R","scheduled refresh 2026-10-05",156
 "2026-10-13T163140","2026-10-13T16:31:40+0100","snapshots/calendar_deaths_by_age/year_2025.rds","calendar_deaths_by_age",2025,"added",,198,"deaths",,121828.571428571,,"build_calendar_deaths_by_age.R",,
 "2026-10-16T151559","2026-10-16T15:15:59+0100","uls_parish.rds","uls_parish",,"replaced",41,48,,,,"archive/2026-10-16T151559/uls_parish.rds","build_uls_parish.R",,
+"2026-10-16T165055","2026-10-16T16:50:55+0100","snapshots/calendar_deaths_by_age/year_2025.rds","calendar_deaths_by_age",2025,"replaced",198,198,"deaths",121828.571428571,121839.571428571,"archive/2026-10-16T165055/snapshots/calendar_deaths_by_age/year_2025.rds","build_calendar_deaths_by_age.R",,18

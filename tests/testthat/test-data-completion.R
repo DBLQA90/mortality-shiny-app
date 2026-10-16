@@ -90,3 +90,41 @@ test_that("the planning indicators reach the latest year where the data allow", 
   expect_true(is.finite(value("Lisboa", "death_rate")))
   expect_equal(sum(planning_parish_death_totals(2024L)$deaths[planning_parish_death_totals(2024L)$area == "Portugal"]), 118396)
 }))
+
+test_that("views of small areas and by cause leave out the rebuilt latest year", with_snapshots({
+  calendar <- planning_calendar_years()
+  skip_if(length(calendar) == 0, "no rebuilt year in the snapshots")
+  expect_true(all(calendar %in% planning_indicator_years("dsr_all")))
+  expect_false(any(calendar %in% planning_small_area_years("dsr_all")))
+  expect_false(any(calendar %in% planning_cause_years()))
+  # The crude death rate comes from parish deaths and reaches every area.
+  expect_true(all(calendar %in% planning_small_area_years("death_rate")))
+  expect_equal(planning_map_year("dsr_all", 2030L, "nuts2", "2024"), max(calendar))
+  expect_lt(planning_map_year("dsr_all", 2030L, "nuts2", "2013"), max(calendar))
+  expect_lt(planning_map_year("dsr_all", 2030L, "municipio", "2024"), max(calendar))
+}))
+
+test_that("a live frame that differs from the snapshot is not filled", with_snapshots({
+  deaths <- readRDS(planning_death_cause_file(2024L, "Todas as causas de morte"))
+  deaths <- deaths[deaths$area %in% c("Barrancos", "Lisboa"), ]
+  # As if INE had revised Barrancos since the snapshot.
+  deaths$deaths[deaths$area == "Barrancos" & deaths$age_band == "85 e mais anos" & deaths$sex == "HM"] <-
+    deaths$deaths[deaths$area == "Barrancos" & deaths$age_band == "85 e mais anos" & deaths$sex == "HM"] + 5
+  filled <- suppressWarnings(fill_death_ages(deaths, check_recorded = TRUE))
+  expect_equal(sum(filled$deaths_filled[filled$area == "Barrancos"]), 0)
+  expect_warning(fill_death_ages(deaths, check_recorded = TRUE), "differ from the snapshot")
+  # Without the check (the snapshot path) it is filled as before.
+  expect_gt(sum(fill_death_ages(deaths)$deaths_filled[deaths$area == "Barrancos"]), 0)
+}))
+
+test_that("Portugal's rebuilt latest year keeps the deaths without a recorded age", with_snapshots({
+  year <- planning_calendar_years()
+  skip_if(length(year) == 0, "no rebuilt year in the snapshots")
+  calendar <- planning_calendar_deaths(max(year))
+  weekly <- readRDS(file.path(Sys.getenv("MORTALITY_SNAPSHOT_DIR"), "weekly_deaths", "0012100.rds"))
+  known <- sum(weekly$deaths[weekly$code == "PT" & weekly$year == max(year) & !weekly$age_group %in% c("Total", "Ignorado")])
+  # More than its known-age weekly deaths (ISO weeks straddle the year, so
+  # the comparison is loose), and at least the five mainland regions.
+  expect_gt(sum(calendar$deaths[calendar$area == "Portugal"]), sum(calendar$deaths[calendar$area == "Continente"]))
+  expect_gt(abs(sum(calendar$deaths[calendar$area == "Portugal"]) - known), 0)
+}))

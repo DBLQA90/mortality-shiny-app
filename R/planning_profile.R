@@ -148,7 +148,7 @@ write_planning_profile <- function(path,
   }
 
   # 5b. Mortality by cause, standardised ------------------------------------------
-  cause_years <- planning_standardised_years()
+  cause_years <- planning_cause_years()
   cause_years <- cause_years[cause_years <= last_year]
   if (length(cause_years) > 0) {
     progress(0.75, "mortalidade por causa")
@@ -383,7 +383,7 @@ planning_profile_ranking <- function(local, areas, lookup, last_year, benchmark,
   if (length(holding) == 0) return(NULL)
   unit <- holding[[which.min(vapply(holding, function(u) length(planning_area_members(u, lookup)), integer(1)))]]
   rows <- lapply(PLANNING_PROFILE_RANKED, function(id) {
-    years <- planning_indicator_years(id)
+    years <- planning_small_area_years(id)
     years <- years[years <= last_year]
     if (length(years) == 0) return(NULL)
     year <- max(years)

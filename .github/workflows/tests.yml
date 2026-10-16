@@ -46,11 +46,21 @@ jobs:
           r-version: renv
           use-public-rspm: true
 
+      # Libraries some packages build against (gdtools, for flextable, needs
+      # cairo and freetype), for any package Posit has no binary of.
+      - name: System libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libcairo2-dev libfreetype6-dev libfontconfig1-dev libharfbuzz-dev \
+            libfribidi-dev libpng-dev libjpeg-dev libtiff5-dev libcurl4-openssl-dev libssl-dev libxml2-dev
+          # renv.lock names CRAN, which serves sources; take the same versions
+          # as binaries for this runner's Ubuntu from Posit's package manager.
+          echo "RENV_CONFIG_REPOS_OVERRIDE=https://packagemanager.posit.co/cran/__linux__/$(lsb_release -cs)/latest" >> "$GITHUB_ENV"
+
       # The exact package versions of renv.lock, the ones the app and the tests
       # were verified against locally, so CI fails on our changes rather than
       # on a new CRAN release. Binaries come from Posit's public package
-      # manager (use-public-rspm above); the restored library is cached by
-      # lockfile. Regenerate the lockfile as the README says.
+      # manager (set above); the restored library is cached by lockfile. Regenerate the lockfile as the README says.
       - uses: r-lib/actions/setup-renv@v2
         with:
           cache-version: 1
