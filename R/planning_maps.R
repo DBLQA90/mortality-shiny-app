@@ -192,7 +192,8 @@ planning_map_chart <- function(values, boundaries, scale = "index", highlight = 
       ggplot2::theme_void(base_size = 12) +
       ggplot2::theme(
         plot.title = ggplot2::element_text(size = 11, colour = "#0b0b0b", hjust = 0.5, lineheight = 1.1),
-        legend.position = "bottom", legend.key.width = grid::unit(1.4, "cm"),
+        legend.position = "bottom", legend.key.width = grid::unit(1.4, "cm"), legend.title.position = "top",
+        plot.margin = ggplot2::margin(4, 4, 14, 4),
         legend.title = ggplot2::element_text(size = 9, colour = "#52514e", lineheight = 1),
         legend.text = ggplot2::element_text(size = 8, colour = "#52514e")
       )

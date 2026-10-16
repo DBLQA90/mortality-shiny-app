@@ -157,14 +157,18 @@ server <- function(input, output, session) {
 
   # Seam and municipal warnings shared by every tab that loads regional data.
   notify_region_source_warnings <- function(selected_areas, expanded_regions, causes, years) {
+    # The rebuilt latest year is read for whole regions only, exactly; it is
+    # neither a seam between sources nor a municipal sum with ages missing.
+    years <- setdiff(as.integer(years), calendar_death_years)
+    if (length(years) == 0) return(invisible())
     seam <- region_source_seam_warning(expanded_regions, active_nuts_vintage(), years, active_region_source())
-    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20)
+    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20, id = "region-seam")
 
     municipal <- municipal_age_detail_warning(
       selected_areas, active_nuts_lookup(), causes, years,
       vintage = active_nuts_vintage(), source = active_region_source()
     )
-    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20)
+    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20, id = "municipal-age-detail")
   }
 
   # Swap the region entries of every area selector when the vintage changes.
@@ -370,7 +374,7 @@ server <- function(input, output, session) {
   # the planning tab's parish weights; say what that means for each one.
   notify_uls_split <- function(areas) {
     note <- uls_split_note(areas, "whole")
-    if (length(note) > 0) showNotification(paste(note, collapse = "\n"), type = "message", duration = 25)
+    if (length(note) > 0) showNotification(paste(note, collapse = "\n"), type = "message", duration = 25, id = "uls-split")
   }
 
   make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
@@ -594,7 +598,7 @@ server <- function(input, output, session) {
     # crossing the population revision inherits its step.
     revision_warning <- population_revision_warning(selected_years, "crude")
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     c(
@@ -673,12 +677,12 @@ server <- function(input, output, session) {
       if (calendar_selection_supported(query_spec$area_key, query_spec$cause, query_spec$sex)) {
         showNotification(
           paste0(paste(calendar, collapse = ", "), ": óbitos por idade reconstruídos a partir dos óbitos semanais do INE (provisório)."),
-          type = "message", duration = 10
+          type = "message", duration = 10, id = "calendar-year"
         )
       } else {
         years_to_load <- setdiff(years_to_load, calendar)
         validate(need(length(years_to_load) > 0, calendar_gap_message(calendar)))
-        showNotification(calendar_gap_message(calendar), type = "warning", duration = 15)
+        showNotification(calendar_gap_message(calendar), type = "warning", duration = 15, id = "calendar-year")
       }
     }
 
@@ -814,7 +818,8 @@ server <- function(input, output, session) {
             ),
           by = "Ano"
         ) %>%
-          dplyr::arrange(Ano)
+          dplyr::arrange(Ano) %>%
+          dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
       )
     }
 
@@ -829,7 +834,8 @@ server <- function(input, output, session) {
       )
 
     dplyr::full_join(obs_fmt, fc_wide, by = c("Ano" = "year")) %>%
-      dplyr::arrange(Ano)
+      dplyr::arrange(Ano) %>%
+      dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
   }
 
   build_forecast_download_table <- function(dat, view_mode = "compare", selected_model = NULL) {
@@ -871,7 +877,8 @@ server <- function(input, output, session) {
             ),
           by = "Ano"
         ) %>%
-          dplyr::arrange(Ano)
+          dplyr::arrange(Ano) %>%
+          dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
       )
     }
 
@@ -886,7 +893,8 @@ server <- function(input, output, session) {
       )
 
     dplyr::full_join(obs_fmt, fc_wide, by = c("Ano" = "year")) %>%
-      dplyr::arrange(Ano)
+      dplyr::arrange(Ano) %>%
+      dplyr::mutate(dplyr::across(-Ano, ~ ifelse(is.na(.x), "—", as.character(.x))))
   }
 
   get_diagnostic_fit <- function(dat, model_id = NULL) {
@@ -1482,7 +1490,8 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
-    seam_note <- describe_breaks_on_population_seams(break_info$break_years)
+    # Infant mortality is per live birth: INE's population revisions do not touch it.
+    seam_note <- if (is.null(history$infant)) describe_breaks_on_population_seams(break_info$break_years)
     seam_note <- if (is.null(seam_note)) "" else paste0(" ", seam_note)
 
     if (length(break_info$break_years) == 1) {
@@ -3829,7 +3838,7 @@ server <- function(input, output, session) {
       geom_ribbon(data = projected, aes(x = year, ymin = lower, ymax = upper), fill = "#8fb8de", alpha = 0.35) +
       geom_line(data = observed, aes(x = year, y = value), colour = "#1f4e79", linewidth = 0.8) +
       geom_line(data = projected, aes(x = year, y = mean), colour = "#0b2e4f", linetype = "dashed", linewidth = 0.9) +
-      facet_wrap(~local) +
+      facet_wrap(~factor(local, levels = names(multi$results))) +
       labs(x = "Ano", y = multi$results[[1]]$history$y_label) +
       theme_minimal()
     to_interactive_plot(p)
@@ -3954,7 +3963,7 @@ server <- function(input, output, session) {
     # A pooled window straddling 2020/2021 mixes the two population series.
     revision_warning <- population_revision_warning(pooled_years, selected_metric)
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     # The infant metrics are bounded by their own datasets, not by population:
@@ -4153,7 +4162,7 @@ server <- function(input, output, session) {
     }
     revision_warning <- population_revision_warning(years, "dsr")
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20)
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     causes <- avoidable_required_causes()
@@ -4487,10 +4496,15 @@ server <- function(input, output, session) {
     validate(need(nrow(series) > 0, "Sem valores para estimar a tendência."))
     window <- as.integer(spec$window)
     areas <- planning_areas()
+    # One period for all: the last year every area has, so the rows compare
+    # (the rebuilt latest year exists for whole regions only).
+    shown <- series[series$area %in% areas$area, , drop = FALSE]
+    last <- min(tapply(shown$year, shown$area, max))
+    series <- series[series$year <= last, , drop = FALSE]
     rows <- lapply(seq_len(nrow(areas)), function(i) {
       own <- series[series$area == areas$area[[i]], , drop = FALSE]
       if (nrow(own) == 0) return(NULL)
-      if (window > 1) own <- own[(max(own$year) - own$year) %% window == 0, , drop = FALSE]
+      if (window > 1) own <- own[(last - own$year) %% window == 0, , drop = FALSE]
       trend <- trend_apc(own$year, own$value, own$lower, own$upper, min_points = 4L)
       if (is.null(trend)) return(NULL)
       tibble::tibble(

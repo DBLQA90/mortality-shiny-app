@@ -301,7 +301,7 @@ planning_series_display <- function(series, spec, areas) {
   shown$column <- columns[match(shown$area, areas$area)]
   shown %>%
     dplyr::select(year, `Período`, column, cell) %>%
-    tidyr::pivot_wider(names_from = column, values_from = cell) %>%
+    tidyr::pivot_wider(names_from = column, values_from = cell, values_fill = "—") %>%
     dplyr::arrange(dplyr::desc(.data$year)) %>%
     dplyr::select(-year) %>%
     dplyr::select(dplyr::any_of(c("Período", columns)))

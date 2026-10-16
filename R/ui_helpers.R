@@ -169,6 +169,9 @@ nuts_vintage_control <- function() {
     ),
     # The denominator of every rate per inhabitant, in every tab. Life
     # expectancy and the fertility index keep mid-year person-years.
+    # Label and control in one block, so that they wrap together.
+    tags$div(
+      style = "display:flex; align-items:center; gap:0.6rem;",
     tags$label(
       "População no denominador:",
       `for` = "population_basis",
@@ -189,6 +192,7 @@ nuts_vintage_control <- function() {
         selected = default_population_basis(),
         width = "100%"
       )
+    )
     ),
     data_version_badge()
   )
