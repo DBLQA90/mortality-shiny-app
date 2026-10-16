@@ -81,19 +81,29 @@ snapshot_dir_has_local_data <- function(path) {
   isTRUE(has_population && has_deaths)
 }
 
+# Resolved once per setting and remembered: checking for local data lists every
+# snapshot file, and every cache key of the planning and data modules asks for
+# this directory (infant_snapshot_root()), thousands of times per load.
+.snapshot_dir_memo <- new.env(parent = emptyenv())
+
 get_snapshot_dir <- function() {
   configured <- Sys.getenv("MORTALITY_SNAPSHOT_DIR", unset = "")
   if (nzchar(configured)) {
     return(configured)
   }
 
-  local_snapshot_dir <- file.path(get_app_dir(), "data", "snapshots")
   use_local <- !tolower(Sys.getenv("MORTALITY_USE_LOCAL_SNAPSHOTS", unset = "true")) %in% c("0", "false", "no", "n")
-  if (isTRUE(use_local) && snapshot_dir_has_local_data(local_snapshot_dir)) {
-    return(local_snapshot_dir)
-  }
+  key <- paste0("local=", use_local)
+  if (!is.null(.snapshot_dir_memo[[key]])) return(.snapshot_dir_memo[[key]])
 
-  get_default_remote_snapshot_dir()
+  local_snapshot_dir <- file.path(get_app_dir(), "data", "snapshots")
+  value <- if (isTRUE(use_local) && snapshot_dir_has_local_data(local_snapshot_dir)) {
+    local_snapshot_dir
+  } else {
+    get_default_remote_snapshot_dir()
+  }
+  assign(key, value, envir = .snapshot_dir_memo)
+  value
 }
 
 get_combined_snapshot_file <- function() {

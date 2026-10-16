@@ -343,8 +343,8 @@ substitute_regional_deaths <- function(df,
 # otherwise the NUTS I regions would not add up to Portugal. Only upwards, and
 # only where the death totals have the year.
 top_up_regional_rows <- function(regional, members, year) {
-  totals <- if (exists("read_death_totals_year", mode = "function")) {
-    tryCatch(read_death_totals_year(year), error = function(e) NULL)
+  totals <- if (exists("death_totals_for", mode = "function")) {
+    tryCatch(death_totals_for(year, unique(regional$cause)), error = function(e) NULL)
   }
   if (is.null(totals) || nrow(regional) == 0) return(regional)
   totals <- totals[totals$area %in% members, , drop = FALSE]

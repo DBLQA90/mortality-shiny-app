@@ -289,14 +289,46 @@ planning_parish_death_years <- function() {
   get(key, envir = planning_cache, inherits = FALSE)
 }
 
+# The death totals as published, without the repair below.
+death_totals_raw <- function(year) {
+  key <- paste(infant_snapshot_root(), "totalsraw", year, sep = "|")
+  if (!exists(key, envir = planning_cache, inherits = FALSE)) {
+    value <- NULL
+    for (indicator in c("0013166", "0008206")) {
+      path <- file.path(death_totals_dir(), indicator, paste0("year_", year, ".rds"))
+      if (file.exists(path)) {
+        value <- readRDS(path)
+        break
+      }
+    }
+    assign(key, value, envir = planning_cache)
+  }
+  get(key, envir = planning_cache, inherits = FALSE)
+}
+
+# The totals of a few causes, repaired for those causes only: the full repair
+# reads the age bands of every cause group, which a caller that needs one cause
+# (the regional top-up, R/regional_rows.R) should not pay for.
+death_totals_for <- function(year, causes) {
+  causes <- sort(unique(as.character(causes)))
+  key <- paste(infant_snapshot_root(), "totalsfor", year, paste(causes, collapse = "|"), sep = "|")
+  if (!exists(key, envir = planning_cache, inherits = FALSE)) {
+    raw <- death_totals_raw(year)
+    value <- if (is.null(raw)) NULL else repair_death_totals(raw[raw$cause %in% causes, , drop = FALSE], year, only = causes)
+    assign(key, value, envir = planning_cache)
+  }
+  get(key, envir = planning_cache, inherits = FALSE)
+}
+
 # INE leaves the all-ages cell blank for a few municipality-years (Vimioso
 # 2024, Alfândega da Fé and Miranda do Douro 2015, some in the 1990s) while its
 # age bands are filled in; older snapshots stored the blank as 0. A total can
 # never be below the sum of its own bands, so for all causes and the I45 groups
 # take the larger of the two. Repaired cells are marked in `repaired`.
-repair_death_totals <- function(totals, year) {
+repair_death_totals <- function(totals, year, only = NULL) {
   totals$repaired <- FALSE
   causes <- intersect(unique(c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)), unique(totals$cause))
+  if (!is.null(only)) causes <- intersect(causes, only)
   for (indicator in c("0013166", "0008206")) {
     dir <- file.path(infant_snapshot_root(), "deaths", indicator, paste0("year_", year))
     if (dir.exists(dir)) break
