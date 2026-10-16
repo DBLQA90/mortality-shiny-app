@@ -1209,7 +1209,7 @@ test_that("weekly expected deaths come from baseline rates, leaving out the pand
   })
 })
 
-test_that("the six ULS that share a municipality read whole or by parish weights", {
+test_that("the ULS that share a municipality read whole or by parish weights", {
   skip_if_not(file.exists("../../data/uls_parish.rds"), "parish lookup not built")
   skip_if_not(file.exists("../../data/snapshots/census_parish/year_2021.rds"), "census parishes not fetched")
   # The engine reads snapshots relative to the app directory; point it at the
@@ -1225,12 +1225,12 @@ test_that("the six ULS that share a municipality read whole or by parish weights
   lookup <- get_nuts_lookup("2024")
   units <- planning_parish_units()
   expect_setequal(units, c("ULS Lisboa Ocidental", "ULS Loures/Odivelas", "ULS Santa Maria",
-                           "ULS Santo António", "ULS São João", "ULS São José"))
+                           "ULS Santo António", "ULS São João", "ULS São José", "ULS Vila Nova de Gaia/Espinho"))
   shares <- planning_parish_shares()
   # Every basis splits each shared municipality into shares that add to one.
   totals <- shares %>% dplyr::group_by(.data$municipality, .data$basis) %>% dplyr::summarise(total = sum(.data$weight), .groups = "drop")
   expect_true(all(abs(totals$total - 1) < 1e-9))
-  expect_setequal(unique(shares$municipality), c("Lisboa", "Loures", "Porto"))
+  expect_setequal(unique(shares$municipality), c("Gondomar", "Lisboa", "Loures", "Porto"))
 
   year <- max(intersect(planning_indicator_years("pop_total"), planning_indicator_years("deaths")))
   all_uls <- planning_uls_units("units")
@@ -1253,9 +1253,23 @@ test_that("the six ULS that share a municipality read whole or by parish weights
     planning_indicator_table("ULS Santo António + São João", year, ids = "pop_total", lookup = lookup, mode = m)$value
   })
   expect_equal(group[[1]], group[[2]])
-  # Porto's two ULS split it, so each is smaller than under the whole reading.
+  # Porto's two ULS split it, so each is smaller than under the whole reading;
+  # together they are the group less Lomba, which goes to Gaia/Espinho.
   porto <- planning_indicator_table(c("ULS Santo António", "ULS São João"), year, ids = "pop_total", lookup = lookup, mode = "parish")
-  expect_equal(sum(porto$value), group[[1]])
+  gaia <- lapply(c("whole", "parish"), function(m) {
+    planning_indicator_table("ULS Vila Nova de Gaia/Espinho", year, ids = "pop_total", lookup = lookup, mode = m)$value
+  })
+  expect_equal(sum(porto$value) + gaia[[2]] - gaia[[1]], group[[1]])
+
+  # Lomba (0.8% of Gondomar) is too small for its ULS to take Gondomar whole:
+  # under "whole" ULS Vila Nova de Gaia/Espinho is its two municipalities only.
+  expect_setequal(planning_area_members("ULS Vila Nova de Gaia/Espinho", lookup), c("Espinho", "Vila Nova de Gaia"))
+  two <- planning_indicator_table(c("Vila Nova de Gaia", "Espinho"), year, ids = "pop_total", lookup = lookup)
+  expect_equal(gaia[[1]], sum(two$value))
+  gondomar <- planning_indicator_table("Gondomar", year, ids = "pop_total", lookup = lookup)$value
+  expect_gt(gaia[[2]] - gaia[[1]], 0.005 * gondomar)
+  expect_lt(gaia[[2]] - gaia[[1]], 0.012 * gondomar)
+  expect_match(paste(uls_split_note("ULS Vila Nova de Gaia/Espinho", "whole"), collapse = " "), "Lomba")
 
   # Births and deaths are not estimated where INE publishes them by parish:
   # each ULS gets its parishes' own count, plus its whole municipalities.

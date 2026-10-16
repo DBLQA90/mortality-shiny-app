@@ -265,7 +265,7 @@ write_planning_profile <- function(path,
   doc <- officer::body_add_par(doc, "Notas", style = "heading 2")
   notes <- c(
     "Cada área é a soma dos seus municípios e cada indicador a razão dessas somas. As ULS e ARS usam a composição actual, aplicada a todos os anos.",
-    if (identical(mode, "parish")) "ULS que partilham um município (Lisboa, Loures, Porto): repartidas pela população das freguesias nos Censos de 2021, por grupo etário." else "ULS que partilham um município (Lisboa, Loures, Porto): cada ULS leva o município inteiro, pelo que as seis se sobrepõem.",
+    if (identical(mode, "parish")) "ULS que partilham um município (Lisboa, Loures, Porto; Gondomar só na freguesia da Lomba): repartidas pela população das freguesias nos Censos de 2021, por grupo etário." else "ULS que partilham um município (Lisboa, Loures, Porto): cada ULS leva o município inteiro, pelo que as seis se sobrepõem. Gondomar conta todo na ULS Santo António, incluindo a freguesia da Lomba (0,8%), que é da ULS Vila Nova de Gaia/Espinho.",
     if (identical(benchmark, PLANNING_PORTUGAL_MUNICIPAL)) "Portugal: soma dos 308 municípios, sem os acontecimentos de residência desconhecida (compara igual com igual)." else "Portugal: total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos).",
     "Significância: um valor está acima (abaixo) de Portugal quando todo o seu intervalo de confiança de 95% fica acima (abaixo) do valor de Portugal no mesmo período, como no PHE Fingertips. Só para taxas, proporções e esperança de vida.",
     paste("* Ganho médio e trabalhadores por sector:", PLANNING_INDICATOR_NOTES[["earnings_mean"]]),

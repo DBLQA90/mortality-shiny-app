@@ -1004,7 +1004,7 @@ planning_membership_matrix <- function(areas, lookup = get_nuts_lookup(), mode =
   # In the parish reading, the six ULS that share a municipality take the
   # share of it their parishes hold in the census.
   if (identical(mode, "parish") && any(areas %in% planning_parish_units())) {
-    membership <- membership * planning_parish_weights(areas, municipalities, basis, mode, year)
+    membership <- planning_parish_extend(membership) * planning_parish_weights(areas, municipalities, basis, mode, year)
   }
   membership
 }

@@ -68,7 +68,7 @@
 "padronizadas.norte.dsr_all","valor",838.455751215992,0.5,"triénio 2024"
 "padronizadas.norte.dsr_premature","valor",292.87054482998,0.5,"triénio 2024"
 "padronizadas.norte.life_expectancy","valor",83.0314594424042,0.01,"triénio 2024"
-"padronizadas.norte.premature_deaths","valor",33156.4475288511,0,"linha do INE para o Norte"
+"padronizadas.norte.premature_deaths","valor",33156.4475288511,0.01,"linha do INE para o Norte"
 "padronizadas.norte.smr_all","valor",96.3937830077515,0.5,"triénio 2024"
 "padronizadas.norte.ypll_rate","valor",3000.19949077974,0.5,"triénio 2024"
 "padronizadas.portugal.dsr_all","valor",871.179676458421,0.5,"triénio 2024"

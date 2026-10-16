@@ -162,7 +162,7 @@ ULS é a mesma nas duas definições NUTS.
 ULS ao nível da freguesia, e a aplicação não tem dados abaixo do município. Em vez de
 as mostrar individualmente com valores errados, aparecem os agrupamentos exactos:
 
-- `ULS Santo António + São João` — Gondomar, Maia, Porto, Valongo;
+- `ULS Santo António + São João` — Gondomar, Maia, Porto, Valongo (inclui a freguesia da Lomba, de Gondomar, que é da ULS Vila Nova de Gaia/Espinho; ver «ULS que partilham um município»);
 - `ULS Loures/Odivelas + Santa Maria + São José` — Lisboa, Loures, Mafra, Odivelas.
 
 Estes valores não são comparáveis com os que o ficheiro de indicadores PNS2030
@@ -1022,6 +1022,23 @@ São José (13) e a ULS Lisboa Ocidental (Ajuda, Alcântara e Belém); Loures en
 a ULS São José (as quatro freguesias a oriente, do centro de saúde de Sacavém) e
 a ULS Loures/Odivelas (as outras seis); o Porto entre a ULS Santo António (as
 quatro freguesias ocidentais) e a ULS São João (Bonfim, Campanhã e Paranhos).
+
+**Gondomar** é um caso à parte. A freguesia da Lomba pertence à ULS Vila Nova de
+Gaia/Espinho e o resto do município à ULS Santo António. Como a Lomba tem só
+0,8% dos residentes de Gondomar (1.284 de 164.257 nos Censos de 2021), dar o
+município inteiro também à ULS de Gaia/Espinho somar-lhe-ia 164 mil residentes
+por causa de uma freguesia. Por isso:
+
+- com **Município inteiro**, e em todos os outros separadores, Gondomar conta todo
+  na ULS Santo António, incluindo a Lomba;
+- com **Ponderação por freguesias**, a Lomba passa para a ULS Vila Nova de
+  Gaia/Espinho (em 2024, 1.331 residentes e 23 óbitos), e as ULS continuam a somar
+  exactamente o Continente;
+- o agrupamento exacto `ULS Santo António + São João` inclui a Lomba.
+
+Quando escolhe uma destas ULS, a aplicação diz o que ela partilha e como está a
+ser lida: nas notas do indicador, no separador Indicadores de Planeamento, e num
+aviso nos outros separadores.
 
 Estas seis ULS podem ser lidas de duas maneiras, à escolha:
 

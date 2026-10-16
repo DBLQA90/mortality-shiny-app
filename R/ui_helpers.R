@@ -654,7 +654,7 @@ glossary_tab_ui <- function() {
   )
 
   geography_terms <- list(
-    list("ULS (Unidade Local de Saúde)", "A unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios. Cinco ULS partilham municípios ao nível da freguesia e aparecem em dois agrupamentos exactos."),
+    list("ULS (Unidade Local de Saúde)", "A unidade de organização do SNS a que corresponde a população de um conjunto de municípios. Na aplicação é somada a partir dos seus municípios. Seis ULS partilham Lisboa, Loures ou Porto ao nível da freguesia e aparecem também em dois agrupamentos exactos; a freguesia da Lomba, de Gondomar, pertence à ULS Vila Nova de Gaia/Espinho."),
     list("ARS", "As cinco regiões de saúde (Norte, Centro, Lisboa e Vale do Tejo, Alentejo, Algarve) que agrupam as ULS. Não coincidem com as regiões NUTS com o mesmo nome."),
     list("NUTS", "A nomenclatura estatística das regiões. A aplicação usa dois níveis: NUTS I (Continente, Açores, Madeira) e NUTS II (as regiões)."),
     list("Definição das regiões (NUTS 2013 / NUTS 2024)", "As duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes: seis nomes existem nas duas e significam coisas diferentes em cada uma."),
@@ -971,7 +971,9 @@ planning_tab_ui <- function() {
           "as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
           "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
           "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
-          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha."
+          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha. ",
+          "Gondomar é a excepção: a freguesia da Lomba (0,8%) é da ULS Vila Nova de Gaia/Espinho, mas ",
+          "com «Município inteiro» Gondomar conta todo na ULS Santo António; ver as notas do indicador."
         ),
         radioButtons(
           "planning_portugal", "Portugal:",
@@ -1172,6 +1174,7 @@ planning_method_notes <- function() {
     h4("Portugal, significância e funil"),
     tags$ul(
       tags$li("ULS que partilham um município: Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia (Decreto-Lei n.º 102/2023). «Município inteiro» dá a cada ULS o município todo, sem estimar nada, mas as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez (em 2024, mais 18.186 óbitos do que o Continente). «Ponderação por freguesias» reparte cada município pela população das suas freguesias nos Censos de 2021, por grupo etário: as partes somam o município e o país, assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha e não assumem nada."),
+      tags$li("A freguesia da Lomba (Gondomar, 0,8% dos residentes) pertence à ULS Vila Nova de Gaia/Espinho, mas só a ponderação por freguesias a separa: com «Município inteiro» Gondomar conta todo na ULS Santo António, porque dar o município inteiro também à de Gaia/Espinho somaria 164 mil residentes a esta ULS. Pela mesma razão, o agrupamento exacto ULS Santo António + São João inclui a Lomba."),
       tags$li("Portugal pode ser o total publicado pelo INE, que inclui os acontecimentos de residência desconhecida (0,3-0,9% dos óbitos), ou a soma dos 308 municípios, que compara igual com igual. A escolha vale para comparadores, significância, classificação das ULS, funil e perfil."),
       tags$li("\u25b2 / \u25bc / = : o intervalo de confiança de 95% fica inteiramente acima, abaixo ou inclui o valor de Portugal no mesmo período (critério do PHE Fingertips). Só para indicadores comparáveis com intervalo; não diz se a diferença é boa ou má. Na classificação das ULS: laranja acima, azul abaixo, cinzento sem diferença."),
       tags$li("Funil: cada unidade contra o tamanho do denominador, com os limites do que o acaso produziria à volta de Portugal (95% e 99,8%), calculados pelos quantis exactos da contagem (Poisson ou binomial, Spiegelhalter 2005). Só para taxas de acontecimentos e proporções de nascimentos."),
@@ -1238,7 +1241,7 @@ planning_method_notes <- function() {
     h4("Porque podem diferir do ficheiro de apoio aos PLS"),
     tags$ul(
       tags$li("A população de 2021 em diante é a série revista pelo INE; valores calculados com a estimativa anterior ficam desactualizados (por exemplo, índices de envelhecimento mais altos)."),
-      tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
+      tags$li("As ULS que partilham um município ao nível da freguesia (Lisboa, Loures, Porto e, numa freguesia, Gondomar) não podem ser calculadas separadamente sem dados por freguesia. Atribuir o município inteiro a cada uma conta a mesma população duas vezes; a aplicação mostra antes os dois agrupamentos exactos."),
       tags$li("As regiões são somadas a partir dos municípios, pelo que excluem os acontecimentos de residência desconhecida, que só entram nos totais de Portugal e do Continente."),
       tags$li("Poder de compra e mortalidade neonatal: nalgumas ULS os valores do ficheiro não coincidem com os publicados pelo INE para os seus municípios (por exemplo, o poder de compra de Matosinhos em 2021 é 118,1 no INE e 130,6 no ficheiro), e a mortalidade neonatal e pós-neonatal do ficheiro não soma a infantil. A aplicação calcula a partir dos valores municipais do INE.")
     )

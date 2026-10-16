@@ -39,8 +39,11 @@ parishes <- census %>%
   filter(.data$municipality %in% unique(assignment$municipality)) %>%
   mutate(key = normalise(.data$parish))
 
-wanted <- assignment %>% mutate(key = normalise(.data$parish))
-joined <- parishes %>% left_join(wanted[, c("municipality", "key", "uls")], by = c("municipality", "key"))
+# `whole`: "não" for a part of a municipality too small for its ULS to take
+# the municipality whole (see the csv); absent or "sim" otherwise.
+if (!"whole" %in% names(assignment)) assignment$whole <- "sim"
+wanted <- assignment %>% mutate(key = normalise(.data$parish), whole = !tolower(trimws(.data$whole)) %in% c("não", "nao", "no"))
+joined <- parishes %>% left_join(wanted[, c("municipality", "key", "uls", "whole")], by = c("municipality", "key"))
 
 missing <- joined[is.na(joined$uls), , drop = FALSE]
 extra <- wanted[!paste(wanted$municipality, wanted$key) %in% paste(parishes$municipality, parishes$key), , drop = FALSE]
@@ -51,7 +54,8 @@ if (nrow(missing) > 0 || nrow(extra) > 0) {
 }
 
 out <- joined %>%
-  transmute(code = .data$code, parish = .data$parish, dico = .data$dico, municipality = .data$municipality, unit = .data$uls) %>%
+  transmute(code = .data$code, parish = .data$parish, dico = .data$dico, municipality = .data$municipality, unit = .data$uls,
+            whole = .data$whole) %>%
   arrange(.data$municipality, .data$unit, .data$parish)
 
 message(sprintf("%d parishes across %d municipalities and %d ULS", nrow(out), n_distinct(out$municipality), n_distinct(out$unit)))

@@ -1131,6 +1131,24 @@ each column with the matrix of its own basis, and `planning_band_product()`
 does the same per age band for life expectancy and the standardised module. In
 the parish reading the 39 ULS sum exactly to the Continente in every component.
 
+**Gondomar.** The parish of Lomba belongs to ULS Vila Nova de Gaia/Espinho, not
+to ULS Santo António, which serves the rest of Gondomar (confirmed by the owner
+on 2026-10-16; geopt's CAOP-based health layer agrees). Lomba has 1,284 of
+Gondomar's 164,257 residents (2021 census, 0.8%). Under `whole`, giving
+Gondomar whole to ULS Vila Nova de Gaia/Espinho as well would add 164,257
+residents to a ULS of 354,128 for a part of 0.8%, a far larger error than the
+one it corrects, so `data-raw/uls_parish.csv` flags the Lomba row `whole =
+não`: Gondomar counts whole in ULS Santo António only, in the `whole` reading
+and in every other tab (`data/uls_lookup.rds` is unchanged), and Lomba enters
+ULS Vila Nova de Gaia/Espinho only under `parish`
+(`planning_parish_partial_pairs()`, `planning_parish_extend()`). In 2024 that
+moves 1,331 residents and 23 deaths between the two ULS, and the parish reading
+still sums exactly to the Continente. The exact group `ULS Santo António + São
+João` keeps Gondomar whole, so it includes Lomba. `uls_split_note()` writes,
+for each selected ULS that shares a municipality, what it shares and how the
+reading in use treats it: in the planning tab's indicator notes, and as a
+notice when such a ULS is selected in the other tabs.
+
 ### Portugal benchmark, significance and funnel
 
 `PLANNING_PORTUGAL_MUNICIPAL` ("Portugal (soma dos municípios)") is a pseudo-area

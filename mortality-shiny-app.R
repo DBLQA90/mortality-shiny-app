@@ -366,6 +366,13 @@ server <- function(input, output, session) {
   # 2) Load one metric bundle (both population scopes, both rate outputs) for
   #    that query.
   # 3) Apply the final population/rate/year filter to get a reusable series.
+  # A ULS that shares a municipality is read by whole municipalities outside
+  # the planning tab's parish weights; say what that means for each one.
+  notify_uls_split <- function(areas) {
+    note <- uls_split_note(areas, "whole")
+    if (length(note) > 0) showNotification(paste(note, collapse = "\n"), type = "message", duration = 25)
+  }
+
   make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
     area_key <- sort(unique(area))
 
@@ -384,6 +391,7 @@ server <- function(input, output, session) {
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
     }
+    notify_uls_split(area_key)
 
     # Expand any selected region into its municipalities. This applies to every
     # tab that goes through a query spec - observed mortality and both forecast
@@ -2763,6 +2771,7 @@ server <- function(input, output, session) {
     # overlapping choice double-counts exactly as it does on the other tabs.
     # Only reachable since NUTS I regions became selectable: before that every
     # offered region sat at one level and so was disjoint from the others.
+    notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
@@ -4114,6 +4123,7 @@ server <- function(input, output, session) {
     )
     validate(need(is.null(mismatch), mismatch))
 
+    notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
       showNotification(overlap, type = "warning", duration = 20)
@@ -4434,14 +4444,13 @@ server <- function(input, output, session) {
     if (spec$id %in% names(PLANNING_INDICATOR_NOTES)) notes <- c(notes, paste("*", PLANNING_INDICATOR_NOTES[[spec$id]]))
     if (spec$id %in% PLANNING_EDUCATION_IDS && planning_education_age() > 0) notes <- c(notes, PLANNING_EDUCATION_NOTE)
     if (any(planning_areas()$area %in% planning_parish_units())) {
-      notes <- c(notes, if (identical(planning_split_mode(), "parish")) {
-        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): valores repartidos pela população das freguesias nos Censos de 2021, ",
-               "por grupo etário. As partes somam o município; assume-se que as quotas de 2021 se mantêm e que, dentro de cada município e idade, ",
-               "as freguesias de cada ULS se comportam como as restantes.")
-      } else {
-        paste0("ULS que partilha um município (Lisboa, Loures ou Porto): leva o município inteiro, como no ficheiro de apoio. ",
-               "Nada é estimado, mas estas ULS sobrepõem-se: somá-las conta Lisboa, Loures e Porto mais do que uma vez.")
-      })
+      notes <- c(notes, uls_split_note(planning_areas()$area, planning_split_mode()))
+      if (identical(planning_split_mode(), "parish")) {
+        notes <- c(notes, paste0(
+          "Ponderação por freguesias: as partes somam o município; os nascimentos e óbitos vêm dos registos por freguesia ",
+          "do INE desde 2014, e o resto da população das freguesias nos Censos de 2021, por grupo etário."
+        ))
+      }
     }
     if (any(!is.na(series$significance))) {
       notes <- c(notes, paste0(
@@ -4657,7 +4666,7 @@ server <- function(input, output, session) {
       "Acima de Portugal não quer dizer pior: uma esperança de vida alta e uma mortalidade alta ficam ambas a vermelho. ",
       "Cada mapa usa o último período disponível até ao último ano escolhido, indicado no título. ",
       if (isTRUE(input$planning_map_smoothed)) "A suavização só se aplica às taxas com modelo de contagem (as do funil); os títulos dizem quais. " else "",
-      if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures ou Porto têm os valores das suas freguesias. As ilhas não têm ULS. " else "",
+      if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias (a Lomba na ULS Vila Nova de Gaia/Espinho). As ilhas não têm ULS. " else "",
       "Cinzento: sem valor. Contorno escuro: o local escolhido. Clique numa área para ver os seus valores."
     ))
   })
