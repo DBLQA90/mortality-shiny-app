@@ -328,7 +328,7 @@ planning_cause_age_block <- function(year, municipalities) {
     assign(key, value, envir = planning_cache)
     return(value)
   }
-  frames <- lapply(files, function(f) if (is.null(f)) NULL else readRDS(f))
+  frames <- lapply(files, function(f) if (is.null(f)) NULL else read_death_file(f))
   infant <- read_year_file("infant_totals", year)
   if (is.null(infant)) {
     infant <- read_year_file("infant_deaths", year)

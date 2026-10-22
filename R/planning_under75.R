@@ -69,7 +69,7 @@ planning_under75_year <- function(year, sex = "HM") {
     }
     if (is.null(path)) next
 
-    rows <- readRDS(path)
+    rows <- read_death_file(path)
     rows <- rows[rows$sex == sex & rows$age_band %in% bands, , drop = FALSE]
     municipal[[cause]] <- tapply(rows$deaths, rows$area, sum)
 

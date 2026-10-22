@@ -235,7 +235,7 @@ read_death_totals_year <- function(year) {
   for (indicator in c("0013166", "0008206")) {
     path <- file.path(death_totals_dir(), indicator, paste0("year_", year, ".rds"))
     if (file.exists(path)) {
-      out <- repair_death_totals(readRDS(path), year)
+      out <- repair_death_totals(read_death_file(path), year)
       break
     }
   }
@@ -297,7 +297,7 @@ death_totals_raw <- function(year) {
     for (indicator in c("0013166", "0008206")) {
       path <- file.path(death_totals_dir(), indicator, paste0("year_", year, ".rds"))
       if (file.exists(path)) {
-        value <- readRDS(path)
+        value <- read_death_file(path)
         break
       }
     }
@@ -337,7 +337,7 @@ repair_death_totals <- function(totals, year, only = NULL) {
   for (cause in causes) {
     file <- file.path(dir, paste0("cause_", planning_cause_file_token(cause), ".rds"))
     if (!file.exists(file)) next
-    banded <- readRDS(file)
+    banded <- read_death_file(file)
     sums <- stats::aggregate(banded$deaths, by = list(area = banded$area, sex = banded$sex), FUN = sum, na.rm = TRUE)
     rows <- which(totals$cause == cause)
     banded_sum <- sums$x[match(paste(totals$area[rows], totals$sex[rows]), paste(sums$area, sums$sex))]

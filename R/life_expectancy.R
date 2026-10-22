@@ -152,7 +152,7 @@ life_year_block <- function(year, municipalities) {
     assign(key, value, envir = planning_cache)
     return(value)
   }
-  deaths <- readRDS(path)
+  deaths <- read_death_file(path)
   infant <- read_year_file("infant_totals", year)
   if (is.null(infant)) {
     infant <- read_year_file("infant_deaths", year)

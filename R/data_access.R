@@ -114,7 +114,7 @@ death_age_fill <- function(year, cause) {
   if (!is.null(path) && !is.null(pop) && !is.null(totals)) {
     labels <- unique(c(sort(unique(get_nuts_lookup("2024")$municipality)), planning_published_areas))
     bands <- age_levels
-    deaths <- readRDS(path)
+    deaths <- read_death_file(path)
     matrix_of <- function(frame, value, sex) {
       out <- matrix(0, length(labels), length(bands), dimnames = list(labels, bands))
       rows <- frame[frame$sex == sex & frame$area %in% labels & frame$age_band %in% bands, , drop = FALSE]

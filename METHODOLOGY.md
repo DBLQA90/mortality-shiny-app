@@ -1472,6 +1472,32 @@ audit of 2026-09-21 found four kinds, each now handled explicitly:
   the five municipalities alone, and any selection of municipalities holding
   them, are. Their 2011 rates read about 85% low (Nisa, standardised: 153
   against about 1,100 in the neighbouring years).
+
+  **Corrected on reading since 2026-10-22.** `tools/build_source_corrections.R`
+  writes `data/source_corrections.rds`: for each listed municipality-year the
+  all-cause total is the parish deaths; where the published men and women add
+  up to it (Nisa) they are kept and both sexes is their sum, otherwise the total
+  is split by sex and by age in the proportions of the two neighbouring years
+  (whole deaths, largest remainder), in the age-band files and in the all-ages
+  totals. `apply_source_corrections()` (R/helpers.R) replaces those rows when a
+  death file is read - through `read_snapshot_object()` and `read_death_file()`,
+  at every place a death file is opened - so the snapshots keep INE's data as
+  published. `options(mortality.source_corrections = FALSE)` reads them
+  uncorrected. The builder also lists every municipality-year whose all-cause
+  total still differs from the parish deaths by more than 2: after the
+  correction only Ponte de Lima 2019 (469 against 472).
+
+### Source audit
+
+`tools/source_audit.R` re-checks the stored INE data, read uncorrected, against
+itself and against other datasets that measure the same thing: municipal sums
+against Portugal (deaths, population, births, under-1 deaths), both sexes
+against men plus women, age bands against all-ages totals (all causes and lung
+cancer), parish deaths against municipal totals, INE's NUTS III rows against
+their municipalities, weekly deaths against the calendar year, and the
+municipal datasets for municipalities without a value. It changes nothing and
+runs in about ten seconds. The findings of 2026-10-22, with the approach taken
+for each, are summarised for users in `ESCOLHAS_METODOLOGICAS.md`.
 - **Suppressed employment sectors.** INE hides two of the three sectors when one
   would reveal a single employer (6 municipalities in 2024, 41-49 a year in
   2013-2016: Vizela, Marinha Grande, Boticas...). Read as zeros, all of such a

@@ -16,7 +16,8 @@ Since method version 2.0 (October 2026):
 
 - **The guided forecast shows the mean of six models by default** (ARIMA, ETS, Theta, TBATS, Holt, damped Holt), not the model with the lowest validation error. Tested from every year 2008-2020 on 27 regional and 80 municipal and ULS series, four years ahead: median error 3.3% against 4.0% in the regions and 7.9% against 9.4% in municipalities and ULS, with 95% intervals that held the observed value in 90% and 96% of cases against 73% and 87%. Intervals are about twice as wide. The lowest-error model stays available. See *The Guided Forecast's Default* in [METHODOLOGY.md](METHODOLOGY.md).
 - **Municipal death totals refetched** with INE's confidential cells kept as missing; an early version of the fetcher had stored them as 0. Validated values are unchanged, since the app already replaced such zeros with the sum of the age bands.
-- **INE's 2011 all-cause deaths for five Alto Alentejo municipalities are wrong at the source** (Nisa, Gavião, Fronteira, Monforte, Marvão: 139 deaths for 424), documented in [METHODOLOGY.md](METHODOLOGY.md); regions and ULS are unaffected.
+- **INE's 2011 all-cause deaths for five Alto Alentejo municipalities are wrong at the source** (Nisa, Gavião, Fronteira, Monforte, Marvão: 139 deaths for 424). They are corrected on reading from the parish deaths (`data/source_corrections.rds`, `tools/build_source_corrections.R`); the snapshots keep INE's values as published. Regions and ULS were never affected.
+- **Source audit** (`tools/source_audit.R`): re-checks every stored INE dataset against itself and against datasets that measure the same thing.
 
 Method version 2.0 (October 2026), which changes published values:
 

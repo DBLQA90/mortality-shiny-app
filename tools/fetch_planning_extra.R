@@ -312,7 +312,8 @@ for (measure in names(MEASURES)) {
       mutate(area = area_for_code(code)) %>%
       filter(!is.na(area)) %>%
       group_by(area, category) %>%
-      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      # A blank (confidential or not published) stays NA; it is not a zero.
+      summarise(value = if (all(is.na(value))) NA_real_ else sum(value, na.rm = TRUE), .groups = "drop") %>%
       mutate(year = as.integer(year), source_indicator = indicator) %>%
       select(year, area, category, value, source_indicator) %>%
       arrange(area, category)

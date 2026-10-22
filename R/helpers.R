@@ -123,3 +123,53 @@ helpers_save_base_plot_png <- function(file, plot_expr, width = 1200, height = 8
     graphics::mtext(stamp, side = 1, line = -0.2, outer = TRUE, adj = 0, cex = 0.55, col = "grey35")
   }
 }
+
+# Corrections to values INE publishes wrongly (data/source_corrections.rds,
+# built and documented by tools/build_source_corrections.R; reasons in
+# ESCOLHAS_METODOLOGICAS.md). They are applied when a death file is read, so
+# the snapshots keep INE's data as published. options(mortality.source_corrections
+# = FALSE) reads the data exactly as INE publishes them.
+source_corrections_enabled <- function() !identical(getOption("mortality.source_corrections"), FALSE)
+
+source_corrections_cache <- new.env(parent = emptyenv())
+
+# The registry beside the snapshot directory that `path` lies in, or NULL.
+source_corrections_for <- function(path) {
+  root <- sub("/snapshots/.*$", "", path)
+  if (identical(root, path)) return(NULL)
+  file <- file.path(root, "source_corrections.rds")
+  if (!file.exists(file)) return(NULL)
+  stamp <- paste(file, file.mtime(file))
+  if (!identical(source_corrections_cache$stamp, stamp)) {
+    source_corrections_cache$value <- tryCatch(readRDS(file), error = function(e) NULL)
+    source_corrections_cache$stamp <- stamp
+  }
+  source_corrections_cache$value
+}
+
+# Replace, in a death file read from `path`, the rows the registry corrects:
+# by (area, sex, cause, age band) in the files by age, by (area, sex, cause) in
+# the all-ages totals. Other files are returned unchanged.
+apply_source_corrections <- function(x, path) {
+  if (!source_corrections_enabled() || !is.data.frame(x) || nrow(x) == 0 || !is.character(path) || grepl("^https?://", path)) return(x)
+  m <- regmatches(path, regexec("/snapshots/(deaths|death_totals)/([0-9]+)/year_([0-9]{4})", path))[[1]]
+  if (length(m) == 0) return(x)
+  registry <- source_corrections_for(path)
+  if (is.null(registry)) return(x)
+  part <- if (identical(m[[2]], "deaths")) registry$deaths else registry$totals
+  part <- part[part$indicator == m[[3]] & part$year == as.integer(m[[4]]) & part$cause %in% unique(x$cause), , drop = FALSE]
+  if (nrow(part) == 0) return(x)
+  keys <- intersect(c("area", "sex", "cause", "age_band"), names(x))
+  replaced <- do.call(paste, c(x[keys], sep = "\r")) %in% do.call(paste, c(part[keys], sep = "\r"))
+  if (!any(replaced)) return(x)
+  template <- x[replaced, , drop = FALSE]
+  at <- match(do.call(paste, c(part[keys], sep = "\r")), do.call(paste, c(template[keys], sep = "\r")))
+  part <- part[!is.na(at), , drop = FALSE]
+  new_rows <- template[at[!is.na(at)], , drop = FALSE]
+  new_rows$deaths <- part$deaths
+  out <- rbind(x[!replaced, , drop = FALSE], new_rows)
+  attr(out, "source_corrected") <- TRUE
+  out
+}
+
+read_death_file <- function(path) apply_source_corrections(readRDS(path), path)

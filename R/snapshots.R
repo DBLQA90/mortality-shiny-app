@@ -221,7 +221,7 @@ read_snapshot_object <- memoise::memoise(function(path) {
     return(readRDS(con))
   }
 
-  readRDS(path)
+  apply_source_corrections(readRDS(path), path)
 })
 
 read_snapshot_dataset <- memoise::memoise(function(kind, separate_path, combined_path) {

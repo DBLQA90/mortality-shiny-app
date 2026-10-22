@@ -192,7 +192,9 @@ Nos outros separadores conta o município inteiro. Gondomar fica todo na ULS San
 - a linha do INE para a sub-região Alto Alentejo dá 1.888, e a soma dos seus municípios só bate certo com 424;
 - nesses municípios, o número de homens é maior do que o total (Gavião: 91 homens, 34 no total).
 
-**O que significa para si.** As regiões (Alentejo, Alto Alentejo) e a ULS Alto Alentejo usam as linhas regionais do INE, que estão certas, e não são afectadas. Afectados são estes cinco municípios em 2011, e qualquer conjunto de municípios que os inclua, para todas as causas. A forma de os corrigir ainda está em decisão.
+**O que fazemos com ele.** Desde 22 de Outubro de 2026, o total destes cinco municípios em 2011 é o dos óbitos por freguesia (424), repartido por sexo e idade como em 2010 e 2012. Em Nisa, onde os homens e as mulheres publicados somam o total certo, mantêm-se. Os ficheiros guardam os valores do INE tal como publicados, e a correcção aplica-se ao ler, a partir de um registo à parte (`data/source_corrections.rds`, construído por `tools/build_source_corrections.R`). As linhas por causa não são corrigidas, porque parecem certas.
+
+**O que significa para si.** As regiões (Alentejo, Alto Alentejo) e a ULS Alto Alentejo usam as linhas regionais do INE, que estão certas, e nunca foram afectadas. Nos cinco municípios, a taxa de 2011 deixa de sair cerca de 85% abaixo do real.
 
 ---
 
@@ -296,7 +298,7 @@ Dois modelos ficaram de fora da média: o passeio aleatório e o modelo ingénuo
 - **Testes automáticos.** Correm a cada alteração do código.
 - **Verificação de regressão.** Corre depois de cada actualização dos dados: recalcula 119 valores validados contra o INE e avisa se algum mudar.
 - **Verificação de invariantes.** Também corre depois de cada actualização: calcula os indicadores em muitas áreas, anos e opções, e procura o que nunca deveria acontecer, como um valor em falta onde há dados, Portugal que não bate com a soma dos municípios, ou uma série que salta sem razão.
-- **Comparação com fontes independentes.** Foi assim que se encontrou, por exemplo, o erro de 2011 no Alto Alentejo.
+- **Auditoria das fontes** (`tools/source_audit.R`). Lê os dados tal como o INE os publica e compara cada conjunto com outro que meça o mesmo: municípios com Portugal, sexos com o total, idades com o total, freguesias com municípios, sub-regiões com os seus municípios, semanas com o ano. Foi assim que se encontrou, por exemplo, o erro de 2011 no Alto Alentejo.
 
 **Porquê.** Os erros mais perigosos são os que produzem números plausíveis. Estas verificações já encontraram vários, tanto nossos como nas fontes, e cada um ficou documentado.
 
