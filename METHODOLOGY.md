@@ -1444,7 +1444,34 @@ audit of 2026-09-21 found four kinds, each now handled explicitly:
   the sum of its bands for all causes and the I45 groups, and marks the cell
   `repaired`. Vimioso's 2024 death rate goes from 0 to 23.2, INE's value; ULS
   Nordeste gains 87 deaths (4%), which had inflated its proportional mortality.
-  `tools/fetch_death_totals.R` now keeps blanks as `NA`.
+  `tools/fetch_death_totals.R` now keeps blanks as `NA`. The stored files
+  predated that fix and still held the blanks as 0 - 8 all-cause and 2,787
+  cause-specific municipal totals (both sexes) over 1991-2024, plus about 76,000
+  sex-specific cells - until they were refetched on 2026-10-22. `ineptr2`
+  returns these cells as `NA` with INE's flag `…` ("Dado confidencial"); the 0
+  came from a `coalesce(deaths, 0)` in the first version of the fetcher. The
+  regression check was unchanged after the refetch: the repair above had
+  already replaced every zero that mattered.
+- **A defect in INE's own municipal rows: 2011, Alto Alentejo.** In `0008206`
+  for 2011 the all-cause, both-sexes rows of five municipalities are wrong as
+  INE publishes them (checked against the live API, last updated 2025-10-11):
+  Nisa 24 deaths (parish deaths 165), Gavião 34 (91), Fronteira 1 (60),
+  Monforte 31 (49), Marvão 49 (59) - 139 against 424. Three independent
+  checks agree on 424: the parish deaths; INE's own Alto Alentejo NUTS III row
+  (1,888), which equals the sum of its municipalities in 2010 and 2012 but
+  exceeds it by exactly 285 in 2011; and the sex columns, where four of the
+  five have more men than total deaths (Gavião: 91 men, 34 in all). It is not
+  deaths of unknown municipality held at regional level: in other years the
+  NUTS rows equal the municipal sums, and the parish file places all 1,888 in
+  parishes of these municipalities. The cause-specific rows look plausible
+  (Fronteira, circulatory: 18), so the defect is in the all-cause row and its
+  age bands. Across 1996-2024 the parish totals equal INE's municipal totals in
+  every municipality-year but these five, one of 3 deaths (Ponte de Lima 2019)
+  and the confidential cells above. Regions and ULS read INE's regional rows
+  (Alentejo 2011: 7,218 deaths; ULS Alto Alentejo: 1,888) and are unaffected;
+  the five municipalities alone, and any selection of municipalities holding
+  them, are. Their 2011 rates read about 85% low (Nisa, standardised: 153
+  against about 1,100 in the neighbouring years).
 - **Suppressed employment sectors.** INE hides two of the three sectors when one
   would reveal a single employer (6 municipalities in 2024, 41-49 a year in
   2013-2016: Vizela, Marinha Grande, Boticas...). Read as zeros, all of such a
@@ -1568,7 +1595,7 @@ The app supports these model families through the `forecast` package:
 - Holt
 - damped Holt
 
-The guided forecast tab uses simpler controls and recommends a model using out-of-sample forecast accuracy (see below). The advanced forecast tab exposes model families, training windows, confidence interval level, optional transformation, diagnostics, backtesting, and structural-break exploration.
+The guided forecast tab uses simpler controls and shows, by default, the mean of six of these models (see *The Guided Forecast's Default: the Mean of Six Models*); the out-of-sample validation below scores every model and the averages, and decides the forecast shown only when the user asks for the model with the lowest error. The advanced forecast tab exposes model families, training windows, confidence interval level, optional transformation, diagnostics, backtesting, and structural-break exploration.
 
 Both forecasting tabs allow horizons up to 30 years beyond the last observed year. Longer horizons widen the gap between a statistical extrapolation and interpretable epidemiological expectation, so the final years should be read with extra caution, especially for sparse local series or unstable causes.
 
@@ -1618,39 +1645,87 @@ When the selected series is too short to leave at least three training years and
 
 Backtesting can evaluate forecasts against a holdout period from the end of the observed series. Holdout errors are computed against the observed values for overlapping years.
 
+### The Guided Forecast's Default: the Mean of Six Models
+
+Since October 2026 the guided forecast shows, by default, the equal-weight mean
+of six fixed models - ARIMA, ETS, Theta, TBATS, Holt and damped Holt - with the
+interval of the mixture of their forecast distributions
+(`combine_model_forecasts()`, id `mean6`). The random walk with drift and the
+naive model are left out. The model with the lowest validation error remains
+available ("O modelo com menor erro na validação", advanced options), and the
+validation table scores every model and both averages either way.
+
+**Why.** A diagnostic replicated the guided forecast and ran it from every year
+2008-2020 (2008-2024 for the shorter horizons) as if that were the last year
+known, on 27 regional series (all-cause standardised, under-75 standardised and
+crude mortality for Portugal, the Continente and the five planning regions,
+1991-2025; life expectancy at 65 by triennium) and on 80 municipal and ULS
+series (30 municipalities drawn five per size band, from under 5,000 to over
+100,000 residents, and 10 ULS; standardised and under-75 standardised,
+1991-2024). Four years ahead:
+
+| Strategy | Regions: median error | Regions: 95% interval holds the value | Municipalities and ULS: median error | Municipalities and ULS: interval holds the value |
+|---|---:|---:|---:|---:|
+| Lowest one-step validation error (the previous default) | 4.0% | 73% | 9.4% | 87% |
+| Combination of the three best | 3.8% | 78% | 8.7% | 92% |
+| Mean of all eight models | 3.2% | 97% | 8.1% | 99% |
+| **Mean of six models** | 3.3% | 90% | **7.9%** | **96%** |
+| Theta alone | 3.6% | 87% | 7.9% | 97% |
+
+Picking a model by its one-step error over the last quarter of the years (5 to 9
+years) is mostly noise: the choice changed in 42% of cases when one more year
+arrived, and with data perturbed by ±0.05% the four-year forecast moved by up
+to 4.3% in a region and 18% in a municipality (0.97% for the Norte 2029 value
+of the DGS indicator table between data versions 1.9 and 2.0, which moved the
+data by at most 0.07%). The models it favoured - Holt, damped Holt, ETS -
+amplify small changes through their optimised parameters and have the
+narrowest intervals. Scoring at the four-year horizon instead did not help
+(4.3%, 69%): even fewer usable years.
+
+The random walk and the naive model take each year's noise as permanent. In
+small municipalities their intervals alone spanned 92-104% of the forecast, so
+the mean of all eight, which includes them, gave intervals of 132% of the
+forecast under 10,000 residents. Without them the mean is as accurate and its
+intervals usable. The six were fixed after seeing the eight-model results; the
+reason for dropping the random-walk models is prior to the numbers, but the
+choice should be read with that in mind. The scripts and results are kept
+outside the repository (`forecast_diagnostic_2026/`).
+
+**What changes for the user.** Intervals are about twice as wide as those of a
+single model, and closer to what was actually observed. The reliability panel
+reads interval width, so it more often reports a lower reliability: that is the
+uncertainty, not a degradation. The mean is offered when at least four of its
+six members could be fitted (`FORECAST_MEAN_MIN_MEMBERS`).
+
 ### Combining Models and Comparing Areas
 
-The guided forecast adds one candidate to the eight models: the equal-weight
-combination of the three that validated best (`combine_model_forecasts()`).
-Its point forecast is the mean of the three; its interval is that of the
-mixture of their forecast distributions, each recovered on the modelling scale
-from its own interval, so it widens where the members disagree as well as with
-each member's uncertainty - the part a single model's interval leaves out, and
-the reason long-horizon intervals were too narrow.
+The guided forecast also offers the equal-weight combination of the three
+models that validated best. Its point forecast is the mean of the three; its
+interval is that of the mixture of their forecast distributions, each recovered
+on the modelling scale from its own interval, so it widens where the members
+disagree as well as with each member's uncertainty.
 
-It is scored like the other models in the rolling validation, with no
-hindsight: at each test year its members are the three with the lowest error
-over the earlier test years (the first year uses the in-sample ranking;
-`combination_rolling_predictions()`). It is recommended only when it validates
-best. Alentejo, standardised, 2001-2025: naive 41.9, combination 52.9, so naive
-is recommended. It needs the rolling validation; with the other methods it is
-not offered.
+Both averages are scored like the models in the rolling validation. The
+combination has no hindsight: at each test year its members are the three with
+the lowest error over the earlier test years (the first year uses the in-sample
+ranking; `combination_rolling_predictions()`). The mean of six has fixed members,
+so its one-step predictions are the mean of theirs (`mean_rolling_predictions()`).
+The combination needs the rolling validation; the mean does not, but is scored
+only with it.
 
 With several locations, "Projectar cada um em separado" forecasts each on its
 own under one policy:
 
-- **combination** (default): the same method everywhere, so differences
-  between areas come from their data, not from which model won by chance in
-  each - with "best per area", Norte took ARIMA (-8.7% to 2029) while Centro and
-  Alentejo took the flat naive model;
+- **mean of six models** (default): the same fixed method everywhere, so
+  differences between areas come from their data, not from which model won by
+  chance in each - with "best per area", Norte took ARIMA (-8.7% to 2029) while
+  Centro and Alentejo took the flat naive model;
+- **combination of each area's three best**;
 - **one common model**: the model with the lowest mean relative error (RMSE
   over the area's mean level) among those every area could fit
   (`choose_common_model()`);
-- **best per area**: each area's own recommendation, shown in any case in the
-  last column of the table.
-
-For one location the recommended model, which now includes the combination as
-a candidate, stays the default.
+- **best per area**: each area's model with the lowest validation error, shown
+  in any case in the last column of the table.
 
 ### Trend: annual percentage change
 

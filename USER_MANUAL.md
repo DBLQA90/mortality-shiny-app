@@ -2,7 +2,7 @@
 
 Este manual explica como usar a aplicação e como interpretar os principais conceitos epidemiológicos e estatísticos apresentados nos separadores. A aplicação é uma ferramenta exploratória não oficial: ajuda a analisar dados de mortalidade do INE, mas não substitui validação epidemiológica, análise clínica, revisão metodológica ou produtos estatísticos oficiais.
 
-Para detalhes técnicos das fórmulas, indicadores e implementação, ver [METHODOLOGY.md](METHODOLOGY.md).
+As escolhas metodológicas por trás dos números (o que a aplicação faz, porquê, e o que isso muda na leitura) estão explicadas em linguagem simples em [ESCOLHAS_METODOLOGICAS.md](ESCOLHAS_METODOLOGICAS.md). Para detalhes técnicos das fórmulas, indicadores e implementação, ver [METHODOLOGY.md](METHODOLOGY.md).
 
 ## 1. Visão Geral
 
@@ -562,7 +562,7 @@ Controlos principais:
 - `Janela de ajuste`;
 - horizonte da previsão;
 - modo de previsão;
-- em `Mostrar opções avançadas` (opcional): o método de validação (`Como escolher o modelo recomendado`) e o `Tamanho do teste (% dos anos)`.
+- em `Mostrar opções avançadas` (opcional): a `Projecção apresentada` (média de 6 modelos ou o modelo com menor erro), o método de validação e o `Tamanho do teste (% dos anos)`.
 
 Em `Indicador` pode escolher a taxa de mortalidade (por causa) ou a **mortalidade infantil** (por 1.000 nados-vivos), anual, por triénio ou por quinquénio. Para um triénio ou quinquénio há dois métodos:
 
@@ -578,43 +578,75 @@ Modos típicos:
 - previsão recomendada;
 - comparação entre modelos disponíveis.
 
+### A projecção apresentada: média de 6 modelos
+
+Por omissão, a projecção é a **média de 6 modelos**: ARIMA, ETS, Theta, TBATS,
+Holt e Holt amortecido. O valor central é a média das seis projecções. O
+intervalo junta a incerteza de cada modelo com o desacordo entre eles, e por isso
+é mais largo do que o de um modelo sozinho.
+
+Porquê esta escolha, e não «o melhor modelo»? Em Outubro de 2026 testámos a
+previsão com dados passados: a partir de cada ano entre 2008 e 2020, como se
+fosse o último ano conhecido, comparámos a projecção a 4 anos com o que se
+observou depois, em 27 séries regionais e em 30 municípios e 10 ULS.
+
+| A 4 anos | Regiões: erro mediano | Regiões: o intervalo de 95% contém o valor | Municípios e ULS: erro mediano | Municípios e ULS: contém o valor |
+|---|---:|---:|---:|---:|
+| Escolher o modelo com menor erro (o método anterior) | 4,0% | 73% | 9,4% | 87% |
+| **Média de 6 modelos** | **3,3%** | **90%** | **7,9%** | **96%** |
+
+Escolher o modelo com menor erro parece a opção mais cuidadosa, mas essa escolha
+é feita com poucos anos, e o «vencedor» muda muitas vezes por acaso: com mais um
+ano de dados, o modelo escolhido mudou em 42% dos casos. Os intervalos de um só
+modelo eram estreitos demais: prometiam 95% e acertavam em 73%. A média de 6 errou
+menos e os seus intervalos dizem melhor a verdade.
+
+Ficaram de fora o passeio aleatório e o modelo ingénuo, que tratam a variação de
+cada ano como permanente. Nos municípios pequenos, isso tornava os intervalos tão
+largos que deixavam de ser úteis.
+
+**O que isto muda para si.** Os intervalos são cerca de duas vezes mais largos do
+que eram. Não é uma perda de qualidade: é a incerteza real a alguns anos de
+distância. O painel `Fiabilidade` mede a largura do intervalo, por isso dirá mais
+vezes que a fiabilidade é moderada ou mais baixa.
+
+O modelo com menor erro continua disponível em `Mostrar opções avançadas` →
+`Projecção apresentada`. A tabela de validação mostra sempre o erro de cada
+modelo e das duas médias.
+
 ### Combinação de modelos e vários locais
 
-Além dos oito modelos, a previsão guiada experimenta a **combinação**: a média
-dos três modelos que melhor previram os anos de teste. Raramente é a pior e
-muitas vezes é a melhor; o seu intervalo alarga-se quando os modelos discordam.
-Só é recomendada quando prevê de facto melhor os anos de teste.
+Além dos oito modelos e da média de 6, a previsão guiada calcula a
+**combinação**: a média dos três modelos que melhor previram os anos de teste
+nesse local. Aparece na tabela de validação e na comparação de modelos.
 
 Com vários locais seleccionados pode **somá-los numa só selecção** (como
 sempre) ou **projectar cada um em separado, para comparar**. Neste caso escolha
 o modelo:
 
-- **Combinação** (recomendado para comparar ou fixar metas): o mesmo método em
+- **Média de 6 modelos** (recomendado, predefinição): o mesmo método fixo em
   todos, para que as diferenças venham dos dados e não de qual modelo ganhou por
   acaso em cada local;
+- **Combinação dos 3 melhores de cada local**;
 - **O mesmo modelo para todos**: o que teve, em média, o menor erro relativo;
-- **O melhor de cada local**: cada um com o seu; a última coluna da tabela diz
-  qual seria em qualquer caso.
+- **O melhor de cada local**: cada um com o modelo de menor erro; a última coluna
+  da tabela diz qual foi em qualquer caso.
 
-Para olhar para um só local, a previsão recomendada chega.
+### Validação: como se mede o erro de cada modelo
 
-### Como é Escolhido o Modelo Recomendado
-
-Estas opções ficam em `Mostrar opções avançadas` e não são necessárias para uma previsão simples. Por predefinição, o modelo recomendado é escolhido pela sua precisão **fora da amostra**, e não apenas pela qualidade do ajuste à série completa. Assim evita-se favorecer modelos que se ajustam muito bem ao passado mas que preveem mal, um risco real em séries anuais curtas.
-
-Os anos mais recentes da série formam o período de teste. O controlo `Tamanho do teste (% dos anos)` define que percentagem dos anos é usada para esse teste. Há dois esquemas, mais um modo de referência:
+Estas opções ficam em `Mostrar opções avançadas` e não são necessárias para uma previsão simples. A validação mede a precisão de cada modelo **fora da amostra**, e não apenas a qualidade do ajuste à série completa: os anos mais recentes da série são escondidos ao modelo, que tem de os prever. O controlo `Tamanho do teste (% dos anos)` define que percentagem dos anos é usada para esse teste. Há dois esquemas, mais um modo de referência:
 
 - `Validação móvel (recomendada)`: para cada ano do período de teste, o modelo é reajustado com os anos anteriores e avaliado numa previsão a um passo; os erros são combinados. Aproveita melhor as séries curtas e é menos sensível a um único corte.
 - `Divisão única treino/teste`: o modelo é ajustado uma vez nos anos iniciais e avaliado no período de teste completo de uma só vez. É mais simples, mas mais sensível ao período de teste escolhido.
 - `Ajuste dentro da amostra`: usa apenas a precisão no ajuste à série completa. É o comportamento mais simples e serve sobretudo como referência.
 
-Se a série for demasiado curta para reservar pelo menos três anos de treino e um ano de teste, a aplicação recorre automaticamente ao ajuste dentro da amostra e indica-o no painel de fiabilidade. A validação avalia a previsão a um passo, pelo que reflecte sobretudo o desempenho de curto prazo; horizontes longos continuam a exigir cautela.
+Com a média de 6 (a predefinição), a validação serve para mostrar o erro de cada modelo; com `O modelo com menor erro na validação`, decide também a projecção apresentada. Se a série for demasiado curta para reservar pelo menos três anos de treino e um ano de teste, a aplicação recorre ao ajuste dentro da amostra e indica-o no painel de fiabilidade. A validação avalia a previsão a um passo, pelo que reflecte sobretudo o desempenho de curto prazo; horizontes longos continuam a exigir cautela.
 
 Resultados principais:
 
 - gráfico da série observada e valores previstos;
 - tabela com anos observados e previstos;
-- resumo do modelo recomendado;
+- resumo da projecção apresentada;
 - aviso de fiabilidade quando a série é curta, incompleta ou instável;
 - botões para exportar tabela e gráfico.
 

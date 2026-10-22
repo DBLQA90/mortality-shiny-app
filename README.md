@@ -6,9 +6,17 @@ The app supports observed mortality analysis, guided forecasting, advanced model
 
 For a practical tab-by-tab guide to using and interpreting the app, see [USER_MANUAL.md](USER_MANUAL.md).
 
+For the methodological choices behind the numbers, explained in plain Portuguese for users - what the app does, why, and what it changes when reading a value - see [ESCOLHAS_METODOLOGICAS.md](ESCOLHAS_METODOLOGICAS.md).
+
 For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Current Version Highlights
+
+Since method version 2.0 (October 2026):
+
+- **The guided forecast shows the mean of six models by default** (ARIMA, ETS, Theta, TBATS, Holt, damped Holt), not the model with the lowest validation error. Tested from every year 2008-2020 on 27 regional and 80 municipal and ULS series, four years ahead: median error 3.3% against 4.0% in the regions and 7.9% against 9.4% in municipalities and ULS, with 95% intervals that held the observed value in 90% and 96% of cases against 73% and 87%. Intervals are about twice as wide. The lowest-error model stays available. See *The Guided Forecast's Default* in [METHODOLOGY.md](METHODOLOGY.md).
+- **Municipal death totals refetched** with INE's confidential cells kept as missing; an early version of the fetcher had stored them as 0. Validated values are unchanged, since the app already replaced such zeros with the sum of the age bands.
+- **INE's 2011 all-cause deaths for five Alto Alentejo municipalities are wrong at the source** (Nisa, Gavião, Fronteira, Monforte, Marvão: 139 deaths for 424), documented in [METHODOLOGY.md](METHODOLOGY.md); regions and ULS are unaffected.
 
 Method version 2.0 (October 2026), which changes published values:
 
