@@ -214,9 +214,9 @@ model_policy_help <- function() {
   helpText(
     "Para comparar locais ou fixar metas, use o mesmo método em todos: com «o melhor de cada local», um local pode ",
     "ficar com uma tendência e o vizinho com uma linha plana só porque o acaso favoreceu modelos diferentes. A ",
-    "combinação (média dos três modelos que melhor previram os anos de teste) é a escolha mais robusta; «o mesmo ",
-    "modelo» usa o que teve, em média, o menor erro relativo em todos os locais. Para olhar para um só local, ",
-    "a previsão recomendada (que já considera a combinação) é suficiente."
+    "média de 6 modelos é igual em todos os locais e foi a que menos errou a 4 anos em testes com dados passados. ",
+    "A combinação usa os três modelos que melhor previram os anos de teste de cada local; «o mesmo modelo» usa o ",
+    "que teve, em média, o menor erro relativo em todos os locais."
   )
 }
 infant_method_help <- function() {
@@ -231,11 +231,19 @@ infant_method_help <- function() {
     "calculados dessa forma. Em ambos, a escolha do modelo usa os erros da série ajustada."
   )
 }
+beginner_method_help <- function() {
+  helpText(
+    "Por omissão, a projecção é a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido), com um ",
+    "intervalo que junta a incerteza de cada um e o desacordo entre eles. Em testes com dados passados, a 4 anos, ",
+    "errou menos do que escolher o modelo com menor erro e foi mais estável: a escolha muda muitas vezes de modelo ",
+    "quando chega mais um ano de dados, e os intervalos de um só modelo são em geral estreitos demais."
+  )
+}
 beginner_validation_help <- function() {
   helpText(
-    "A aplicação escolhe o melhor método testando a previsão em anos recentes ",
-    "reservados para avaliação. 'Validação móvel' é a opção mais fiável. ",
-    "Se não souber, mantenha as predefinições."
+    "A validação testa cada modelo, e as duas médias, a prever anos recentes reservados para avaliação. ",
+    "Mostra o erro de cada um e, na opção «modelo com menor erro», decide a projecção apresentada. ",
+    "'Validação móvel' é a opção mais fiável. Se não souber, mantenha as predefinições."
   )
 }
 
@@ -338,11 +346,12 @@ beginner_forecast_controls_panel <- function() {
         "beginner_model_policy",
         "Modelo em cada local:",
         choices = c(
-          "Combinação dos melhores modelos (recomendado para comparar)" = "combo",
+          "Média de 6 modelos (recomendado)" = "mean6",
+          "Combinação dos 3 melhores modelos de cada local" = "combo",
           "O mesmo modelo para todos" = "common",
           "O melhor modelo de cada local" = "best"
         ),
-        selected = "combo"
+        selected = "mean6"
       ),
       model_policy_help()
     ),
@@ -420,6 +429,16 @@ beginner_forecast_controls_panel <- function() {
     checkboxInput("beginner_show_advanced", "Mostrar opções avançadas", value = FALSE),
     conditionalPanel(
       "input.beginner_show_advanced == true",
+      radioButtons(
+        "beginner_method",
+        "Projecção apresentada:",
+        choices = c(
+          "Média de 6 modelos (recomendada)" = "mean6",
+          "O modelo com menor erro na validação" = "selected"
+        ),
+        selected = "mean6"
+      ),
+      beginner_method_help(),
       radioButtons(
         "beginner_validation",
         "Como escolher o modelo recomendado:",
@@ -613,7 +632,8 @@ intro_tab_ui <- function() {
           p(tags$em(
             "Ferramenta não oficial e exploratória. Não substitui validação epidemiológica, ",
             "análise clínica ou produtos estatísticos oficiais. Para um guia detalhado, ",
-            "separador a separador, consulte o Manual do Utilizador (USER_MANUAL.md)."
+            "separador a separador, consulte o Manual do Utilizador (USER_MANUAL.md); para as escolhas ",
+            "metodológicas e as suas razões, em linguagem simples, ESCOLHAS_METODOLOGICAS.md."
           ))
         )
       )

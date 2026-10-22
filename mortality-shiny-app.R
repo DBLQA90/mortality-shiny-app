@@ -1139,12 +1139,13 @@ server <- function(input, output, session) {
     }))
   }
 
-  rank_model_metrics <- function(metric_tbl) {
+  # `recommended_model`: the forecast actually shown, when it is not simply the
+  # lowest error (the guided forecast's mean of six models).
+  rank_model_metrics <- function(metric_tbl, recommended_model = choose_recommended_model(metric_tbl)) {
     if (nrow(metric_tbl) == 0) {
       return(tibble(Classificação = integer(0), Model = character(0), Recomendação = character(0)))
     }
 
-    recommended_model <- choose_recommended_model(metric_tbl)
     ranking_order <- intersect(c("RMSE", "MAE", "MASE", "MAPE"), names(metric_tbl))
 
     metric_tbl %>%
@@ -2430,7 +2431,11 @@ server <- function(input, output, session) {
       validation$method_used
     )
 
-    parts <- glue::glue("Escolha do modelo: {method_label}.")
+    parts <- if (identical(validation$recommended_model, FORECAST_MEAN_ID)) {
+      glue::glue("Projecção: média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido); a {method_label} mostra o erro de cada modelo.")
+    } else {
+      glue::glue("Escolha do modelo: {method_label}.")
+    }
     if (!is.null(validation$train_range) && !is.null(validation$test_range)) {
       parts <- c(parts, glue::glue(
         "Treino {validation$train_range[[1]]}-{validation$train_range[[2]]}; teste {validation$test_range[[1]]}-{validation$test_range[[2]]} ({validation$test_size} ano{if (validation$test_size == 1) '' else 's'})."
@@ -3668,33 +3673,61 @@ server <- function(input, output, session) {
     })
   }
 
-  # Adds the combination of the best models (R/forecast_helpers.R) as one more
-  # candidate. Its validation error is computed the same way as the others',
-  # choosing its members at each step from the earlier steps only, so it is
-  # recommended only when it does validate best. Needs the rolling validation.
-  add_forecast_combination <- function(result, validation) {
+  # Adds the two averages of models (R/forecast_helpers.R) as further
+  # candidates, and picks the forecast shown:
+  #   - the combination of the three best, its members chosen at each
+  #     validation step from the earlier steps only (needs the rolling
+  #     validation);
+  #   - the mean of six fixed models, the default projection (`method` "mean6").
+  # Both are scored on the same one-step errors as the single models, so the
+  # validation table compares them all. With `method` "selected" the forecast
+  # shown is the candidate with the lowest error, as before October 2026.
+  add_forecast_averages <- function(result, validation, method = "mean6") {
     steps <- validation$plot_data$predictions
     fitted <- get_successful_model_ids(result)
-    if (!identical(validation$method_used, "rolling") || is.null(steps) || nrow(steps) == 0 ||
-        length(fitted) < FORECAST_COMBINATION_SIZE) {
-      return(list(result = result, validation = validation))
-    }
-    initial <- result$accuracy %>% dplyr::filter(is.finite(RMSE)) %>% dplyr::arrange(RMSE)
-    combo_steps <- combination_rolling_predictions(steps, initial$Model)
-    scale_denom <- mean(abs(diff(result$obs$value)), na.rm = TRUE)
-    combo_metrics <- compute_forecast_error_metrics(combo_steps$actual, combo_steps$predicted, scale_denom) %>%
-      dplyr::mutate(Model = FORECAST_COMBINATION_ID) %>%
-      dplyr::select(Model, ME, RMSE, MAE, MAPE, MASE)
-    members <- validation$metrics %>% dplyr::filter(Model %in% fitted, is.finite(RMSE)) %>% dplyr::arrange(RMSE)
-    members <- utils::head(members$Model, FORECAST_COMBINATION_SIZE)
+    rolling <- identical(validation$method_used, "rolling") && !is.null(steps) && nrow(steps) > 0
     setup <- get_transformation_setup(result$obs$value, result$transform_method)
-    result$fc <- dplyr::bind_rows(result$fc, combine_model_forecasts(result$fc, members, setup$forward, setup$inverse, result$conf_level))
-    result$fitted_models <- c(fitted, FORECAST_COMBINATION_ID)
-    result$combination_members <- members
-    validation$metrics <- dplyr::bind_rows(validation$metrics, combo_metrics)
-    validation$ranking <- rank_model_metrics(validation$metrics)
-    validation$recommended_model <- choose_recommended_model(validation$metrics)
-    validation$plot_data$predictions <- dplyr::bind_rows(steps, combo_steps)
+    scale_denom <- mean(abs(diff(result$obs$value)), na.rm = TRUE)
+    score <- function(pred, id) {
+      compute_forecast_error_metrics(pred$actual, pred$predicted, scale_denom) %>%
+        dplyr::mutate(Model = id) %>%
+        dplyr::select(Model, ME, RMSE, MAE, MAPE, MASE)
+    }
+    new_fc <- list(); new_steps <- list(); new_metrics <- list()
+    if (rolling && length(fitted) >= FORECAST_COMBINATION_SIZE) {
+      initial <- result$accuracy %>% dplyr::filter(is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+      combo_steps <- combination_rolling_predictions(steps, initial$Model)
+      members <- validation$metrics %>% dplyr::filter(Model %in% fitted, is.finite(RMSE)) %>% dplyr::arrange(RMSE)
+      members <- utils::head(members$Model, FORECAST_COMBINATION_SIZE)
+      new_fc$combo <- combine_model_forecasts(result$fc, members, setup$forward, setup$inverse, result$conf_level)
+      new_steps$combo <- combo_steps
+      new_metrics$combo <- score(combo_steps, FORECAST_COMBINATION_ID)
+      result$combination_members <- members
+    }
+    mean_members <- intersect(FORECAST_MEAN_MEMBERS, fitted)
+    if (length(mean_members) >= FORECAST_MEAN_MIN_MEMBERS) {
+      new_fc$mean <- combine_model_forecasts(result$fc, mean_members, setup$forward, setup$inverse, result$conf_level,
+                                             id = FORECAST_MEAN_ID)
+      result$mean_members <- mean_members
+      if (rolling) {
+        mean_steps <- mean_rolling_predictions(steps, mean_members)
+        new_steps$mean <- mean_steps
+        new_metrics$mean <- score(mean_steps, FORECAST_MEAN_ID)
+      }
+    }
+    result$fc <- dplyr::bind_rows(result$fc, dplyr::bind_rows(new_fc))
+    result$fitted_models <- c(fitted, unique(dplyr::bind_rows(new_fc)$model))
+    if (length(new_metrics) > 0) {
+      validation$metrics <- dplyr::bind_rows(validation$metrics, dplyr::bind_rows(new_metrics))
+      validation$plot_data$predictions <- dplyr::bind_rows(steps, dplyr::bind_rows(new_steps))
+      validation$recommended_model <- choose_recommended_model(validation$metrics)
+    }
+    # The candidate with the lowest validation error, whatever is shown.
+    result$validated_best <- validation$recommended_model
+    use_mean <- identical(method, "mean6") && FORECAST_MEAN_ID %in% result$fitted_models
+    result$projection_method <- if (use_mean) "mean6" else "selected"
+    if (use_mean) validation$recommended_model <- FORECAST_MEAN_ID
+    validation$ranking <- rank_model_metrics(validation$metrics, validation$recommended_model)
     list(result = result, validation = validation)
   }
 
@@ -3712,7 +3745,7 @@ server <- function(input, output, session) {
       method = value_or_default(input$beginner_validation, "rolling"),
       test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
     )
-    combined <- add_forecast_combination(guided_result, validation)
+    combined <- add_forecast_averages(guided_result, validation, value_or_default(input$beginner_method, "mean6"))
     guided_result <- combined$result
     validation <- combined$validation
     if (!is.null(validation$recommended_model)) {
@@ -3738,8 +3771,9 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
 
   # Several areas, each forecast on its own, under one model policy:
-  #   "combo"  the combination for every area - the same method everywhere,
-  #            so differences between areas come from their data;
+  #   "mean6"  the mean of six models for every area (the default) - the same
+  #            fixed method everywhere, so differences come from the data;
+  #   "combo"  the combination of each area's three best models;
   #   "common" the single model with the lowest mean relative error across
   #            the areas;
   #   "best"   each area's own recommended model.
@@ -3771,9 +3805,12 @@ server <- function(input, output, session) {
     results <- results[!failed]
     validate(need(length(results) > 0, "Nenhuma área pôde ser projectada."))
 
-    policy <- value_or_default(input$beginner_model_policy, "combo")
-    chosen <- vapply(results, function(r) r$recommended_model, character(1))
-    if (identical(policy, "combo")) {
+    policy <- value_or_default(input$beginner_model_policy, "mean6")
+    chosen <- vapply(results, function(r) r$validated_best %||% r$recommended_model, character(1))
+    if (identical(policy, "mean6")) {
+      has_mean <- vapply(results, function(r) FORECAST_MEAN_ID %in% r$fc$model, logical(1))
+      chosen[has_mean] <- FORECAST_MEAN_ID
+    } else if (identical(policy, "combo")) {
       has_combo <- vapply(results, function(r) FORECAST_COMBINATION_ID %in% r$fc$model, logical(1))
       chosen[has_combo] <- FORECAST_COMBINATION_ID
     } else if (identical(policy, "common")) {
@@ -3799,7 +3836,7 @@ server <- function(input, output, session) {
         `Último observado` = paste0(round(last$value, 2), " (", last$year, ")"),
         `Projecção (IC)` = paste0(round(end$mean, 2), " (", round(end$lower, 2), "; ", round(end$upper, 2), ") em ", end$year),
         `Variação` = sprintf("%+.1f%%", (end$mean / last$value - 1) * 100),
-        `Recomendado no local` = get_model_labels(r$recommended_model)
+        `Menor erro no local` = get_model_labels(r$validated_best %||% r$recommended_model)
       )
     }))
   })
@@ -3817,12 +3854,13 @@ server <- function(input, output, session) {
   output$beginnerMultiNote <- renderUI({
     req(input$go_beginner_forecast > 0)
     multi <- beginner_multi_forecast()
-    policy <- c(combo = "a combinação dos três modelos que melhor previram os anos de teste em cada local",
+    policy <- c(mean6 = "a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido), igual em todos",
+                combo = "a combinação dos três modelos que melhor previram os anos de teste em cada local",
                 common = paste0("o mesmo modelo em todos (", get_model_labels(unique(multi$chosen))[[1]], ", o de menor erro relativo médio)"),
-                best = "o modelo recomendado em cada local")[[multi$policy]]
+                best = "o modelo com menor erro de validação em cada local")[[multi$policy]]
     helpText(paste0(
       "Cada local é projectado em separado com ", policy, ". Linha cheia: observado; tracejada e faixa: projecção e ",
-      "intervalo. A última coluna diz qual seria o modelo recomendado olhando só para esse local."
+      "intervalo. A última coluna diz qual foi o modelo com menor erro de validação nesse local."
     ))
   })
 

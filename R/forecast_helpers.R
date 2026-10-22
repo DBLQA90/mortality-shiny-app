@@ -204,7 +204,35 @@ infant_window_forecast <- function(annual, fc, window) {
 FORECAST_COMBINATION_ID <- "combo"
 FORECAST_COMBINATION_SIZE <- 3L
 
-combine_model_forecasts <- function(fc, members, forward, inverse, level = 95) {
+# The guided forecast's default: the same mixture over six fixed models, the
+# eight less the random walk and the naive. A diagnostic of October 2026
+# (forecast_diagnostic_2026/, outside the repository) forecast 27 regional
+# series and 80 municipal and ULS series from every year 2008-2020 and scored
+# them four years ahead. Picking the model with the lowest one-year error on the
+# last quarter of the years was neither the most accurate nor stable: it changed
+# model in 42% of cases when one more year arrived, and its 95% interval held
+# the observed value in 73% of regional cases. The mean of the six had the
+# lowest error (3.3% regional, 7.9% municipal, against 4.0% and 9.4%) and held
+# it in 90% and 96%. The random walk and the naive are left out because they
+# take each year's noise as permanent: in small municipalities their intervals
+# alone spanned the whole plausible range and the mixture lost its use.
+FORECAST_MEAN_ID <- "mean6"
+FORECAST_MEAN_MEMBERS <- c("arima", "ets", "theta", "tbats", "holt", "holt_damped")
+# Fewer members than this (models that failed to fit) and the mean is not offered.
+FORECAST_MEAN_MIN_MEMBERS <- 4L
+
+# One-step predictions of the mean, from the members' own rolling-validation
+# steps (model, year, predicted, actual): its members are fixed, so there is no
+# choice to make without hindsight.
+mean_rolling_predictions <- function(steps, members = FORECAST_MEAN_MEMBERS) {
+  rows <- steps[steps$model %in% members, , drop = FALSE]
+  if (nrow(rows) == 0) return(rows)
+  dplyr::bind_rows(lapply(split(rows, rows$year), function(r) {
+    tibble::tibble(model = FORECAST_MEAN_ID, year = r$year[[1]], predicted = mean(r$predicted), actual = r$actual[[1]])
+  }))
+}
+
+combine_model_forecasts <- function(fc, members, forward, inverse, level = 95, id = FORECAST_COMBINATION_ID) {
   z <- stats::qnorm(1 - (1 - level / 100) / 2)
   alpha <- (1 - level / 100) / 2
   rows <- fc[fc$model %in% members, , drop = FALSE]
@@ -215,7 +243,7 @@ combine_model_forecasts <- function(fc, members, forward, inverse, level = 95) {
     cdf <- function(q) mean(stats::pnorm((q - mu) / s))
     span <- c(min(mu - 10 * s), max(mu + 10 * s))
     quantile_at <- function(p) stats::uniroot(function(q) cdf(q) - p, span, tol = 1e-10)$root
-    tibble::tibble(year = r$year[[1]], model = FORECAST_COMBINATION_ID, mean = mean(r$mean),
+    tibble::tibble(year = r$year[[1]], model = id, mean = mean(r$mean),
                    lower = inverse(quantile_at(alpha)), upper = inverse(quantile_at(1 - alpha)))
   }))
 }

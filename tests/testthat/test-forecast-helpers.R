@@ -84,3 +84,30 @@ test_that("build_fitted_values_df back-transforms and aligns fitted values to ye
   expect_gt(mean(fdf$fitted), 50)
   expect_equal(fdf$fitted, inv(as.numeric(stats::fitted(fit)))[seq_len(length(years))], tolerance = 1e-8)
 })
+
+test_that("the mean of six models averages its members' one-step predictions year by year", {
+  steps <- tibble::tibble(
+    model = rep(c("arima", "theta", "naive"), each = 2),
+    year = rep(2020:2021, 3),
+    predicted = c(10, 20, 14, 22, 100, 100),
+    actual = rep(c(12, 21), 3)
+  )
+  out <- mean_rolling_predictions(steps, members = c("arima", "theta"))
+  expect_equal(out$model, rep(FORECAST_MEAN_ID, 2))
+  expect_equal(out$predicted, c(12, 21))   # the naive is not a member
+  expect_equal(out$actual, c(12, 21))
+  expect_equal(nrow(mean_rolling_predictions(steps[0, ], members = "arima")), 0)
+  expect_false(any(c("naive", "rwf") %in% FORECAST_MEAN_MEMBERS))
+})
+
+test_that("an average of models is labelled with its id and its interval covers the members' disagreement", {
+  fc <- tibble::tibble(year = 2030, model = c("arima", "theta"), mean = c(100, 140),
+                       lower = c(90, 126), upper = c(110, 154))
+  out <- combine_model_forecasts(fc, c("arima", "theta"), log, exp, level = 95, id = FORECAST_MEAN_ID)
+  expect_equal(out$model, FORECAST_MEAN_ID)
+  expect_equal(out$mean, 120)
+  expect_lt(out$lower, 100)
+  expect_gt(out$upper, 140)
+  expect_gt(out$upper - out$lower, max(fc$upper - fc$lower))   # wider than either member alone
+  expect_equal(combine_model_forecasts(fc, c("arima", "theta"), log, exp)$model, FORECAST_COMBINATION_ID)
+})
