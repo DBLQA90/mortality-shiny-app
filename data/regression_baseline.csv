@@ -1,6 +1,6 @@
 # Valores de referência de tools/regression_check.R.
 # Gerado com --update; cada linha é uma medida e a tolerância com que é comparada.
-# Gerado em 2026-10-15 | método 2.0 | última importação 2026-10-13T16:31:40+0100
+# Gerado em 2026-10-29 | método 2.0 | última importação 2026-10-29T14:38:46+0000
 # Anos fixados: indicadores 2024, triénio 2024, censo 2021
 "key","kind","value","tol","note"
 "amplitude.fertility_index.max","valor",3.16770186335404,0.01,""
@@ -109,11 +109,11 @@
 "pt_vs_municipios.waste_total.2021","valor",-1.88304448367482e-05,0.02,"diferença percentual face à soma dos municípios"
 "pt_vs_municipios.waste_total.2024","valor",-3.62256167618646e-05,0.02,"diferença percentual face à soma dos municípios"
 "semanais.excesso_pct.2025","valor",-0.0496277416306555,0.5,"semanas 52"
-"semanais.excesso_pct.2026","valor",-0.964818520510696,0.5,"semanas 36"
+"semanais.excesso_pct.2026","valor",-1.04665698448246,0.5,"semanas 40"
 "semanais.regioes","valor",35,0,""
 "semanais.ultimo_ano","valor",2026,0,""
 "sns.indicadores","valor",10,0,""
-"sns.ultimo_periodo","valor",202608,0,""
+"sns.ultimo_periodo","valor",202609,0,""
 "sns.unidades","valor",39,0,""
 "sns.valores_0_100","invariante",1,0,""
 "tabela.finitos","invariante",1,0,""
