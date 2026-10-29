@@ -29,6 +29,9 @@ APP_CSS <- "
 .panel-heading-row { display: flex; align-items: center; gap: .35rem; margin-bottom: .5rem; }
 .panel-heading-row h5 { margin: 0; }
 .prose-page { max-width: 1000px; margin: 1rem auto; }
+.tab-pane > .nav { margin-bottom: 1rem; }
+.tab-pane > .nav-pills { gap: .25rem; }
+.tab-pane > .nav-pills .nav-link { padding: .3rem .8rem; }
 .well {
   background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius-lg); box-shadow: none;
@@ -1053,6 +1056,66 @@ avoidable_tab_ui <- function() {
   )
 }
 
+# The 59 indicators are picked in two steps, theme then indicator, so the list
+# shown at any time is one theme's. The list is narrowed in the browser, from
+# the map embedded below, not by the server: while the server is drawing the
+# previous indicator it cannot answer, and the list would not change until the
+# chart had finished. `planning_theme` is not read by the server.
+planning_indicator_picker <- function(selected = "ageing_index") {
+  choices <- planning_indicator_choices()
+  theme <- PLANNING_INDICATORS$theme[PLANNING_INDICATORS$id == selected]
+  themes_json <- jsonlite::toJSON(
+    lapply(choices, function(group) lapply(names(group), function(label) list(value = group[[label]], label = label))),
+    auto_unbox = TRUE
+  )
+
+  tagList(
+    bslib::layout_columns(
+      col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(7, 5)),
+      radioButtons("planning_theme", "Tema:", choices = names(choices), selected = theme, inline = TRUE),
+      selectInput("planning_indicator", "Indicador:", choices = choices[[theme]], selected = selected, width = "100%")
+    ),
+    tags$script(type = "application/json", id = "planning-indicator-themes", HTML(themes_json)),
+    tags$script(HTML(
+      "$(document).on('change', 'input[name=\"planning_theme\"]', function() {
+        var select = document.getElementById('planning_indicator').selectize;
+        var items = JSON.parse(document.getElementById('planning-indicator-themes').textContent)[this.value];
+        if (!select || !items || items.length === 0) return;
+        select.clear(true);
+        select.clearOptions();
+        select.addOption(items);
+        select.refreshOptions(false);
+        select.setValue(items[0].value);
+      });"
+    ))
+  )
+}
+
+# Mortality and forecasting each group their tabs under one entry of the
+# navbar; the tabs keep their names, which the introduction and the manual use.
+mortality_area_ui <- function() {
+  bslib::nav_panel(
+    "Mortalidade",
+    bslib::navset_underline(
+      id = "mortality_view",
+      observed_mortality_tab_ui(),
+      annual_metrics_tab_ui(),
+      avoidable_tab_ui()
+    )
+  )
+}
+
+forecast_area_ui <- function() {
+  bslib::nav_panel(
+    "Previsão",
+    bslib::navset_underline(
+      id = "forecast_view",
+      beginner_forecasting_tab_ui(),
+      advanced_forecasting_tab_ui()
+    )
+  )
+}
+
 # Planning indicators, built around one location: each indicator as a chart and
 # a table, set against the areas that contain the location where the indicator
 # is comparable across sizes, plus a summary of every indicator, the ranking of
@@ -1071,7 +1134,6 @@ planning_tab_ui <- function() {
       fillable = FALSE,
       sidebar = analysis_sidebar(
         selectInput("planning_area", "Local:", choices = local_area, selected = "Portugal"),
-        selectInput("planning_indicator", "Indicador:", choices = planning_indicator_choices(), selected = "ageing_index"),
         uiOutput("planningComparatorsUI"),
         radioButtons(
           "planning_split_mode",
@@ -1119,35 +1181,81 @@ planning_tab_ui <- function() {
           min = min(years), max = last, value = c(max(min(years), last - 19L), last), step = 1, sep = ""
         )
       ),
+      # Sections first, views inside them: the views that read the chosen
+      # indicator sit together under the indicator picker, and the views
+      # built on the place alone are grouped by subject.
       bslib::navset_card_underline(
         id = "planning_view",
         bslib::nav_panel(
           "Indicador",
-          uiOutput("planningIndicatorHeader"),
-          plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
-          uiOutput("planningIndicatorNotes"),
-          h5("Valores"),
-          div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
-          h5("Tendência nos anos escolhidos"),
-          div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
-          uiOutput("planningTrendNote")
-        ),
-        bslib::nav_panel(
-          "Resumo do local",
-          panel_heading(
-            "Resumo do local",
-            paste0(
-              "Todos os indicadores no último período disponível para o local, até ao ",
-              "último ano escolhido. As contagens absolutas não têm comparadores."
+          planning_indicator_picker(),
+          bslib::navset_pill(
+            id = "planning_indicator_view",
+            bslib::nav_panel(
+              "Evolução",
+              uiOutput("planningIndicatorHeader"),
+              plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
+              uiOutput("planningIndicatorNotes"),
+              h5("Valores"),
+              div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
+              h5("Tendência nos anos escolhidos"),
+              div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
+              uiOutput("planningTrendNote")
+            ),
+            bslib::nav_panel(
+              "Comparação entre ULS",
+              uiOutput("planningRankingNote"),
+              plotly::plotlyOutput("planningRankingPlot", height = "820px")
+            ),
+            bslib::nav_panel(
+              "Funil",
+              bslib::layout_columns(
+                col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
+                radioButtons(
+                  "planning_funnel_units", "Unidades:",
+                  choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
+                  selected = "ULS", inline = TRUE
+                ),
+                radioButtons(
+                  "planning_funnel_values", "Valores:",
+                  choices = c("Observados (funil)" = "observed", "Suavizados (Bayes empírico)" = "smoothed"),
+                  selected = "observed", inline = TRUE
+                )
+              ),
+              uiOutput("planningFunnelNote"),
+              plotly::plotlyOutput("planningFunnelPlot", height = "560px")
             )
-          ),
-          div(style = "overflow-x:auto;", tableOutput("planningSummaryTable")),
-          uiOutput("planningSummaryNotes")
+          )
         ),
         bslib::nav_panel(
-          "Comparação entre ULS",
-          uiOutput("planningRankingNote"),
-          plotly::plotlyOutput("planningRankingPlot", height = "820px")
+          "Perfil do local",
+          bslib::navset_pill(
+            id = "planning_profile_view",
+            bslib::nav_panel(
+              "Resumo do local",
+              panel_heading(
+                "Resumo do local",
+                paste0(
+                  "Todos os indicadores no último período disponível para o local, até ao ",
+                  "último ano escolhido. As contagens absolutas não têm comparadores."
+                )
+              ),
+              div(style = "overflow-x:auto;", tableOutput("planningSummaryTable")),
+              uiOutput("planningSummaryNotes")
+            ),
+            bslib::nav_panel(
+              "Pirâmide etária",
+              panel_heading(
+                "Pirâmide etária",
+                paste0(
+                  "Percentagem da população em cada grupo etário e sexo, no último ano ",
+                  "escolhido. O contorno escuro é o primeiro comparador seleccionado ",
+                  "(ou Portugal), para comparar a estrutura de áreas de tamanhos diferentes."
+                )
+              ),
+              plotly::plotlyOutput("planningPyramidPlot", height = "540px")
+            )
+          )
         ),
         bslib::nav_panel(
           "Mapa",
@@ -1177,55 +1285,40 @@ planning_tab_ui <- function() {
           )
         ),
         bslib::nav_panel(
-          "Funil",
-          bslib::layout_columns(
-            col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
-            radioButtons(
-              "planning_funnel_units", "Unidades:",
-              choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
-              selected = "ULS", inline = TRUE
+          "Mortalidade",
+          bslib::navset_pill(
+            id = "planning_mortality_view",
+            bslib::nav_panel(
+              "Mortalidade proporcional",
+              radioButtons(
+                "planning_proportional_ages", "Idades:",
+                choices = c("Todas as idades [I45]" = "all", "Menos de 75 anos [I46]" = "under75"),
+                selected = "all", inline = TRUE
+              ),
+              uiOutput("planningProportionalNote"),
+              plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
+              div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
             ),
-            radioButtons(
-              "planning_funnel_values", "Valores:",
-              choices = c("Observados (funil)" = "observed", "Suavizados (Bayes empírico)" = "smoothed"),
-              selected = "observed", inline = TRUE
+            bslib::nav_panel(
+              "Mortalidade por causa",
+              radioButtons(
+                "planning_cause_sex", "Sexo:",
+                choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE
+              ),
+              uiOutput("planningCauseNote"),
+              plotly::plotlyOutput("planningCausePlot", height = "560px"),
+              div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
+            ),
+            bslib::nav_panel(
+              "Mortalidade semanal",
+              radioButtons("planning_weekly_age", "Idades:", choices = WEEKLY_AGE_GROUPS, selected = "all", inline = TRUE),
+              uiOutput("planningWeeklyNote"),
+              plotly::plotlyOutput("planningWeeklyPlot", height = "420px"),
+              div(style = "overflow-x:auto;", tableOutput("planningWeeklyTable")),
+              h5("Excesso acumulado ao longo do ano"),
+              plotly::plotlyOutput("planningWeeklyCumulative", height = "380px")
             )
-          ),
-          uiOutput("planningFunnelNote"),
-          plotly::plotlyOutput("planningFunnelPlot", height = "560px")
-        ),
-        bslib::nav_panel(
-          "Pirâmide etária",
-          panel_heading(
-            "Pirâmide etária",
-            paste0(
-              "Percentagem da população em cada grupo etário e sexo, no último ano ",
-              "escolhido. O contorno escuro é o primeiro comparador seleccionado ",
-              "(ou Portugal), para comparar a estrutura de áreas de tamanhos diferentes."
-            )
-          ),
-          plotly::plotlyOutput("planningPyramidPlot", height = "540px")
-        ),
-        bslib::nav_panel(
-          "Mortalidade proporcional",
-          radioButtons(
-            "planning_proportional_ages", "Idades:",
-            choices = c("Todas as idades [I45]" = "all", "Menos de 75 anos [I46]" = "under75"),
-            selected = "all", inline = TRUE
-          ),
-          uiOutput("planningProportionalNote"),
-          plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
-          div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
-        ),
-        bslib::nav_panel(
-          "Mortalidade por causa",
-          radioButtons(
-            "planning_cause_sex", "Sexo:",
-            choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE
-          ),
-          uiOutput("planningCauseNote"),
-          plotly::plotlyOutput("planningCausePlot", height = "560px"),
-          div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
+          )
         ),
         bslib::nav_panel(
           "Cuidados de saúde primários",
@@ -1235,15 +1328,6 @@ planning_tab_ui <- function() {
           div(style = "overflow-x:auto;", tableOutput("planningSnsTable")),
           h5("Todas as ULS no último período completo"),
           plotly::plotlyOutput("planningSnsRanking", height = "820px")
-        ),
-        bslib::nav_panel(
-          "Mortalidade semanal",
-          radioButtons("planning_weekly_age", "Idades:", choices = WEEKLY_AGE_GROUPS, selected = "all", inline = TRUE),
-          uiOutput("planningWeeklyNote"),
-          plotly::plotlyOutput("planningWeeklyPlot", height = "420px"),
-          div(style = "overflow-x:auto;", tableOutput("planningWeeklyTable")),
-          h5("Excesso acumulado ao longo do ano"),
-          plotly::plotlyOutput("planningWeeklyCumulative", height = "380px")
         ),
         bslib::nav_panel("Notas", planning_method_notes())
       ),
@@ -1531,7 +1615,8 @@ advanced_forecasting_tab_ui <- function() {
         "ajustar parâmetros e ver diagnósticos. Não é necessário para obter uma previsão."
       )
     ),
-    bslib::navset_underline(
+    bslib::navset_pill(
+      id = "advanced_forecast_view",
       advanced_model_spec_tab_ui(),
       advanced_forecast_output_tab_ui(),
       advanced_diagnostics_tab_ui(),

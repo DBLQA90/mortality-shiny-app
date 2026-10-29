@@ -75,11 +75,8 @@ ui <- bslib::page_navbar(
   header = app_settings_header(),
 
   intro_tab_ui(),
-  observed_mortality_tab_ui(),
-  beginner_forecasting_tab_ui(),
-  advanced_forecasting_tab_ui(),
-  annual_metrics_tab_ui(),
-  avoidable_tab_ui(),
+  mortality_area_ui(),
+  forecast_area_ui(),
   planning_tab_ui(),
   data_availability_tab_ui(),
   glossary_tab_ui()
