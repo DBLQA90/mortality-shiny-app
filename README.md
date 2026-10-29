@@ -14,6 +14,12 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 
 Since method version 2.0 (October 2026):
 
+- **Annual metrics: comparators to choose** instead of a fixed Norte column; by default Portugal and the local area's NUTS II region. Standardised rate by default.
+- **INE's regional rows for the current indicator (`0013166`) have no last year**: they had stopped at 2024, so the first year INE publishes next would have fallen back to the municipal sum without warning.
+
+- **A header control "Dados": corrigidos / originais do INE.** "Corrigidos" (default) applies every correction the app makes to INE's data; "Originais do INE" shows the data as INE publishes them. What each correction does and why is in [DADOS_INE_LIMITACOES.md](DADOS_INE_LIMITACOES.md) (Portuguese), the inventory of every inconsistency and limitation found in INE's data, with the approach taken for each.
+- **Detailed malignant tumours (INE `0008461`, 2002-2022)** as a second group of causes: 60 sites, among them lung without larynx and colon apart from rectum.
+
 - **The guided forecast shows the mean of six models by default** (ARIMA, ETS, Theta, TBATS, Holt, damped Holt), not the model with the lowest validation error. Tested from every year 2008-2020 on 27 regional and 80 municipal and ULS series, four years ahead: median error 3.3% against 4.0% in the regions and 7.9% against 9.4% in municipalities and ULS, with 95% intervals that held the observed value in 90% and 96% of cases against 73% and 87%. Intervals are about twice as wide. The lowest-error model stays available. See *The Guided Forecast's Default* in [METHODOLOGY.md](METHODOLOGY.md).
 - **Municipal death totals refetched** with INE's confidential cells kept as missing; an early version of the fetcher had stored them as 0. Validated values are unchanged, since the app already replaced such zeros with the sum of the age bands.
 - **INE's 2011 all-cause deaths for five Alto Alentejo municipalities are wrong at the source** (Nisa, Gavião, Fronteira, Monforte, Marvão: 139 deaths for 424). They are corrected on reading from the parish deaths (`data/source_corrections.rds`, `tools/build_source_corrections.R`); the snapshots keep INE's values as published. Regions and ULS were never affected.
@@ -26,7 +32,7 @@ Method version 2.0 (October 2026), which changes published values:
 - **Suppressed employees and earnings** are recovered from INE's Continente and Portugal totals (marked `≈`).
 - **Forecasts:** infant mortality (one, three or five years, two methods); a combination of the best models as a candidate, scored without hindsight; several locations forecast separately, under one model policy, for comparisons and targets.
 - **Trend:** annual percentage change with its interval (Joinpoint method, optional joinpoints) in the observed and planning tabs.
-- **Small areas:** empirical Bayes smoothing in the funnel, and maps of Portugal with up to four indicators side by side (`Mapa`), on boundaries from the geopt package (CAOP, DGT).
+- **Small areas:** empirical Bayes smoothing in the funnel, and maps of Portugal with up to four indicators side by side (`Mapa`), on boundaries from the geopt package (CRAN; CAOP, DGT). Rebuilt with the CRAN release (0.1.0) on 2026-10-28: identical to the boundaries in use, in all six levels.
 - **Checks:** unit and smoke tests on every push (GitHub Actions), and an invariant sweep after every scheduled refresh.
 
 Earlier:
@@ -298,7 +304,7 @@ Provides a fuller modelling workflow, including:
 
 ### Annual Metrics
 
-Compares one selected year across Portugal, Norte, and a selected local aggregation. The tab shows one metric at a time for one or more causes of death, ordered from highest to lowest by the selected local aggregation.
+Compares one selected year between a local area and its comparators: by default Portugal and the local area's NUTS II region (chosen automatically: Norte for Matosinhos, Alentejo for Beja), changeable to any region, ULS or municipality. The default metric is the standardised rate. The tab shows one metric at a time for one or more causes of death, ordered from highest to lowest by the selected local aggregation.
 
 Available metrics:
 

@@ -137,6 +137,8 @@ Nos outros separadores conta o município inteiro. Gondomar fica todo na ULS San
 
 ## 4. Dados incompletos e erros nas fontes
 
+Tudo o que a aplicação faz nesta secção pode ser desligado com o controlo `Dados` → `Originais do INE`, no topo da página, para ver os números tal como o INE os publica. O inventário completo dos problemas encontrados nos dados do INE, com as abordagens possíveis e a escolhida em cada caso, está em [DADOS_INE_LIMITACOES.md](DADOS_INE_LIMITACOES.md).
+
 ### Óbitos sem idade publicada
 
 **O que fazemos.** Quando a soma por idade de um município fica abaixo do seu total, os óbitos em falta são distribuídos pelas idades. Sabem-se duas coisas: quantos óbitos faltam em cada município, e em que idades faltam no país. A distribuição parte da população por idade do município, com as taxas do país, e é ajustada até respeitar as duas. Isto acontece em todos os separadores. No separador de planeamento, um valor com mais de 2% de óbitos sem idade é assinalado, e com mais de 25% não é apresentado.

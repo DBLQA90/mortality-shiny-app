@@ -142,10 +142,10 @@ testServer(app, {
 
   cat("\n=== AML (2013) vs Grande Lisboa + Península de Setúbal (2024) ===\n")
   aml <- run("deaths", "1", year = 2021, area = "Área Metropolitana de Lisboa", vintage = "2013")
-  if (!is.null(aml)) cat(sprintf("   AML 2013           = %.0f\n", aml$value[3]))
+  if (!is.null(aml)) cat(sprintf("   AML 2013           = %.0f\n", utils::tail(aml$value, 1)))
   split <- run("deaths", "1", year = 2021,
                area = c("Grande Lisboa", "Península de Setúbal"), vintage = "2024")
-  if (!is.null(split)) cat(sprintf("   GL + PS 2024       = %.0f\n", split$value[3]))
+  if (!is.null(split)) cat(sprintf("   GL + PS 2024       = %.0f\n", utils::tail(split$value, 1)))
 
   cat("\n=== A 2024-only region selected under NUTS 2013 (must be refused) ===\n")
   invisible(run("deaths", "1", year = 2021, area = "Oeste e Vale do Tejo", vintage = "2013", refuse = TRUE))
@@ -158,10 +158,10 @@ testServer(app, {
     co <- run("deaths", "1", year = y, area = "Continente")
     ac <- run("deaths", "1", year = y, area = "Região Autónoma dos Açores")
     ma <- run("deaths", "1", year = y, area = "Região Autónoma da Madeira")
-    total <- co$value[3] + ac$value[3] + ma$value[3]
+    total <- utils::tail(co$value, 1) + utils::tail(ac$value, 1) + utils::tail(ma$value, 1)
     unknown <- unknown_residence[[as.character(y)]]
     cat(sprintf("   %d  %.0f + %.0f + %.0f = %.0f vs Portugal %.0f, unknown residence %.0f  %s\n",
-                y, co$value[3], ac$value[3], ma$value[3], total, co$value[1], unknown,
+                y, utils::tail(co$value, 1), utils::tail(ac$value, 1), utils::tail(ma$value, 1), total, co$value[1], unknown,
                 verdict(abs(co$value[1] - total - unknown) < 0.5, "EXACT")))
   }
 
@@ -343,6 +343,49 @@ testServer(app, {
                   if (has) "included" else "left out", verdict(has == identical(area, "Norte"), "OK", paste("latest year,", area))))
     }
   }
+
+  # Data mode: with INE's data as published, the rebuilt 2025 is left out and
+  # Nisa's 2011 deaths are the published 24 (165 corrected).
+  cat("\n=== Data mode: corrected or INE's originals ===\n")
+  for (mode in c("original", "corrected")) {
+    session$setInputs(data_mode = mode, area = "Norte", years_import = c(2023, 2025), go_rates = 10 + match(mode, c("original", "corrected")))
+    h <- tryCatch(observed_history(), error = function(e) e)
+    if (!failed(h)) {
+      has <- 2025 %in% h$series$year
+      cat(sprintf("   %s, Norte: 2025 %s %s\n", mode, if (has) "included" else "left out",
+                  verdict(has == identical(mode, "corrected"), "OK", paste("data mode", mode))))
+    }
+    session$setInputs(area = "Nisa", rate_type = "crude", years_import = c(2010, 2012), go_rates = 20 + match(mode, c("original", "corrected")))
+    h <- tryCatch(observed_history(), error = function(e) e)
+    if (!failed(h)) {
+      rate <- h$series$value[h$series$year == 2011]
+      # 165 deaths in about 7,400 residents (corrected), 24 as published.
+      cat(sprintf("   %s, Nisa 2011 crude rate: %.0f %s\n", mode, rate,
+                  verdict(if (identical(mode, "original")) rate < 500 else rate > 1500, "OK", paste("Nisa 2011", mode))))
+    }
+  }
+  session$setInputs(rate_type = "dsr", area = "Lisboa")
+
+  # Detailed malignant tumours (0008461, 2002-2022): lung without the larynx,
+  # below the short list's lung-with-larynx; years past 2022 left out.
+  cat("\n=== Detailed tumours (0008461): lung without larynx, Norte ===\n")
+  lung_only <- "Neoplasia maligna da traqueia e dos brônquios e dos pulmões"
+  lung_larynx <- "Tumor (neoplasma) maligno da laringe, da traqueia, dos brônquios e dos pulmões"
+  rates <- list()
+  for (cause in c(lung_only, lung_larynx)) {
+    session$setInputs(area = "Norte", cause = cause, rate_type = "crude", years_import = c(2018, 2024),
+                      go_rates = 30 + match(cause, c(lung_only, lung_larynx)))
+    h <- tryCatch(observed_history(), error = function(e) e)
+    if (!failed(h)) rates[[cause]] <- h$series
+  }
+  if (length(rates) == 2) {
+    only <- rates[[lung_only]]; both <- rates[[lung_larynx]]
+    common <- intersect(only$year, both$year)
+    ratio <- mean(only$value[match(common, only$year)] / both$value[match(common, both$year)])
+    cat(sprintf("   years %s; lung only / lung+larynx = %.3f %s\n", paste(range(only$year), collapse = "-"), ratio,
+                verdict(max(only$year) == 2022 && ratio > 0.85 && ratio < 1, "OK", "detailed tumours")))
+  }
+  session$setInputs(cause = "Todas as causas de morte", rate_type = "dsr", area = "Lisboa")
 
   cat("\n=== Trend in the observed tab (Lisboa, the last area loaded, 1995-2025, up to 2 joinpoints) ===\n")
   session$setInputs(observed_trend_span = "all", observed_trend_joinpoints = "2", years_import = c(1995, 2025), go_rates = 3)

@@ -42,6 +42,8 @@ recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 
 # Same precedence as the main death archive: 0013166 from 2022.
 sources <- list(
+  # Malignant tumours in 60 sites (2002-2022), read beside the short list.
+  "0008461" = list(years = 2002:2022, lookup = "data/nuts_lookup_2013.rds"),
   "0008206" = list(years = 1991:2021, lookup = "data/nuts_lookup_2013.rds"),
   "0013166" = list(years = 2022:2100, lookup = "data/nuts_lookup_2024.rds")
 )
@@ -100,7 +102,7 @@ for (indicator in names(sources)) {
     if (is.null(raw)) { message("  ", year, ": FAILED"); failed <- c(failed, paste(indicator, year)); next }
 
     sex_col <- find_dim(raw, "^HM$")
-    cause_col <- find_dim(raw, "^Todas as causas de morte$")
+    cause_col <- find_dim(raw, "^(Todas as causas de morte|Tumores malignos)$")  # 0008461: tumours only
 
     tidy <- raw %>%
       transmute(

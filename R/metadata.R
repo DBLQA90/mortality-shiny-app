@@ -128,3 +128,24 @@ diseases <- get_metadata_or_fallback(
   fallback_diseases,
   get_available_cause_choices()
 )
+
+# The cause selectors: the short list, for every year, and the detailed malignant
+# tumours of 0008461 (2002-2022) that the snapshot holds, in INE's order.
+detailed_cause_choices <- local({
+  held <- tryCatch(detailed_tumour_causes(), error = function(e) character(0))
+  ordered <- tryCatch({
+    cats <- get_dimension_categories(death_indicator_detailed, target_dim_num = 5)
+    cats$categ_dsg[order(cats$categ_ord_num)]
+  }, error = function(e) character(0))
+  c(intersect(ordered, held), sort(setdiff(held, ordered)))
+})
+
+cause_choices <- if (length(detailed_cause_choices) > 0) {
+  stats::setNames(
+    list(diseases, detailed_cause_choices),
+    c("Lista sucinta europeia (todos os anos)",
+      paste0("Tumores malignos detalhados (INE 0008461, ", min(DETAILED_TUMOUR_YEARS), "-", max(DETAILED_TUMOUR_YEARS), ")"))
+  )
+} else {
+  diseases
+}

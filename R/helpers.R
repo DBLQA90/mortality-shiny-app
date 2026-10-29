@@ -124,12 +124,35 @@ helpers_save_base_plot_png <- function(file, plot_expr, width = 1200, height = 8
   }
 }
 
+# Data mode, chosen in the page header ("Dados"): "corrected" (the default)
+# applies everything the app adds to or replaces in INE's data - corrections of
+# INE's errors, deaths without an age spread over the ages, confidential totals
+# rebuilt from their bands, regional rows topped up, suppressed employees and
+# earnings recovered, the rebuilt latest year; "original" switches all of it
+# off. Method choices (region definition, denominator, population series,
+# reading by geography code) are not corrections and do not change. The list,
+# with the reasons, is in DADOS_INE_LIMITACOES.md. The mode is a process-wide
+# option, set by the server whenever a computation reads the header control;
+# the caches that hold corrected values are kept per mode.
+data_mode_choices <- c("Corrigidos (recomendado)" = "corrected", "Originais do INE" = "original")
+
+normalize_data_mode <- function(mode) {
+  mode <- as.character(mode)[1]
+  if (isTRUE(mode %in% data_mode_choices)) mode else "corrected"
+}
+
+default_data_mode <- function() normalize_data_mode(Sys.getenv("MORTALITY_DATA_MODE", unset = "corrected"))
+
+data_mode <- function() normalize_data_mode(getOption("mortality.data_mode", default_data_mode()))
+
+data_corrections_on <- function() identical(data_mode(), "corrected")
+
 # Corrections to values INE publishes wrongly (data/source_corrections.rds,
-# built and documented by tools/build_source_corrections.R; reasons in
-# ESCOLHAS_METODOLOGICAS.md). They are applied when a death file is read, so
-# the snapshots keep INE's data as published. options(mortality.source_corrections
-# = FALSE) reads the data exactly as INE publishes them.
-source_corrections_enabled <- function() !identical(getOption("mortality.source_corrections"), FALSE)
+# built and documented by tools/build_source_corrections.R). They are applied
+# when a death file is read, so the snapshots keep INE's data as published.
+# Off in the "original" data mode, or with options(mortality.source_corrections
+# = FALSE).
+source_corrections_enabled <- function() data_corrections_on() && !identical(getOption("mortality.source_corrections"), FALSE)
 
 source_corrections_cache <- new.env(parent = emptyenv())
 
@@ -173,3 +196,17 @@ apply_source_corrections <- function(x, path) {
 }
 
 read_death_file <- function(path) apply_source_corrections(readRDS(path), path)
+
+# File names stop at 255 bytes (snapshot_file_token(), planning_cause_file_token()). Two cause names of 0008461 run past that once
+# made into a token, so a token longer than FILE_TOKEN_MAX keeps its first
+# characters and gains a short hash of the full name, which keeps it unique.
+# Every token in use before (at most 228 characters) is unchanged.
+FILE_TOKEN_MAX <- 230L
+shorten_file_token <- function(token, original) {
+  long <- nchar(token) > FILE_TOKEN_MAX
+  if (any(long)) {
+    hash <- vapply(original[long], function(v) substr(rlang::hash(v), 1, 8), character(1))
+    token[long] <- paste0(substr(token[long], 1, FILE_TOKEN_MAX - 9L), "_", hash)
+  }
+  token
+}

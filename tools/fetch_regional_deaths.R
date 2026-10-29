@@ -67,7 +67,15 @@ recheck_from <- as.integer(format(Sys.Date(), "%Y")) - recent_years
 # Centro after 2022 is NUTS-2024 Centro plus Oeste and Médio Tejo. The
 # compositions are declared in R/regional_rows.R and verified against the
 # municipality lookups.
+nuts2013_codes <- c(
+  "1", "11", "16", "17", "18", "15", "20", "30",
+  "16B", "16D", "16E", "16F", "16G", "16H", "16I", "16J",
+  "181", "184", "185", "186", "187",
+  "111"
+)
 sources <- list(
+  # Malignant tumours in 60 sites, same NUTS 2013 geography as 0008206.
+  "0008461" = list(years = 2002:2022, codes = nuts2013_codes),
   "0008206" = list(
     years = 1991:2022,
     codes = c(
@@ -162,8 +170,8 @@ for (indicator in names(sources)) {
     }
 
     sex_col <- find_dim(raw, "^HM$")
-    age_col <- find_dim(raw, "anos")
-    cause_col <- find_dim(raw, "^Todas as causas de morte$")
+    age_col <- find_dim(raw, "^[0-9]+ - [0-9]+ anos$")  # a bare "anos" also hits 0008461 cause names
+    cause_col <- find_dim(raw, "^(Todas as causas de morte|Tumores malignos)$")  # 0008461: tumours only
 
     tidy <- raw %>%
       dplyr::transmute(

@@ -35,7 +35,9 @@ UNDER75_FLAG <- "§"
 planning_cause_file_token <- function(cause) {
   token <- tolower(iconv(as.character(cause), to = "ASCII//TRANSLIT"))
   token <- gsub("[^a-z0-9]+", "_", token)
-  gsub("^_+|_+$", "", token)
+  token <- gsub("^_+|_+$", "", token)
+  # Long names are shortened as snapshot_file_token() does (R/helpers.R).
+  shorten_file_token(token, as.character(cause))
 }
 
 planning_under75_bands <- function() {

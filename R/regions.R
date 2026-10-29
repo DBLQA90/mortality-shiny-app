@@ -268,6 +268,32 @@ reconcile_area_selection <- function(selected,
   )
 }
 
+# Comparators of the annual tab. The automatic entry stands for the NUTS II
+# region(s) of the local area, so a national tool compares Matosinhos with the
+# Norte and Beja with the Alentejo without anyone choosing. A local area that
+# spans more than two regions (the Continente, say) gets no automatic region.
+ANNUAL_AUTO_REGION <- ".regiao_do_local"
+ANNUAL_DEFAULT_COMPARATORS <- c("Portugal", ANNUAL_AUTO_REGION)
+
+annual_comparator_choices <- function(vintage = default_nuts_vintage(), lookup = get_nuts_lookup(vintage)) {
+  c("Região NUTS II do local (automático)" = ANNUAL_AUTO_REGION, area_choices_for(vintage, lookup))
+}
+
+resolve_annual_comparators <- function(comparators, selected_areas, lookup = get_nuts_lookup(), members = NULL) {
+  comparators <- unique(as.character(comparators))
+  selected_areas <- unique(as.character(selected_areas))
+  regions <- character(0)
+  if (ANNUAL_AUTO_REGION %in% comparators && length(selected_areas) > 0) {
+    if (is.null(members)) members <- function(area) if (area %in% lookup$municipality) area else character(0)
+    municipalities <- unique(unlist(lapply(selected_areas, members), use.names = FALSE))
+    regions <- unique(lookup$nuts2[lookup$municipality %in% municipalities])
+    if (length(regions) > 2) regions <- character(0)
+  }
+  out <- unlist(lapply(comparators, function(x) if (identical(x, ANNUAL_AUTO_REGION)) regions else x), use.names = FALSE)
+  # A comparator that is the local area itself would only repeat its column.
+  unique(setdiff(out, selected_areas))
+}
+
 vintage_mismatch_message <- function(areas,
                                      vintage = default_nuts_vintage(),
                                      lookup = get_nuts_lookup(vintage),

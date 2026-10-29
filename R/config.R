@@ -29,6 +29,16 @@ population_indicators <- c(
 )
 death_indicators <- c(death_indicator_legacy, death_indicator_current)
 
+# Malignant tumours in 60 sites (NUTS 2013, 2002-2022): the short list bundles
+# the larynx with the trachea, bronchi and lung, and colon with rectum; this
+# indicator separates them. Its causes share no name with the short list's, so
+# they are read from their own folder and offered as a second group of causes,
+# for its years only. Its total ("Tumores malignos") repeats the short list's
+# "Tumores (neoplasmas) malignos" and is not offered.
+death_indicator_detailed <- "0008461"
+DETAILED_TUMOUR_YEARS <- 2002:2022
+DETAILED_TUMOUR_TOTAL <- "Tumores malignos"
+
 # Where the population series changes basis.
 #
 # The archive splices three indicators, and consecutive ones disagree about the

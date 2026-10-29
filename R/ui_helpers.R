@@ -194,6 +194,31 @@ nuts_vintage_control <- function() {
       )
     )
     ),
+    # Whether the app's corrections of INE's data apply (DADOS_INE_LIMITACOES.md).
+    tags$div(
+      style = "display:flex; align-items:center; gap:0.6rem;",
+    tags$label(
+      "Dados:",
+      `for` = "data_mode",
+      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
+    ),
+    tags$div(
+      style = "min-width:14rem;",
+      title = paste(
+        "Corrigidos: a aplicação corrige erros de publicação do INE, distribui pelas idades os óbitos sem idade,",
+        "reconstrói totais confidenciais, recupera emprego e ganhos ocultados e reconstrói o último ano sem causas de morte.",
+        "Originais do INE: os dados tal como o INE os publica, sem nada disto.",
+        "A lista completa e as razões estão em DADOS_INE_LIMITACOES.md."
+      ),
+      selectInput(
+        "data_mode",
+        label = NULL,
+        choices = data_mode_choices,
+        selected = default_data_mode(),
+        width = "100%"
+      )
+    )
+    ),
     data_version_badge()
   )
 }
@@ -253,7 +278,7 @@ forecast_controls_panel <- function() {
   tagList(
     selectInput("area2", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
     textInput("area_label2", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
-    selectInput("cause2", "Causa de Morte:", choices = diseases),
+    selectInput("cause2", "Causa de Morte:", choices = cause_choices),
     selectInput("sex2", "Sexo:", choices = sex_levels, selected = "HM"),
     radioButtons(
       "population2",
@@ -363,7 +388,7 @@ beginner_forecast_controls_panel <- function() {
     ),
     conditionalPanel(
       "input.beginner_indicator == 'mortality'",
-      selectInput("beginner_cause", "Causa de Morte:", choices = diseases),
+      selectInput("beginner_cause", "Causa de Morte:", choices = cause_choices),
       selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
       radioButtons(
         "beginner_population",
@@ -497,7 +522,7 @@ data_availability_tab_ui <- function() {
           selectInput(
             "availability_cause",
             "Causa de Morte:",
-            choices = diseases,
+            choices = cause_choices,
             selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
             multiple = TRUE
           )
@@ -608,7 +633,7 @@ intro_tab_ui <- function() {
           tags$li(tags$strong("Mortalidade Observada"), " — ver a evolução histórica de uma taxa e exportar tabelas e gráficos."),
           tags$li(tags$strong("Previsão Guiada"), " — obter uma previsão simples, com explicação. Recomendado para a maioria dos utilizadores."),
           tags$li(tags$strong("Previsão Avançada"), " — controlar modelos, diagnósticos e testes. Destinado a utilizadores técnicos; não é necessário para uma previsão simples."),
-          tags$li(tags$strong("Métricas Anuais"), " — comparar Portugal, Norte e um local à escolha num único ano."),
+          tags$li(tags$strong("Métricas Anuais"), " — comparar um local com Portugal e a sua região, ou com outras áreas à escolha, num único ano."),
           tags$li(tags$strong("Disponibilidade de Dados"), " — verificar que anos, locais e causas existem nos ficheiros antes de carregar.")
         ),
 
@@ -633,7 +658,8 @@ intro_tab_ui <- function() {
             "Ferramenta não oficial e exploratória. Não substitui validação epidemiológica, ",
             "análise clínica ou produtos estatísticos oficiais. Para um guia detalhado, ",
             "separador a separador, consulte o Manual do Utilizador (USER_MANUAL.md); para as escolhas ",
-            "metodológicas e as suas razões, em linguagem simples, ESCOLHAS_METODOLOGICAS.md."
+            "metodológicas e as suas razões, em linguagem simples, ESCOLHAS_METODOLOGICAS.md; para os problemas ",
+            "encontrados nos dados do INE e o que a aplicação faz com cada um, DADOS_INE_LIMITACOES.md."
           ))
         )
       )
@@ -734,7 +760,7 @@ observed_mortality_tab_ui <- function() {
       sidebarPanel(
         selectInput("area", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
         textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
-        selectInput("cause", "Causa de Morte:", choices = diseases),
+        selectInput("cause", "Causa de Morte:", choices = cause_choices),
         selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
           "population",
@@ -852,25 +878,36 @@ annual_metrics_tab_ui <- function() {
         selectInput(
           "annual_cause",
           "Causa de Morte:",
-          choices = diseases,
+          choices = cause_choices,
           selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
           multiple = TRUE
         ),
         selectInput("annual_sex", "Sexo:", choices = sex_levels, selected = "HM"),
         selectInput(
           "annual_area",
-          "Local adicional:",
-          # Portugal and Norte are always the first two columns.
-          choices = setdiff(local_area, c("Portugal", "Norte")),
+          "Local:",
+          choices = local_area,
           multiple = TRUE,
           selected = character(0)
+        ),
+        selectizeInput(
+          "annual_comparators",
+          "Comparar com:",
+          choices = annual_comparator_choices(),
+          multiple = TRUE,
+          selected = ANNUAL_DEFAULT_COMPARATORS,
+          options = list(maxItems = 4)
+        ),
+        helpText(
+          "Por omissão, Portugal e a região NUTS II do local (o Norte para Matosinhos, o Alentejo para Beja). ",
+          "Pode juntar ou trocar por qualquer região, ULS ou município; cada um é uma coluna."
         ),
         textInput("annual_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ACES / ULS"),
         selectInput(
           "annual_metric",
           "Métrica:",
           choices = annual_metric_choices,
-          selected = "deaths"
+          selected = "dsr"
         ),
         annual_metric_help(),
         region_aggregation_note(),

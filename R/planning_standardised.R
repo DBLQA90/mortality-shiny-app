@@ -74,6 +74,8 @@ PLANNING_SPREAD_SUPPRESS <- 0.25
 planning_complete_by_age <- function(recorded, population, total, labels, iterations = 20L) {
   bands <- colnames(recorded)
   recorded_sum <- rowSums(recorded)
+  # Original data mode: the deaths INE publishes by age, nothing spread.
+  if (!data_corrections_on()) return(list(deaths = recorded, spread = stats::setNames(numeric(length(labels)), labels)))
   missing <- pmax(ifelse(is.na(total), recorded_sum, total) - recorded_sum, 0)
   municipal <- !labels %in% planning_published_areas
   national <- recorded["Portugal", ]
@@ -107,7 +109,7 @@ planning_complete_by_age <- function(recorded, population, total, labels, iterat
 }
 
 planning_death_cause_file <- function(year, cause) {
-  for (indicator in c("0013166", "0008206")) {
+  for (indicator in c("0013166", "0008206", "0008461")) {
     path <- file.path(infant_snapshot_root(), "deaths", indicator, paste0("year_", year),
                       paste0("cause_", planning_cause_file_token(cause), ".rds"))
     if (file.exists(path)) return(path)
@@ -133,6 +135,7 @@ planning_death_indicator <- function(year) {
 # Tejo as three of them - have a value, and only for all causes and both sexes.
 # Everything else stays empty rather than estimated.
 planning_calendar_deaths <- function(year) {
+  if (!data_corrections_on()) return(NULL)
   key <- paste(infant_snapshot_root(), "calendar", year, sep = "|")
   if (!exists(key, envir = planning_cache, inherits = FALSE)) {
     path <- file.path(infant_snapshot_root(), "calendar_deaths_by_age", paste0("year_", year, ".rds"))
@@ -143,6 +146,7 @@ planning_calendar_deaths <- function(year) {
 
 # Years with the rebuilt deaths and no by-cause files yet.
 planning_calendar_years <- function() {
+  if (!data_corrections_on()) return(integer(0))
   files <- list.files(file.path(infant_snapshot_root(), "calendar_deaths_by_age"), pattern = "^year_\\d{4}\\.rds$")
   sort(setdiff(as.integer(sub("^year_(\\d{4})\\.rds$", "\\1", files)), life_death_years()))
 }

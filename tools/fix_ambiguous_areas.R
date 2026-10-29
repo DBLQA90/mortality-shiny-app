@@ -89,11 +89,19 @@ repairs <- tibble::tribble(
   "deaths",     "0008206",  "2004501",  "Calheta",     "Calheta (R.A.A.)",      1991L,    2100L,
   "deaths",     "0008206",  "3003101",  "Calheta",     "Calheta (R.A.M.)",      1991L,    2100L,
   "deaths",     "0008206",  "1500806",  "Lagoa",       "Lagoa",                 1991L,    2100L,
-  "deaths",     "0008206",  "2004201",  "Lagoa",       "Lagoa (R.A.A.)",        1991L,    2100L
+  "deaths",     "0008206",  "2004201",  "Lagoa",       "Lagoa (R.A.A.)",        1991L,    2100L,
+  "deaths",     "0008461",  "2004501",  "Calheta",     "Calheta (R.A.A.)",      2002L,    2022L,
+  "deaths",     "0008461",  "3003101",  "Calheta",     "Calheta (R.A.M.)",      2002L,    2022L,
+  "deaths",     "0008461",  "1500806",  "Lagoa",       "Lagoa",                 2002L,    2022L,
+  "deaths",     "0008461",  "2004201",  "Lagoa",       "Lagoa (R.A.A.)",        2002L,    2022L
 )
 
 if (!identical(dataset_filter, "all")) {
   repairs <- repairs %>% dplyr::filter(dataset == dataset_filter)
+}
+indicator_filter <- get_arg("indicator", "all")
+if (!identical(indicator_filter, "all")) {
+  repairs <- repairs %>% dplyr::filter(indicator %in% strsplit(indicator_filter, ",")[[1]])
 }
 
 # Optional single-code filter, for re-running one geography without redoing the

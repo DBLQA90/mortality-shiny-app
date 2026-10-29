@@ -185,17 +185,22 @@ get_default_data_source <- function() {
 }
 
 snapshot_file_token <- function(x) {
-  x <- iconv(as.character(x), to = "ASCII//TRANSLIT")
+  original <- as.character(x)
+  x <- iconv(original, to = "ASCII//TRANSLIT")
   x <- tolower(x)
   x <- gsub("[^a-z0-9]+", "_", x)
   x <- gsub("^_+|_+$", "", x)
-  ifelse(nzchar(x), x, "unknown")
+  x <- ifelse(nzchar(x), x, "unknown")
+  shorten_file_token(x, original)
 }
 
+
 get_chunked_death_indicators <- function() {
+  # The detailed tumour causes (0008461) share no cause with the other two, so
+  # its priority never decides between rows.
   tibble::tibble(
-    indicator = c(death_indicator_legacy, death_indicator_current),
-    source_priority = c(1L, 2L)
+    indicator = c(death_indicator_legacy, death_indicator_current, death_indicator_detailed),
+    source_priority = c(1L, 2L, 0L)
   )
 }
 
@@ -214,7 +219,9 @@ snapshot_path_exists <- function(path) {
   ifelse(is_url_path(path), TRUE, file.exists(path))
 }
 
-read_snapshot_object <- memoise::memoise(function(path) {
+# Memoised per data mode: a death file reads differently with the source
+# corrections on (see apply_source_corrections() in R/helpers.R).
+read_snapshot_object_mode <- memoise::memoise(function(path, mode) {
   if (is_url_path(path)) {
     con <- url(path, open = "rb")
     on.exit(close(con), add = TRUE)
@@ -224,7 +231,13 @@ read_snapshot_object <- memoise::memoise(function(path) {
   apply_source_corrections(readRDS(path), path)
 })
 
-read_snapshot_dataset <- memoise::memoise(function(kind, separate_path, combined_path) {
+read_snapshot_object <- function(path) read_snapshot_object_mode(path, data_mode())
+
+read_snapshot_dataset <- function(kind, separate_path, combined_path) {
+  read_snapshot_dataset_mode(kind, separate_path, combined_path, data_mode())
+}
+
+read_snapshot_dataset_mode <- memoise::memoise(function(kind, separate_path, combined_path, mode) {
   if (snapshot_path_exists(separate_path)) {
     return(read_snapshot_object(separate_path))
   }

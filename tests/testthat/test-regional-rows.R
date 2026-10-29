@@ -346,3 +346,11 @@ test_that("rows from another edition than the year's deaths are not used", {
     expect_null(planning_regional_area_deaths("Norte", year, "HM", rr_block("Braga"), "2024"))
   })
 })
+
+test_that("the current indicator's regional rows have no last year", {
+  current <- REGIONAL_ROW_TERRITORIES[REGIONAL_ROW_TERRITORIES$indicator == "0013166", ]
+  expect_true(nrow(current) > 0)
+  # Any year INE publishes next (2025, 2026...) must still be read from INE's rows.
+  expect_true(all(current$to >= 2050))
+  expect_true(all(REGIONAL_ROW_TERRITORIES$to[REGIONAL_ROW_TERRITORIES$indicator == "0008206"] <= 2022))
+})

@@ -3,8 +3,9 @@
 #
 #   Rscript tools/build_boundaries.R
 #
-# The boundaries come from the geopt package (github.com/c-matos/geopt, MIT),
-# which bundles DGT's official CAOP limits pre-simplified, from parish to NUTS I
+# The boundaries come from the geopt package (CRAN, version 0.1.0 of 2026-10-21;
+# github.com/c-matos/geopt, MIT): install.packages("geopt"). It
+# bundles DGT's official CAOP limits pre-simplified, from parish to NUTS I
 # and for the health geography, with the Azores and Madeira composed as insets
 # next to the mainland. geopt and sf are needed here only: the output is plain
 # coordinate tables, so the app draws them with ggplot2 and needs neither

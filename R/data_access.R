@@ -151,7 +151,7 @@ death_age_fill <- function(year, cause) {
 # so that area is left as published and a warning says so.
 fill_death_ages <- function(df_death, check_recorded = FALSE) {
   df_death$deaths_filled <- 0
-  if (nrow(df_death) == 0) return(df_death)
+  if (nrow(df_death) == 0 || !data_corrections_on()) return(df_death)
   keys <- unique(df_death[, c("year", "cause")])
   unfilled <- character(0)
   for (i in seq_len(nrow(keys))) {
@@ -222,6 +222,13 @@ calendar_municipal_deaths <- function(year) {
 }
 
 calendar_gap_message <- function(years) {
+  if (!data_corrections_on()) {
+    return(as.character(glue::glue(
+      "Para {paste(years, collapse = ', ')} o INE ainda não publica óbitos por causa e idade. Com os dados originais ",
+      "do INE, {paste(years, collapse = ', ')} fica de fora (com os dados corrigidos, a aplicação reconstrói-o para ",
+      "as regiões NUTS II, todas as causas e ambos os sexos)."
+    )))
+  }
   as.character(glue::glue(
     "Para {paste(years, collapse = ', ')} o INE ainda não publica óbitos por causa e idade. ",
     "A aplicação reconstrói os óbitos de todas as causas por idade a partir dos óbitos ",
@@ -233,12 +240,14 @@ calendar_gap_message <- function(years) {
 # calendar_death_years is set by R/metadata.R when the app starts; modules loaded
 # on their own (the tests, the tools) read the files instead.
 active_calendar_years <- function() {
+  if (!data_corrections_on()) return(integer(0))
   if (exists("calendar_death_years", inherits = TRUE)) calendar_death_years else planning_calendar_years()
 }
 
 # Whether the calendar years can serve a selection: all causes, both sexes, and
 # every area either Portugal, the Continente or a set of whole NUTS II regions.
 calendar_selection_supported <- function(areas, causes = "Todas as causas de morte", sex = "HM") {
+  if (!data_corrections_on()) return(FALSE)
   if (!identical(as.character(sex), "HM") || !all(as.character(causes) == "Todas as causas de morte")) return(FALSE)
   areas <- setdiff(as.character(areas), planning_published_areas)
   if (length(areas) == 0) return(TRUE)
@@ -253,7 +262,39 @@ calendar_selection_supported <- function(areas, causes = "Todas as causas de mor
 
 # Deaths of `years` for `area`, from the by-cause archive and, for the calendar
 # years, from the rebuilt all-cause deaths (only for all causes).
+# The detailed tumour causes (0008461) held in the snapshot: the names in the
+# year folder with the most files, without the indicator's own total.
+.detailed_causes_cache <- new.env(parent = emptyenv())
+detailed_tumour_causes <- function() {
+  root <- infant_snapshot_root()
+  if (!is.null(.detailed_causes_cache[[root]])) return(.detailed_causes_cache[[root]])
+  dirs <- list.dirs(file.path(root, "deaths", death_indicator_detailed), recursive = FALSE)
+  causes <- character(0)
+  if (length(dirs) > 0) {
+    counts <- vapply(dirs, function(d) length(list.files(d, pattern = "^cause_.*\\.rds$")), integer(1))
+    files <- list.files(dirs[[which.max(counts)]], pattern = "^cause_.*\\.rds$", full.names = TRUE)
+    causes <- unique(unlist(lapply(files, function(f) unique(as.character(readRDS(f)$cause)))))
+    causes <- setdiff(causes, DETAILED_TUMOUR_TOTAL)
+  }
+  .detailed_causes_cache[[root]] <- causes
+  causes
+}
+
+# The detailed tumour causes exist only for 0008461's years.
+is_detailed_tumour_cause <- function(cause) as.character(cause) %in% detailed_tumour_causes()
+
+restrict_detailed_cause_years <- function(years, cause) {
+  if (!any(is_detailed_tumour_cause(cause))) return(years)
+  kept <- intersect(as.integer(years), DETAILED_TUMOUR_YEARS)
+  if (length(kept) == 0) {
+    stop(paste0("Os tumores malignos detalhados (indicador 0008461 do INE) só existem para ",
+                min(DETAILED_TUMOUR_YEARS), "-", max(DETAILED_TUMOUR_YEARS), ". Escolha anos nesse período."), call. = FALSE)
+  }
+  years[as.integer(years) %in% kept]
+}
+
 load_snapshot_deaths <- function(years, area, cause) {
+  years <- restrict_detailed_cause_years(years, cause)
   calendar <- intersect(as.integer(years), active_calendar_years())
   archived <- setdiff(as.integer(years), calendar)
   parts <- list()
@@ -317,11 +358,12 @@ get_death_data_for <- function(area, cause, years = year_of_interest, year_order
   }
 
   year_order <- normalize_year_order(year_order)
-  years <- order_years(years, year_order)
+  years <- order_years(restrict_detailed_cause_years(years, cause), year_order)
 
+  detailed <- any(is_detailed_tumour_cause(cause))
   death_plan <- get_source_year_plan(
-    indicators = c(death_indicator_legacy, death_indicator_current),
-    priorities = c(1L, 2L),
+    indicators = if (detailed) death_indicator_detailed else c(death_indicator_legacy, death_indicator_current),
+    priorities = if (detailed) 1L else c(1L, 2L),
     requested_years = years,
     year_order = year_order
   )
@@ -354,12 +396,13 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
                          population_basis = default_population_basis()) {
   data_source <- normalize_data_source(data_source)
   if (identical(data_source, "snapshot")) {
-    years <- order_years(years, year_order)
+    years <- order_years(restrict_detailed_cause_years(years, cause), year_order)
     return(get_data_for_snapshot(area, cause, years, population_basis = population_basis))
   }
 
   year_order <- normalize_year_order(year_order)
-  years <- order_years(years, year_order)
+  years <- order_years(restrict_detailed_cause_years(years, cause), year_order)
+  detailed <- any(is_detailed_tumour_cause(cause))
 
   population_plan <- get_source_year_plan(
     indicators = names(population_source_priorities),
@@ -368,8 +411,8 @@ get_data_for <- function(area, cause, years = year_of_interest, year_order = "as
     year_order = year_order
   )
   death_plan <- get_source_year_plan(
-    indicators = c(death_indicator_legacy, death_indicator_current),
-    priorities = c(1L, 2L),
+    indicators = if (detailed) death_indicator_detailed else c(death_indicator_legacy, death_indicator_current),
+    priorities = if (detailed) 1L else c(1L, 2L),
     requested_years = years,
     year_order = year_order
   )

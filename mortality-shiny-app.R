@@ -118,8 +118,35 @@ server <- function(input, output, session) {
   # end-of-year estimates (INE) or the end-of-year estimate alone. App-wide,
   # like the two above, so no tab divides by a different population.
   active_population_basis <- reactive({
+    # Every computation that reads the denominator also reads the data mode, so
+    # the planning tab recomputes when either changes.
+    active_data_mode()
     normalize_population_basis(value_or_default_input(input$population_basis, default_population_basis()))
   })
+
+  # Corrected data or INE's as published (R/helpers.R, DADOS_INE_LIMITACOES.md).
+  # The mode is a process-wide option the data functions read, so it is set
+  # here, as the first thing any computation that depends on it does.
+  active_data_mode <- reactive({
+    mode <- normalize_data_mode(value_or_default_input(input$data_mode, default_data_mode()))
+    options(mortality.data_mode = mode)
+    mode
+  })
+
+  observeEvent(input$data_mode, {
+    active_data_mode()
+    showNotification(
+      paste0(
+        "Dados: ", names(data_mode_choices)[match(active_data_mode(), data_mode_choices)], ". ",
+        if (identical(active_data_mode(), "original")) {
+          paste("Sem as correções da aplicação: os óbitos sem idade não são distribuídos, os totais confidenciais e o emprego",
+                "ocultado ficam em falta, e o último ano sem causas de morte não é reconstruído. ")
+        } else "",
+        "O separador de planeamento atualiza-se; nos outros separadores, volte a carregar os dados para recalcular."
+      ),
+      type = "message", duration = 15
+    )
+  }, ignoreInit = TRUE)
 
   # The planning tab recomputes on its own; the tabs that load on a button keep
   # the rates they computed until the user loads again.
@@ -193,8 +220,7 @@ server <- function(input, output, session) {
         selected = input[[input_id]],
         vintage = vintage,
         lookup = lookup,
-        # The annual tab's third column excludes the two fixed columns.
-        exclude = if (identical(input_id, "annual_area")) c("Portugal", "Norte") else character(0)
+        exclude = character(0)
       )
 
       dropped <- c(dropped, reconciled$dropped)
@@ -205,6 +231,12 @@ server <- function(input, output, session) {
         selected = reconciled$selected
       )
     }
+
+    # The annual tab's comparators carry the automatic entry besides the areas.
+    comparator_choices <- annual_comparator_choices(vintage, lookup)
+    kept <- intersect(as.character(input$annual_comparators), comparator_choices)
+    dropped <- c(dropped, setdiff(as.character(input$annual_comparators), comparator_choices))
+    updateSelectizeInput(session, "annual_comparators", choices = comparator_choices, selected = kept)
 
     dropped <- unique(dropped)
     if (length(dropped) > 0) {
@@ -2764,15 +2796,30 @@ server <- function(input, output, session) {
     )
   }
 
+  # The annual tab's columns: the comparators, in the order chosen (the
+  # automatic entry resolved to the local area's NUTS II region), then the local
+  # area. resolve_annual_comparators() is in R/regions.R.
+  annual_comparator_areas <- function(selected_areas) {
+    resolve_annual_comparators(
+      value_or_default(input$annual_comparators, ANNUAL_DEFAULT_COMPARATORS),
+      selected_areas,
+      lookup = active_nuts_lookup(),
+      members = function(area) planning_area_members(area, active_nuts_lookup())
+    )
+  }
+
   get_annual_area_specs <- function(selected_areas,
                                     custom_label = NULL,
                                     region_mode = "original",
                                     available_areas = NULL) {
-    selected_areas <- setdiff(sort(unique(as.character(selected_areas))), c("Portugal", "Norte"))
+    selected_areas <- sort(unique(as.character(selected_areas)))
 
     validate(
-      need(length(selected_areas) > 0, "Seleccione pelo menos um local adicional para a terceira coluna.")
+      need(length(selected_areas) > 0, "Seleccione o local a comparar.")
     )
+    comparators <- annual_comparator_areas(selected_areas)
+    mismatch <- vintage_mismatch_message(comparators, active_nuts_vintage(), active_nuts_lookup())
+    validate(need(is.null(mismatch), mismatch))
 
     mismatch <- vintage_mismatch_message(
       selected_areas,
@@ -2781,7 +2828,7 @@ server <- function(input, output, session) {
     )
     validate(need(is.null(mismatch), mismatch))
 
-    # The third column sums whatever is selected into one geography, so an
+    # The local column sums whatever is selected into one geography, so an
     # overlapping choice double-counts exactly as it does on the other tabs.
     # Only reachable since NUTS I regions became selectable: before that every
     # offered region sat at one level and so was disjoint from the others.
@@ -2791,18 +2838,20 @@ server <- function(input, output, session) {
       showNotification(overlap, type = "warning", duration = 20)
     }
 
-    list(
+    comparator_specs <- lapply(comparators, function(area) {
       # Portugal is a national total under every NUTS vintage, so it is never
       # rebuilt from municipalities.
-      list(label = "Portugal", areas = "Portugal", expanded = character(0), warnings = character(0)),
-      make_annual_area_spec("Norte", "Norte", region_mode, available_areas),
-      make_annual_area_spec(
-        get_selection_label(selected_areas, custom_label),
-        selected_areas,
-        region_mode,
-        available_areas
-      )
-    )
+      if (identical(area, "Portugal")) {
+        return(list(label = "Portugal", areas = "Portugal", expanded = character(0), warnings = character(0)))
+      }
+      make_annual_area_spec(area, area, region_mode, available_areas)
+    })
+    c(comparator_specs, list(make_annual_area_spec(
+      get_selection_label(selected_areas, custom_label),
+      selected_areas,
+      region_mode,
+      available_areas
+    )))
   }
 
   # Years contributing to a pooled value centred on `year`, clipped to the
@@ -3980,8 +4029,9 @@ server <- function(input, output, session) {
     for (message_text in unique(unlist(lapply(area_specs, `[[`, "warnings"), use.names = FALSE))) {
       showNotification(message_text, type = "warning", duration = 15)
     }
+    compared <- setdiff(annual_comparator_areas(input$annual_area), "Portugal")
     vintage_warning <- region_vintage_warning(
-      areas = unique(c("Norte", as.character(input$annual_area))),
+      areas = unique(c(compared, as.character(input$annual_area))),
       years = pooled_years,
       region_mode = region_mode
     )
@@ -3991,7 +4041,7 @@ server <- function(input, output, session) {
 
     if (!selected_metric %in% infant_metric_ids) {
       notify_region_source_warnings(
-        selected_areas = unique(c("Norte", as.character(input$annual_area))),
+        selected_areas = unique(c(compared, as.character(input$annual_area))),
         expanded_regions = unique(unlist(lapply(area_specs, `[[`, "expanded"), use.names = FALSE)),
         causes = selected_causes,
         years = pooled_years
@@ -4037,7 +4087,7 @@ server <- function(input, output, session) {
 
       undercount <- infant_undercount_message(
         pooled_years,
-        areas = c("Norte", as.character(input$annual_area)),
+        areas = c(compared, as.character(input$annual_area)),
         cause = detail_cause,
         sex = input$annual_sex,
         municipalities = active_nuts_lookup()$municipality
@@ -4074,7 +4124,8 @@ server <- function(input, output, session) {
               reference_areas = reference_areas
             )
           })) %>%
-            dplyr::mutate(sort_location = area_specs[[3]]$label)
+            # Causes are sorted by the local area, the last column.
+            dplyr::mutate(sort_location = area_specs[[length(area_specs)]]$label)
 
           incProgress(0.8)
           out
@@ -4170,9 +4221,8 @@ server <- function(input, output, session) {
       population_gap_message(years, "a mortalidade evitável")
     ))
 
-    # Not get_annual_area_specs(): that one strips Portugal and Norte, because
-    # the annual tab keeps them as fixed comparator columns. Here they are
-    # ordinary selections, and Portugal is the default.
+    # Not get_annual_area_specs(): that one adds the comparator columns. Here
+    # every area is an ordinary selection, and Portugal is the default.
     selected_areas <- sort(unique(as.character(input$avoidable_area)))
 
     mismatch <- vintage_mismatch_message(
@@ -5103,13 +5153,15 @@ server <- function(input, output, session) {
   # The full file depends only on the data and the NUTS vintage, so it is built
   # once per import and kept in the cache.
   output$downloadPlanningFullXLSX <- downloadHandler(
-    filename = function() paste0("indicadores_planeamento_todas_as_areas_NUTS", active_nuts_vintage(), "_", Sys.Date(), ".xlsx"),
+    filename = function() paste0("indicadores_planeamento_todas_as_areas_NUTS", active_nuts_vintage(),
+                                 if (identical(active_data_mode(), "original")) "_INE_originais" else "", "_", Sys.Date(), ".xlsx"),
     content = function(file) {
       date <- planning_data_date()
       cached <- file.path(
         get_app_dir(), ".mortality-shiny-cache", "exports",
         paste0("indicadores_planeamento_NUTS", active_nuts_vintage(), "_dados_", ifelse(is.na(date), "sem-data", date),
-               "_metodo_", PLANNING_METHOD_VERSION, "_populacao_", active_population_basis(), ".xlsx")
+               "_metodo_", PLANNING_METHOD_VERSION, "_populacao_", active_population_basis(),
+               if (identical(active_data_mode(), "original")) "_INE_originais" else "", ".xlsx")
       )
       if (!file.exists(cached)) {
         dir.create(dirname(cached), recursive = TRUE, showWarnings = FALSE)

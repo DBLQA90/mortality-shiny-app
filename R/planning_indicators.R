@@ -198,7 +198,11 @@ planning_significance_mark <- function(significance) {
 # parish deaths; suppressed employees and earnings recovered from the totals.
 PLANNING_METHOD_VERSION <- "2.0"
 
-planning_cache <- new.env(parent = emptyenv())
+# One cache per data mode (data_mode() in R/helpers.R), so corrected and
+# original values never mix: `planning_cache` resolves to the active mode's.
+planning_caches <- list(corrected = new.env(parent = emptyenv()), original = new.env(parent = emptyenv()))
+if (exists("planning_cache", envir = environment(), inherits = FALSE)) rm("planning_cache", envir = environment())
+makeActiveBinding("planning_cache", function() planning_caches[[data_mode()]], environment())
 
 planning_clear_cache <- function() {
   rm(list = ls(planning_cache, all.names = TRUE), envir = planning_cache)
@@ -239,8 +243,19 @@ read_death_totals_year <- function(year) {
       break
     }
   }
+  out <- bind_detailed_totals(out, year)
   assign(key, out, envir = planning_cache)
   out
+}
+
+# The detailed tumour causes' totals (0008461), beside the short list's: no
+# cause is in both, so the two simply stack.
+bind_detailed_totals <- function(totals, year) {
+  path <- file.path(death_totals_dir(), "0008461", paste0("year_", year, ".rds"))
+  if (!file.exists(path)) return(totals)
+  detailed <- read_death_file(path)
+  if (!is.null(totals) && "repaired" %in% names(totals)) detailed$repaired <- FALSE
+  if (is.null(totals)) detailed else dplyr::bind_rows(totals, detailed[!detailed$cause %in% totals$cause, , drop = FALSE])
 }
 
 # All-cause deaths of both sexes per municipality, Portugal and the Continente
@@ -301,6 +316,7 @@ death_totals_raw <- function(year) {
         break
       }
     }
+    value <- bind_detailed_totals(value, year)
     assign(key, value, envir = planning_cache)
   }
   get(key, envir = planning_cache, inherits = FALSE)
@@ -327,6 +343,7 @@ death_totals_for <- function(year, causes) {
 # take the larger of the two. Repaired cells are marked in `repaired`.
 repair_death_totals <- function(totals, year, only = NULL) {
   totals$repaired <- FALSE
+  if (!data_corrections_on()) return(totals)
   causes <- intersect(unique(c(planning_all_causes, PLANNING_CAUSE_GROUPS$cause)), unique(totals$cause))
   if (!is.null(only)) causes <- intersect(causes, only)
   for (indicator in c("0013166", "0008206")) {
@@ -956,6 +973,7 @@ planning_year_components <- function(year) {
 # amount is kept in employees_recovered / earnings_recovered for the ≈ flag.
 planning_recover_suppressed <- function(table, values, unreported, municipalities, columns, present, lookup) {
   joint <- list()
+  if (!data_corrections_on()) return(list(values = values, unreported = unreported, joint = joint))
   published <- function(area, column) {
     row <- match(area, table$area)
     if (is.na(row)) NA_real_ else as.numeric(table[[column]][[row]])
@@ -1005,6 +1023,7 @@ PLANNING_ESTIMATED_SHARE <- 0.01
 planning_estimate_suppressed_sectors <- function(employees, lookup = get_nuts_lookup()) {
   sectors <- c("employees_primary", "employees_secondary", "employees_tertiary")
   employees$employees_estimated <- 0
+  if (!data_corrections_on()) return(employees)
   municipal <- !employees$area %in% planning_published_areas
   published <- as.matrix(employees[, sectors])
   gap <- employees$employees_total - rowSums(published)

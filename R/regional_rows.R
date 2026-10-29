@@ -79,59 +79,64 @@ default_region_source <- function() {
 # `plus` and `minus` are municipalities whose own rows are added or taken away,
 # for the two compositions a municipality move keeps from being exact.
 .moved_2024 <- "Sertã,Vila de Rei"
+# The current indicator's rows have no last year: each year 0013166 publishes
+# is read as soon as its regional file exists (read_regional_rows() returns
+# NULL, and the municipal sum stands, for a year not fetched yet). A closed end
+# here silently dropped the INE rows for the first year after it.
+REGIONAL_ROWS_OPEN <- 2100L
 
 REGIONAL_ROW_TERRITORIES <- tibble::tribble(
   ~region,                        ~vintage, ~indicator, ~codes,                         ~plus,        ~minus,       ~from, ~to,
   # Same territory under both vintages.
   "Continente",                   NA,       "0008206",  "1",                            "",           "",           1991L, 2021L,
-  "Continente",                   NA,       "0013166",  "1",                            "",           "",           2022L, 2024L,
+  "Continente",                   NA,       "0013166",  "1",                            "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Norte",                        NA,       "0008206",  "11",                           "",           "",           1991L, 2021L,
-  "Norte",                        NA,       "0013166",  "11",                           "",           "",           2022L, 2024L,
+  "Norte",                        NA,       "0013166",  "11",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Algarve",                      NA,       "0008206",  "15",                           "",           "",           1991L, 2021L,
-  "Algarve",                      NA,       "0013166",  "15",                           "",           "",           2022L, 2024L,
+  "Algarve",                      NA,       "0013166",  "15",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Região Autónoma dos Açores",   NA,       "0008206",  "20",                           "",           "",           1991L, 2021L,
-  "Região Autónoma dos Açores",   NA,       "0013166",  "20",                           "",           "",           2022L, 2024L,
+  "Região Autónoma dos Açores",   NA,       "0013166",  "20",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Região Autónoma da Madeira",   NA,       "0008206",  "30",                           "",           "",           1991L, 2021L,
-  "Região Autónoma da Madeira",   NA,       "0013166",  "30",                           "",           "",           2022L, 2024L,
+  "Região Autónoma da Madeira",   NA,       "0013166",  "30",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   # NUTS 2013: own rows to 2022, composed from NUTS-2024 rows after.
   "Centro",                       "2013",   "0008206",  "16",                           "",           "",           1991L, 2022L,
-  "Centro",                       "2013",   "0013166",  "19,1D1,1D2",                   "",           "",           2023L, 2024L,
+  "Centro",                       "2013",   "0013166",  "19,1D1,1D2",                   "",           "",           2023L, REGIONAL_ROWS_OPEN,
   "Área Metropolitana de Lisboa", "2013",   "0008206",  "17",                           "",           "",           1991L, 2022L,
-  "Área Metropolitana de Lisboa", "2013",   "0013166",  "1A,1B",                        "",           "",           2023L, 2024L,
+  "Área Metropolitana de Lisboa", "2013",   "0013166",  "1A,1B",                        "",           "",           2023L, REGIONAL_ROWS_OPEN,
   "Alentejo",                     "2013",   "0008206",  "18",                           "",           "",           1991L, 2022L,
-  "Alentejo",                     "2013",   "0013166",  "1C,1D3",                       "",           "",           2023L, 2024L,
+  "Alentejo",                     "2013",   "0013166",  "1C,1D3",                       "",           "",           2023L, REGIONAL_ROWS_OPEN,
   # NUTS 2024: own rows from 2022, composed from NUTS-2013 subregions before.
   "Centro",                       "2024",   "0008206",  "16D,16E,16F,16G,16H,16J",      .moved_2024,  "",           1991L, 2021L,
-  "Centro",                       "2024",   "0013166",  "19",                           "",           "",           2022L, 2024L,
+  "Centro",                       "2024",   "0013166",  "19",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Alentejo",                     "2024",   "0008206",  "181,184,186,187",              "",           "",           1991L, 2021L,
-  "Alentejo",                     "2024",   "0013166",  "1C",                           "",           "",           2022L, 2024L,
+  "Alentejo",                     "2024",   "0013166",  "1C",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "Oeste e Vale do Tejo",         "2024",   "0008206",  "16B,16I,185",                  "",           .moved_2024,  1991L, 2021L,
-  "Oeste e Vale do Tejo",         "2024",   "0013166",  "1D",                           "",           "",           2022L, 2024L,
+  "Oeste e Vale do Tejo",         "2024",   "0013166",  "1D",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   # No NUTS-2013 split of the Lisbon metropolitan area exists before 2022.
-  "Grande Lisboa",                "2024",   "0013166",  "1A",                           "",           "",           2022L, 2024L,
-  "Península de Setúbal",         "2024",   "0013166",  "1B",                           "",           "",           2022L, 2024L,
+  "Grande Lisboa",                "2024",   "0013166",  "1A",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
+  "Península de Setúbal",         "2024",   "0013166",  "1B",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   # Health units that coincide exactly with an INE regional unit, checked
   # against both municipality lookups. The other ULS are finer than any NUTS III
   # subregion and keep the municipal sum - mostly urban ULS of two or three
   # large municipalities, where the age-detail loss is small.
   "ARS Algarve",                  NA,       "0008206",  "15",                           "",           "",           1991L, 2021L,
-  "ARS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, 2024L,
+  "ARS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Algarve",                  NA,       "0008206",  "15",                           "",           "",           1991L, 2021L,
-  "ULS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, 2024L,
+  "ULS Algarve",                  NA,       "0013166",  "15",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ARS Alentejo",                 NA,       "0008206",  "181,184,186,187",              "",           "",           1991L, 2021L,
-  "ARS Alentejo",                 NA,       "0013166",  "1C",                           "",           "",           2022L, 2024L,
+  "ARS Alentejo",                 NA,       "0013166",  "1C",                           "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Alto Minho",               NA,       "0008206",  "111",                          "",           "",           1991L, 2021L,
-  "ULS Alto Minho",               NA,       "0013166",  "111",                          "",           "",           2022L, 2024L,
+  "ULS Alto Minho",               NA,       "0013166",  "111",                          "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Viseu Dão-Lafões",         NA,       "0008206",  "16G",                          "",           "",           1991L, 2021L,
-  "ULS Viseu Dão-Lafões",         NA,       "0013166",  "194",                          "",           "",           2022L, 2024L,
+  "ULS Viseu Dão-Lafões",         NA,       "0013166",  "194",                          "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Litoral Alentejano",       NA,       "0008206",  "181",                          "",           "",           1991L, 2021L,
-  "ULS Litoral Alentejano",       NA,       "0013166",  "1C1",                          "",           "",           2022L, 2024L,
+  "ULS Litoral Alentejano",       NA,       "0013166",  "1C1",                          "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Baixo Alentejo",           NA,       "0008206",  "184",                          "",           "",           1991L, 2021L,
-  "ULS Baixo Alentejo",           NA,       "0013166",  "1C2",                          "",           "",           2022L, 2024L,
+  "ULS Baixo Alentejo",           NA,       "0013166",  "1C2",                          "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Alto Alentejo",            NA,       "0008206",  "186",                          "",           "",           1991L, 2021L,
-  "ULS Alto Alentejo",            NA,       "0013166",  "1C3",                          "",           "",           2022L, 2024L,
+  "ULS Alto Alentejo",            NA,       "0013166",  "1C3",                          "",           "",           2022L, REGIONAL_ROWS_OPEN,
   "ULS Alentejo Central",         NA,       "0008206",  "187",                          "",           "",           1991L, 2021L,
-  "ULS Alentejo Central",         NA,       "0013166",  "1C4",                          "",           "",           2022L, 2024L
+  "ULS Alentejo Central",         NA,       "0013166",  "1C4",                          "",           "",           2022L, REGIONAL_ROWS_OPEN
 )
 
 split_list <- function(x) {
@@ -187,6 +192,12 @@ read_regional_rows <- function(indicator, year) {
 
   path <- file.path(regional_rows_root(), "regional_deaths", indicator, paste0("year_", year, ".rds"))
   rows <- if (file.exists(path)) readRDS(path) else NULL
+  # The detailed tumour causes (0008461) come in the same NUTS 2013 geography
+  # as 0008206 and share no cause with it, so its rows join that indicator's.
+  if (identical(indicator, death_indicator_legacy)) {
+    detailed <- file.path(regional_rows_root(), "regional_deaths", death_indicator_detailed, paste0("year_", year, ".rds"))
+    if (file.exists(detailed)) rows <- dplyr::bind_rows(rows, readRDS(detailed))
+  }
   .regional_rows_cache[[key]] <- rows
   rows
 }
@@ -343,6 +354,7 @@ substitute_regional_deaths <- function(df,
 # otherwise the NUTS I regions would not add up to Portugal. Only upwards, and
 # only where the death totals have the year.
 top_up_regional_rows <- function(regional, members, year) {
+  if (!data_corrections_on()) return(regional)
   totals <- if (exists("death_totals_for", mode = "function")) {
     tryCatch(death_totals_for(year, unique(regional$cause)), error = function(e) NULL)
   }

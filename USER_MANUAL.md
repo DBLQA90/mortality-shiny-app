@@ -9,7 +9,7 @@ As escolhas metodológicas por trás dos números (o que a aplicação faz, porq
 A aplicação permite:
 
 - consultar mortalidade observada por ano, local, causa de morte, sexo e grupo populacional;
-- comparar Portugal, Norte e uma localização adicional num ano específico;
+- comparar um local com Portugal, a sua região ou outras áreas à escolha, num ano específico;
 - calcular nove métricas: óbitos, mortalidade bruta, mortalidade padronizada (directa),
   SMR e taxa padronizada indirecta, mortalidade proporcional, AVPP, óbitos infantis e
   mortalidade infantil;
@@ -190,6 +190,11 @@ Define a causa analisada. Algumas análises permitem apenas uma causa por carreg
 
 `Todas as causas de morte` é especialmente importante porque serve como denominador para a `Mortalidade Proporcional`.
 
+A lista tem dois grupos:
+
+- **Lista sucinta europeia (todos os anos):** as causas habituais, de 1991 até ao último ano publicado.
+- **Tumores malignos detalhados (INE 0008461, 2002–2022):** 60 localizações de tumores malignos que a lista sucinta junta ou não separa. Por exemplo, o cancro do pulmão sem a laringe, o cólon separado do reto, ou o melanoma. Só existem de 2002 a 2022: escolhidos anos fora desse período, a aplicação usa apenas os que estão dentro, ou avisa se não houver nenhum.
+
 ### Sexo
 
 Permite analisar:
@@ -205,6 +210,22 @@ Quando escolhe ambos os sexos, a aplicação soma os óbitos e a população ant
 `Total` usa todos os grupos etários disponíveis.
 
 `Menos de 75 anos` exclui os grupos etários a partir dos 75 anos. Esta opção pode ser útil quando o foco é mortalidade prematura ou potencialmente evitável, mas deixa de representar a mortalidade total da população.
+
+### Dados: corrigidos ou originais do INE
+
+O controlo `Dados`, no topo de qualquer página, escolhe se a aplicação aplica as suas correções aos dados do INE:
+
+- **Corrigidos (recomendado)**, a predefinição. A aplicação:
+    - corrige erros de publicação do INE (por agora, os óbitos de 2011 de cinco municípios do Alto Alentejo);
+    - distribui pelas idades os óbitos que o INE publica sem idade;
+    - reconstrói os totais que o INE deixa confidenciais a partir das idades;
+    - recupera o emprego e os ganhos ocultados (`≈`);
+    - reconstrói o último ano ainda sem causas de morte (`p`).
+- **Originais do INE**: os dados tal como o INE os publica, sem nada disto. Os valores ocultados ficam em falta, e o último ano só aparece onde o INE o publica.
+
+Use os originais para reproduzir um número do INE ou para ver o efeito das correções. A lista completa, com as razões de cada correção, está em [DADOS_INE_LIMITACOES.md](DADOS_INE_LIMITACOES.md).
+
+A definição das regiões, a origem dos óbitos regionais e o denominador não mudam com este controlo: são escolhas de método, com controlo próprio. O separador de planeamento recalcula de imediato. Nos outros, volte a carregar os dados depois de mudar a opção. O Excel de todas as áreas indica no nome do ficheiro quando foi feito com os dados originais.
 
 ### População no Denominador
 
@@ -828,13 +849,14 @@ Sugestão prática:
 
 ## 10. Separador Métricas Anuais
 
-Este separador compara métricas num único ano. Mostra sempre:
+Este separador compara métricas num único ano, entre um local e os seus comparadores. Cada um é uma coluna:
 
-- `Portugal`;
-- `Norte`;
-- a localização adicional seleccionada.
+- em `Comparar com`, os comparadores, por omissão `Portugal` e `Região NUTS II do local (automático)`. A segunda é a região do local: o Norte para Matosinhos, o Alentejo para Beja. Um local que atravesse mais de duas regiões (o Continente, por exemplo) não tem região automática. Pode juntar ou trocar comparadores por qualquer região, ULS ou município, até quatro;
+- em `Local`, a área a analisar (várias áreas escolhidas são somadas numa só, como nos outros separadores). É sempre a última coluna.
 
-Pode seleccionar uma ou várias causas de morte. A tabela é ordenada do maior para o menor valor segundo a localização adicional. Isto ajuda a perceber quais as causas com maior peso local, mantendo Portugal e Norte como comparadores.
+A métrica por omissão é a `Mortalidade Padronizada`, que permite comparar áreas com idades diferentes.
+
+Pode seleccionar uma ou várias causas de morte. A tabela é ordenada do maior para o menor valor segundo o local. Isto ajuda a perceber quais as causas com maior peso local, face aos comparadores escolhidos.
 
 Métricas disponíveis:
 
@@ -1693,7 +1715,7 @@ de Dados).
 2. Escolha o ano.
 3. Seleccione várias causas.
 4. Escolha a métrica.
-5. Compare Portugal, Norte e a localização adicional.
+5. Compare o local com Portugal e a sua região (ou os comparadores que escolher).
 6. Use a ordenação local para identificar causas prioritárias para análise posterior.
 
 ### Resolver Problemas de Dados

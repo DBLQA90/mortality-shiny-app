@@ -466,3 +466,15 @@ test_that("health units on INE rows match their subregion exactly", {
   expect_match(municipal_age_detail_warning("ULS Guarda", new, "C1", 2019, "2024"), "ULS Guarda")
   expect_null(municipal_age_detail_warning("ULS Algarve", new, "C1", 2014, "2024"))
 })
+
+test_that("the annual tab's automatic comparator is the local area's NUTS II region", {
+  lookup <- get_nuts_lookup("2024")
+  members <- function(area) planning_area_members(area, lookup)
+  expect_equal(resolve_annual_comparators(ANNUAL_DEFAULT_COMPARATORS, "Matosinhos", lookup, members), c("Portugal", "Norte"))
+  expect_equal(resolve_annual_comparators(ANNUAL_DEFAULT_COMPARATORS, "Beja", lookup, members), c("Portugal", "Alentejo"))
+  # A region is not compared with itself, and the order chosen is kept.
+  expect_equal(resolve_annual_comparators(ANNUAL_DEFAULT_COMPARATORS, "Norte", lookup, members), "Portugal")
+  expect_equal(resolve_annual_comparators(c("Centro", "Portugal"), "Matosinhos", lookup, members), c("Centro", "Portugal"))
+  # An area across more than two regions gets no automatic region.
+  expect_equal(resolve_annual_comparators(ANNUAL_DEFAULT_COMPARATORS, "Continente", lookup, members), "Portugal")
+})
