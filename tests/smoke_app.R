@@ -311,14 +311,47 @@ testServer(app, {
     cat("   map (municipalities):", paste(names(counts), counts, sep = "=", collapse = " "),
         verdict(all(counts >= 300), "OK", "map values"), "\n")
   }
-  plot <- tryCatch(output$planningMapPlot, error = function(e) e)
-  cat("   map plot:", if (failed(plot)) conditionMessage(plot) else "OK", "\n")
-  session$setInputs(planning_map_click = list(x = -8.68, y = 41.2))
+  plot <- tryCatch(output$planningMap1, error = function(e) e)
+  cat("   map plot:", if (failed(plot)) conditionMessage(plot) else verdict(grepl("choropleth", plot), "OK", "map plot"), "\n")
+  session$setInputs(`plotly_click-planning_map` = jsonlite::toJSON(list(list(customdata = "Matosinhos")), auto_unbox = TRUE))
   clicked <- tryCatch(output$planningMapClicked, error = function(e) e)
   cat("   map click:", if (failed(clicked)) conditionMessage(clicked) else verdict(grepl("Matosinhos", clicked$html), "OK", "map click"), "\n")
   session$setInputs(planning_map_level = "uls", planning_map_indicators = c("life_expectancy_65", "death_rate"), planning_map_scale = "quintile")
   map <- tryCatch(planning_map_view(), error = function(e) e)
   if (!failed(map)) cat("   map (ULS):", verdict(sum(is.finite(map$values$value)) == 78, "OK", "ULS map"), "\n")
+
+  # Maps of any cause: a short-list cause by municipality, a detailed tumour of
+  # 2022 by NUTS II (its regions fall back to their municipalities: 0008461's
+  # rows join 0008206's only), the ULS, and a click.
+  session$setInputs(map_cause = "Diabetes mellitus", map_sex = "HM", map_metric = "smr", map_end_year = "2024",
+                    map_level = "municipio", map_scale = "index", map_smoothed = FALSE, go_map = 1)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap)) {
+    v <- cmap$values
+    cat("   cause map (diabetes, municipalities):", sum(is.finite(v$value)), "of", nrow(v),
+        verdict(nrow(v) == 308 && sum(is.finite(v$value)) >= 250, "OK", "cause map values"), "\n")
+  }
+  widget <- tryCatch(output$causeMap, error = function(e) e)
+  cat("   cause map plot:", if (failed(widget)) conditionMessage(widget) else verdict(grepl("choropleth", widget), "OK", "cause map plot"), "\n")
+  session$setInputs(`plotly_click-cause_map` = jsonlite::toJSON(list(list(customdata = "Matosinhos")), auto_unbox = TRUE))
+  clicked <- tryCatch(output$causeMapClicked, error = function(e) e)
+  cat("   cause map click:", if (failed(clicked)) conditionMessage(clicked) else verdict(grepl("Matosinhos", clicked$html) && grepl("map_open_series", clicked$html), "OK", "cause map click"), "\n")
+  session$setInputs(map_cause = "Neoplasia maligna do pâncreas", map_end_year = "2022", map_level = "municipio", go_map = 2)
+  municipal <- tryCatch(cause_map(), error = function(e) e)
+  session$setInputs(map_level = "nuts2", go_map = 3)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap) && !failed(municipal)) {
+    regions <- sum(cmap$values$observed)
+    municipalities <- sum(municipal$values$observed, na.rm = TRUE)
+    cat("   cause map (pancreas 2020-2022): NUTS II deaths", regions, "vs municipalities", municipalities,
+        # Withheld municipalities carry no count, so the regions read a little
+        # higher; regions read from rows without the cause would lose a third.
+        verdict(all(is.finite(cmap$values$value)) && regions >= municipalities && regions < 1.05 * municipalities,
+                "OK", "detailed tumour regions"), "\n")
+  }
+  session$setInputs(map_cause = "Todas as causas de morte", map_end_year = "2024", map_level = "uls", map_metric = "dsr75", go_map = 4)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap)) cat("   cause map (ULS, under 75):", verdict(sum(is.finite(cmap$values$value)) >= 38, "OK", "ULS cause map"), "\n")
 
   # Trend of the planning indicator, non-overlapping triennia.
   session$setInputs(planning_indicator = "dsr_premature", planning_years = c(2005, 2024))

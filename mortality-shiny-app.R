@@ -53,6 +53,7 @@ for (app_file in c(
   "R/planning_charts.R",
   "R/planning_profile.R",
   "R/planning_maps.R",
+  "R/cause_maps.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/trend.R",
@@ -66,8 +67,12 @@ for (app_file in c(
 # UI
 # =========================================================
 
+# The empty world topojson the plotly maps ask for (R/cause_maps.R).
+shiny::addResourcePath("map-topojson", file.path(app_dir, "data", "boundaries", "topojson"))
+
 ui <- navbarPage(
   title = "PNS Monitorização",
+  id = "main_nav",
   header = nuts_vintage_control(),
 
   intro_tab_ui(),
@@ -76,6 +81,7 @@ ui <- navbarPage(
   advanced_forecasting_tab_ui(),
   annual_metrics_tab_ui(),
   avoidable_tab_ui(),
+  maps_tab_ui(),
   planning_tab_ui(),
   data_availability_tab_ui(),
   glossary_tab_ui()
@@ -189,13 +195,13 @@ server <- function(input, output, session) {
     years <- setdiff(as.integer(years), calendar_death_years)
     if (length(years) == 0) return(invisible())
     seam <- region_source_seam_warning(expanded_regions, active_nuts_vintage(), years, active_region_source())
-    if (!is.null(seam)) showNotification(seam, type = "warning", duration = 20, id = "region-seam")
+    if (!is.null(seam)) notify_data(seam, type = "warning", duration = 20, id = "region-seam")
 
     municipal <- municipal_age_detail_warning(
       selected_areas, active_nuts_lookup(), causes, years,
       vintage = active_nuts_vintage(), source = active_region_source()
     )
-    if (!is.null(municipal)) showNotification(municipal, type = "warning", duration = 20, id = "municipal-age-detail")
+    if (!is.null(municipal)) notify_data(municipal, type = "warning", duration = 20, id = "municipal-age-detail")
   }
 
   # Swap the region entries of every area selector when the vintage changes.
@@ -275,6 +281,105 @@ server <- function(input, output, session) {
     cancel_seq$avoidable <- cancel_seq$avoidable + 1L
     showNotification("Pedido de interrupção recebido (Mortalidade evitável).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
+
+  # -------------------------
+  # Warnings inside the tab
+  # -------------------------
+  # Warnings about the data an analysis read go to the top of the tab that is
+  # computing it - the one on screen, as the outputs of hidden tabs do not run -
+  # instead of floating over its charts; each new run of the tab clears them.
+  # Elsewhere (no tab id in a test server, or a tab without a slot) they stay
+  # notifications. Replies to the header controls and to a cancel stay
+  # notifications too: they answer an action, not describe the data.
+  TAB_NOTES <- c("Mortalidade Observada" = "observed", "Previsão Guiada" = "beginner", "Previsão Avançada" = "forecast",
+                 "Métricas Anuais" = "annual", "Mortalidade Evitável" = "avoidable", "Mapas" = "maps")
+  tab_notes <- do.call(reactiveValues, lapply(stats::setNames(nm = unname(TAB_NOTES)), function(tab) list()))
+
+  notify_data <- function(ui, type = "message", duration = 5, id = NULL, ...) {
+    tab <- unname(TAB_NOTES[isolate(input$main_nav) %||% ""])
+    if (length(tab) != 1 || is.na(tab)) return(showNotification(ui, type = type, duration = duration, id = id, ...))
+    text <- paste(as.character(ui), collapse = " ")
+    notes <- isolate(tab_notes[[tab]])
+    notes[[id %||% text]] <- list(text = text, type = type)
+    tab_notes[[tab]] <- notes
+    invisible(NULL)
+  }
+
+  clear_tab_notes <- function(tab) tab_notes[[tab]] <- list()
+  for (pair in list(c("go_rates", "observed"), c("go_beginner_forecast", "beginner"), c("go_forecast", "forecast"),
+                    c("go_annual_metrics", "annual"), c("go_avoidable", "avoidable"))) local({
+    button <- pair[[1]]; tab <- pair[[2]]
+    observeEvent(input[[button]], clear_tab_notes(tab), priority = 100, ignoreInit = TRUE)
+  })
+
+  render_tab_notes <- function(tab) renderUI({
+    notes <- tab_notes[[tab]]
+    if (length(notes) == 0) return(NULL)
+    types <- vapply(notes, function(n) n$type, character(1))
+    box <- function(items, class, heading) {
+      if (length(items) == 0) return(NULL)
+      div(
+        class = paste("alert alert-dismissible tab-notes", class), role = "alert",
+        tags$button(type = "button", class = "close", `data-dismiss` = "alert", `aria-label` = "Fechar", HTML("&times;")),
+        tags$strong(heading),
+        tags$ul(lapply(items, function(n) tags$li(n$text)))
+      )
+    }
+    tagList(
+      box(notes[types %in% c("warning", "error")], "alert-warning", "Avisos sobre estes dados"),
+      box(notes[!types %in% c("warning", "error")], "alert-info", "Notas")
+    )
+  })
+  output$observedNotes <- render_tab_notes("observed")
+  output$beginnerNotes <- render_tab_notes("beginner")
+  output$forecastNotes <- render_tab_notes("forecast")
+  output$annualNotes <- render_tab_notes("annual")
+  output$avoidableNotes <- render_tab_notes("avoidable")
+  output$mapsNotes <- render_tab_notes("maps")
+
+  # Downloads stay locked until their analysis has been run: before that they
+  # wrote an error page instead of a file.
+  DOWNLOAD_LOCKS <- list(
+    go_rates = c("downloadRateSummaryCSV", "downloadRatePlot", "downloadRateTableCSV"),
+    go_beginner_forecast = c("downloadBeginnerMultiCSV", "downloadBeginnerForecastPlot", "downloadBeginnerForecastCSV"),
+    go_forecast = c("downloadForecastSpecCSV", "downloadForecastSummaryCSV", "downloadForecastPlot", "downloadForecastCSV",
+                    "downloadDiagnosticResidualPlot", "downloadDiagnosticAcfPlot", "downloadDiagnosticPacfPlot",
+                    "downloadDiagnosticLjungCSV", "downloadDiagnosticSummaryTXT", "downloadComparisonRankingCSV",
+                    "downloadAccuracyCSV", "downloadComparisonPlot", "downloadBreakPlot", "downloadBreakTableCSV"),
+    go_annual_metrics = c("downloadAnnualMetricsCSV", "downloadAnnualMetricsPlot", "downloadAnnualSourcesCSV"),
+    go_avoidable = c("downloadAvoidableCSV", "downloadAvoidablePlot", "downloadAvoidableCausesCSV")
+  )
+  for (button in names(DOWNLOAD_LOCKS)) local({
+    trigger <- button
+    observe({
+      session$sendCustomMessage("lock-downloads", list(ids = DOWNLOAD_LOCKS[[trigger]], locked = !isTRUE((input[[trigger]] %||% 0) > 0)))
+    })
+  })
+
+  # The horizon sliders say the year they reach: the last year with data for
+  # the selection, within the fit window, plus the horizon. The rebuilt latest
+  # year serves only all causes, both sexes and whole regions.
+  selection_last_year <- function(areas, cause, sex, fit_end) {
+    active_data_mode()
+    cause <- as.character(cause %||% "")[1]
+    last <- if (is_detailed_tumour_cause(cause)) max(DETAILED_TUMOUR_YEARS) else max(planning_cause_years())
+    calendar <- active_calendar_years()
+    if (length(calendar) > 0 && length(areas) > 0 && isTRUE(calendar_selection_supported(areas, cause, sex %||% "HM"))) {
+      last <- max(last, calendar)
+    }
+    min(as.integer(fit_end), last)
+  }
+  horizon_label <- function(horizon, last) paste0("Horizonte de projecção (anos): até ", last + as.integer(horizon))
+  observe({
+    req(input$beginner_horizon, input$beginner_years_fit)
+    last <- selection_last_year(input$beginner_area, input$beginner_cause, input$beginner_sex, input$beginner_years_fit[[2]])
+    updateSliderInput(session, "beginner_horizon", label = horizon_label(input$beginner_horizon, last))
+  })
+  observe({
+    req(input$horizon, input$years_fit)
+    last <- selection_last_year(input$area2, input$cause2, input$sex2, input$years_fit[[2]])
+    updateSliderInput(session, "horizon", label = horizon_label(input$horizon, last))
+  })
 
   abort_if_cancelled <- function(kind, token) {
     if (!identical(cancel_seq[[kind]], token)) {
@@ -406,7 +511,7 @@ server <- function(input, output, session) {
   # the planning tab's parish weights; say what that means for each one.
   notify_uls_split <- function(areas) {
     note <- uls_split_note(areas, "whole")
-    if (length(note) > 0) showNotification(paste(note, collapse = "\n"), type = "message", duration = 25, id = "uls-split")
+    if (length(note) > 0) notify_data(paste(note, collapse = "\n"), type = "message", duration = 25, id = "uls-split")
   }
 
   make_query_spec <- function(area, area_label, cause, sex, data_source = "ine") {
@@ -425,7 +530,7 @@ server <- function(input, output, session) {
 
     overlap <- overlapping_selection_warning(area_key, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
-      showNotification(overlap, type = "warning", duration = 20)
+      notify_data(overlap, type = "warning", duration = 20)
     }
     notify_uls_split(area_key)
 
@@ -440,7 +545,7 @@ server <- function(input, output, session) {
       available_areas = get_available_areas(data_source)
     )
     for (message_text in resolved$warnings) {
-      showNotification(message_text, type = "warning", duration = 15)
+      notify_data(message_text, type = "warning", duration = 15)
     }
     # Label from what the user chose, not from the expansion: a region must stay
     # named "Alentejo", not become a list of 47 municipalities.
@@ -630,7 +735,7 @@ server <- function(input, output, session) {
     # crossing the population revision inherits its step.
     revision_warning <- population_revision_warning(selected_years, "crude")
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
+      notify_data(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     c(
@@ -665,7 +770,7 @@ server <- function(input, output, session) {
     )
 
     if (length(messages) > 0) {
-      showNotification(
+      notify_data(
         paste(messages, collapse = "\n"),
         type = "warning",
         duration = 12
@@ -695,7 +800,7 @@ server <- function(input, output, session) {
         length(years_to_load) > 0,
         population_gap_message(unusable, "as taxas de mortalidade")
       ))
-      showNotification(
+      notify_data(
         population_gap_message(unusable, "as taxas de mortalidade"),
         type = "warning",
         duration = 15
@@ -707,14 +812,14 @@ server <- function(input, output, session) {
     calendar <- intersect(years_to_load, calendar_death_years)
     if (length(calendar) > 0) {
       if (calendar_selection_supported(query_spec$area_key, query_spec$cause, query_spec$sex)) {
-        showNotification(
+        notify_data(
           paste0(paste(calendar, collapse = ", "), ": óbitos por idade reconstruídos a partir dos óbitos semanais do INE (provisório)."),
           type = "message", duration = 10, id = "calendar-year"
         )
       } else {
         years_to_load <- setdiff(years_to_load, calendar)
         validate(need(length(years_to_load) > 0, calendar_gap_message(calendar)))
-        showNotification(calendar_gap_message(calendar), type = "warning", duration = 15, id = "calendar-year")
+        notify_data(calendar_gap_message(calendar), type = "warning", duration = 15, id = "calendar-year")
       }
     }
 
@@ -2503,7 +2608,7 @@ server <- function(input, output, session) {
     years <- sort(intersect(get_years_in_selected_range(year_range), infant_mortality_years()))
     validate(need(length(years) >= 3 + window - 1L, "Seleccione pelo menos 3 períodos com nados-vivos e óbitos infantis."))
     undercount <- infant_undercount_message(years, query_spec$area_key)
-    if (!is.null(undercount)) showNotification(undercount, type = "warning", duration = 20)
+    if (!is.null(undercount)) notify_data(undercount, type = "warning", duration = 20)
     annual <- infant_annual_series(years, query_spec$area_key)
     validate(need(nrow(annual) >= 3, "Sem nados-vivos e óbitos infantis suficientes para esta selecção."))
     fit_annual <- window == 1L || identical(method, "annual")
@@ -2835,7 +2940,7 @@ server <- function(input, output, session) {
     notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
-      showNotification(overlap, type = "warning", duration = 20)
+      notify_data(overlap, type = "warning", duration = 20)
     }
 
     comparator_specs <- lapply(comparators, function(area) {
@@ -3849,7 +3954,7 @@ server <- function(input, output, session) {
     # is reported with the failures rather than stopping the comparison.
     failed <- vapply(results, function(r) inherits(r, "error") || is.null(r$recommended_model), logical(1))
     if (any(failed)) {
-      showNotification(paste("Sem previsão para:", paste(names(results)[failed], collapse = ", ")), type = "warning", duration = 15)
+      notify_data(paste("Sem previsão para:", paste(names(results)[failed], collapse = ", ")), type = "warning", duration = 15)
     }
     results <- results[!failed]
     validate(need(length(results) > 0, "Nenhuma área pôde ser projectada."))
@@ -3975,9 +4080,16 @@ server <- function(input, output, session) {
     }
   })
 
+  # On screen the last observed years and the forecast; the CSV keeps the series.
+  recent_forecast_rows <- function(table, dat, years = FORECAST_TABLE_RECENT_YEARS) {
+    last <- suppressWarnings(max(as.integer(dat$obs$year), na.rm = TRUE))
+    if (!is.finite(last)) return(table)
+    table[table$Ano > last - years, , drop = FALSE]
+  }
+
   output$beginnerForecastTable <- renderTable({
     req(input$go_beginner_forecast > 0)
-    beginner_forecast_table()
+    recent_forecast_rows(beginner_forecast_table(), beginner_forecast())
   }, sanitize.text.function = identity)
 
   output$downloadBeginnerForecastCSV <- downloadHandler(
@@ -4027,7 +4139,7 @@ server <- function(input, output, session) {
     # Surface any incomplete municipal rebuild, and the NUTS-2024 break when
     # the user chose to keep INE's own regional rows.
     for (message_text in unique(unlist(lapply(area_specs, `[[`, "warnings"), use.names = FALSE))) {
-      showNotification(message_text, type = "warning", duration = 15)
+      notify_data(message_text, type = "warning", duration = 15)
     }
     compared <- setdiff(annual_comparator_areas(input$annual_area), "Portugal")
     vintage_warning <- region_vintage_warning(
@@ -4036,7 +4148,7 @@ server <- function(input, output, session) {
       region_mode = region_mode
     )
     if (!is.null(vintage_warning)) {
-      showNotification(vintage_warning, type = "warning", duration = 20)
+      notify_data(vintage_warning, type = "warning", duration = 20)
     }
 
     if (!selected_metric %in% infant_metric_ids) {
@@ -4051,7 +4163,7 @@ server <- function(input, output, session) {
     # A pooled window straddling 2020/2021 mixes the two population series.
     revision_warning <- population_revision_warning(pooled_years, selected_metric)
     if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
+      notify_data(revision_warning, type = "warning", duration = 20, id = "population-revision")
     }
 
     # The infant metrics are bounded by their own datasets, not by population:
@@ -4064,7 +4176,7 @@ server <- function(input, output, session) {
         if (is.null(infant_gap)) "Sem dados de mortalidade infantil para o período seleccionado." else infant_gap
       ))
       if (!is.null(infant_gap)) {
-        showNotification(infant_gap, type = "warning", duration = 15)
+        notify_data(infant_gap, type = "warning", duration = 15)
       }
 
       # A year published only as an all-cause, both-sexes total cannot answer a
@@ -4082,7 +4194,7 @@ server <- function(input, output, session) {
           length(infant_detail_years(pooled_years, detail_cause, input$annual_sex)) > 0,
           detail_gap
         ))
-        showNotification(detail_gap, type = "warning", duration = 20)
+        notify_data(detail_gap, type = "warning", duration = 20)
       }
 
       undercount <- infant_undercount_message(
@@ -4093,7 +4205,7 @@ server <- function(input, output, session) {
         municipalities = active_nuts_lookup()$municipality
       )
       if (!is.null(undercount)) {
-        showNotification(undercount, type = "warning", duration = 20)
+        notify_data(undercount, type = "warning", duration = 20)
       }
     }
 
@@ -4235,7 +4347,7 @@ server <- function(input, output, session) {
     notify_uls_split(selected_areas)
     overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
     if (!is.null(overlap)) {
-      showNotification(overlap, type = "warning", duration = 20)
+      notify_data(overlap, type = "warning", duration = 20)
     }
 
     area_spec <- make_annual_area_spec(
@@ -4246,7 +4358,7 @@ server <- function(input, output, session) {
     )
 
     for (message_text in area_spec$warnings) {
-      showNotification(message_text, type = "warning", duration = 15)
+      notify_data(message_text, type = "warning", duration = 15)
     }
     revision_warning <- population_revision_warning(years, "dsr")
     if (!is.null(revision_warning)) {
@@ -4750,10 +4862,34 @@ server <- function(input, output, session) {
                        highlight = planning_map_highlight(), benchmark = view$benchmark)
   }
 
-  output$planningMapPlot <- renderPlot(
-    planning_map_draw(planning_map_plot()),
-    height = function() if (length(unique(planning_map_view()$values$panel)) <= 2) 600 else 1150
-  )
+  # On screen, one interactive map per indicator (R/cause_maps.R), two per row;
+  # the PNG keeps the static drawing.
+  output$planningMapWidgets <- renderUI({
+    n <- length(unique(planning_map_view()$values$panel))
+    width <- if (n == 1) 12 else 6
+    do.call(fluidRow, lapply(seq_len(n), function(i) {
+      column(width, plotly::plotlyOutput(paste0("planningMap", i), height = if (n == 1) "720px" else "580px"))
+    }))
+  })
+  for (i in seq_len(PLANNING_MAP_MAX_INDICATORS)) local({
+    k <- i
+    output[[paste0("planningMap", k)]] <- plotly::renderPlotly({
+      view <- planning_map_view()
+      panels <- unique(view$values$panel)
+      req(k <= length(panels))
+      v <- view$values[view$values$panel == panels[[k]], , drop = FALSE]
+      v$hover <- planning_map_hover(v, view$benchmark)
+      direction <- v$direction[[1]]
+      colours <- switch(direction,
+                        worse = PLANNING_MAP_DIVERGING,
+                        better = c(low = PLANNING_MAP_DIVERGING[["high"]], mid = PLANNING_MAP_DIVERGING[["mid"]], high = PLANNING_MAP_DIVERGING[["low"]]),
+                        PLANNING_MAP_NEUTRAL)
+      meaning <- switch(direction, worse = "vermelho: pior", better = "vermelho: pior", "sem melhor nem pior")
+      interactive_choropleth(v, view$boundaries, scale = input$planning_map_scale %||% "index", colours = colours,
+                             title = gsub("\n", "<br>", panels[[k]]), legend_title = paste0(view$benchmark, " = 100<br>", meaning),
+                             source = "planning_map", highlight = planning_map_highlight())
+    })
+  })
 
   output$downloadPlanningMapPNG <- downloadHandler(
     filename = function() paste0("mapas_", input$planning_map_level %||% "municipio", "_", Sys.Date(), ".png"),
@@ -4792,16 +4928,20 @@ server <- function(input, output, session) {
       "Cada mapa usa o último período disponível até ao último ano escolhido, indicado no título. ",
       if (isTRUE(input$planning_map_smoothed)) "A suavização só se aplica às taxas com modelo de contagem (as do funil); os títulos dizem quais. " else "",
       if (identical(view$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias (a Lomba na ULS Vila Nova de Gaia/Espinho). As ilhas não têm ULS. " else "",
-      "Cinzento: sem valor. Contorno escuro: o local escolhido. Clique numa área para ver os seus valores."
+      "Cinzento: sem valor. Contorno escuro: o local escolhido. Passe o rato sobre uma área para ver o valor, use a roda do rato para aproximar ",
+      "e clique numa área para ver os seus valores em todos os indicadores."
     ))
   })
 
   output$planningMapClicked <- renderUI({
-    click <- input$planning_map_click
+    # Read only once there is a click: before the maps are drawn, plotly warns
+    # that the event is not registered.
+    req(input[["plotly_click-planning_map"]])
+    click <- plotly::event_data("plotly_click", source = "planning_map")
     req(click)
     view <- planning_map_view()
-    area <- planning_map_hit(view$boundaries, click$x, click$y)
-    req(area)
+    area <- as.character(click$customdata %||% click$location)[1]
+    req(area, area %in% view$values$area)
     rows <- view$values[view$values$area == area, , drop = FALSE]
     table <- tibble::tibble(
       Indicador = gsub("\n", " · ", rows$panel),
@@ -4812,6 +4952,186 @@ server <- function(input, output, session) {
     )
     tagList(h5(area), renderTable(table, striped = TRUE, bordered = TRUE, spacing = "s", align = "l"))
   })
+
+  # -------------------------
+  # Maps of any cause (R/cause_maps.R)
+  # -------------------------
+  # The settings of the map on screen. They are captured when the map is asked
+  # for - by its button or from another tab - rather than read from the inputs,
+  # which a tab switch updates only after this round.
+  map_settings <- reactiveVal(NULL)
+
+  map_end_year_choices <- function(cause) {
+    years <- rev(cause_map_end_years(cause))
+    stats::setNames(as.character(years), paste0(years - 2L, "-", years))
+  }
+  observeEvent(input$map_cause, {
+    choices <- map_end_year_choices(input$map_cause)
+    keep <- if (isTRUE(input$map_end_year %in% choices)) input$map_end_year else utils::head(choices, 1)
+    updateSelectInput(session, "map_end_year", choices = choices, selected = keep)
+  })
+
+  request_map <- function(cause = input$map_cause, sex = input$map_sex, end_year = input$map_end_year) {
+    clear_tab_notes("maps")
+    map_settings(list(
+      cause = as.character(cause)[1], sex = sex %||% "HM", metric = input$map_metric %||% "smr",
+      end_year = suppressWarnings(as.integer(end_year)), level = input$map_level %||% "municipio",
+      scale = input$map_scale %||% "index", smoothed = isTRUE(input$map_smoothed) && identical(input$map_metric, "smr")
+    ))
+  }
+  observeEvent(input$go_map, request_map())
+
+  # "Ver esta causa no mapa" in the mortality tabs: the tab's cause and sex,
+  # the latest triennium, the map's other settings as they are.
+  open_map_for <- function(cause, sex) {
+    cause <- as.character(cause %||% "")[1]
+    if (!nzchar(cause)) cause <- "Todas as causas de morte"
+    choices <- map_end_year_choices(cause)
+    updateSelectInput(session, "map_cause", selected = cause)
+    updateRadioButtons(session, "map_sex", selected = sex %||% "HM")
+    updateSelectInput(session, "map_end_year", choices = choices, selected = utils::head(choices, 1))
+    updateNavbarPage(session, "main_nav", selected = "Mapas")
+    request_map(cause, sex, utils::head(choices, 1))
+  }
+  observeEvent(input$map_from_observed, open_map_for(input$cause, input$sex))
+  observeEvent(input$map_from_beginner, open_map_for(input$beginner_cause, input$beginner_sex))
+  observeEvent(input$map_from_annual, open_map_for(utils::head(input$annual_cause, 1), input$annual_sex))
+
+  cause_map <- reactive({
+    settings <- map_settings()
+    validate(need(!is.null(settings), "Escolha a causa, o sexo e a métrica e carregue em «Desenhar mapa»."))
+    boundaries <- planning_map_boundaries(settings$level, active_nuts_vintage())
+    validate(need(!is.null(boundaries), "Faltam os limites dos mapas (data/boundaries): corra tools/build_boundaries.R."))
+    years <- cause_map_end_years(settings$cause)
+    validate(need(length(years) > 0, "Esta causa não tem três anos seguidos com óbitos por causa."))
+    end_year <- if (isTRUE(settings$end_year %in% years)) settings$end_year else max(years)
+    values <- shiny::withProgress(message = "A calcular a causa em todas as áreas...", value = 0.3, {
+      cause_map_values(settings$cause, settings$sex, end_year, settings$metric, settings$level, active_nuts_lookup(),
+                       basis = active_population_basis(), smoothed = settings$smoothed)
+    })
+    validate(need(nrow(values) > 0 && any(is.finite(values$value)), "Sem valores para esta causa neste triénio."))
+    missing <- sum(!is.finite(values$value))
+    if (missing > 0) {
+      notify_data(paste0(
+        missing, " de ", nrow(values), " áreas sem valor (a cinzento): sem óbitos por idade publicados nesses anos, ",
+        "ou mais de 25% dos óbitos sem idade (o INE oculta as idades em células pequenas)."
+      ), type = "message", id = "map-missing")
+    }
+    values$hover <- cause_map_hover(values, settings$metric)
+    list(values = values, boundaries = boundaries, settings = settings, end_year = end_year)
+  })
+
+  output$causeMap <- plotly::renderPlotly({
+    m <- cause_map()
+    s <- m$settings
+    interactive_choropleth(m$values, m$boundaries, scale = s$scale,
+                           title = cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed),
+                           legend_title = "Portugal = 100<br>vermelho: acima", source = "cause_map")
+  })
+
+  output$causeMapNote <- renderUI({
+    m <- cause_map()
+    s <- m$settings
+    helpText(paste0(
+      if (identical(s$scale, "index")) {
+        paste0("Cada área face a Portugal (= 100), de 67 a 150 (os valores fora ficam na cor do extremo): vermelho acima de Portugal, ",
+               "azul abaixo. ", if (identical(s$metric, "smr")) "A SMR já é esse índice. " else "O índice é a taxa da área a dividir pela de Portugal. ")
+      } else {
+        "Cinco grupos com o mesmo número de áreas: mostra a ordenação, não a distância a Portugal. "
+      },
+      "Óbitos e pessoas-ano somados nos três anos do triénio. ",
+      if (isTRUE(s$smoothed)) "A SMR suavizada aproxima as áreas pequenas da média; o rato mostra também a observada. " else
+        "Em municípios pequenos uma diferença grande pode ser só acaso: o rato diz se o intervalo de 95% exclui Portugal (▲ ▼). ",
+      if (identical(s$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias. As ilhas não têm ULS. " else "",
+      "Passe o rato para ver os valores, use a roda do rato para aproximar e clique numa área para abrir a sua série."
+    ))
+  })
+
+  # As for the planning maps, read only once there is a click.
+  cause_map_area <- reactive({
+    req(input[["plotly_click-cause_map"]])
+    click <- plotly::event_data("plotly_click", source = "cause_map")
+    req(click)
+    as.character(click$customdata %||% click$location)[1]
+  })
+
+  output$causeMapClicked <- renderUI({
+    m <- cause_map()
+    area <- cause_map_area()
+    row <- m$values[m$values$area == area, , drop = FALSE]
+    req(nrow(row) == 1)
+    digits <- if (identical(m$settings$metric, "smr")) 0 else 1
+    table <- tibble::tibble(
+      `Métrica` = cause_map_metric_label(m$settings$metric),
+      Valor = paste0(planning_format_value(row$value, digits), row$flag),
+      `IC 95%` = paste0(planning_format_value(row$lower, digits), " a ", planning_format_value(row$upper, digits)),
+      `Óbitos` = planning_format_value(row$observed, 0),
+      Esperados = planning_format_value(row$expected, 1),
+      Portugal = planning_format_value(row$benchmark_value, digits),
+      `Face a Portugal` = if (is.na(row$significance)) "—" else paste0(
+        trimws(planning_significance_mark(row$significance)), " ",
+        c(Superior = "acima", Inferior = "abaixo", Semelhante = "semelhante")[[row$significance]]
+      )
+    )
+    openable <- area %in% area_choices_for(active_nuts_vintage(), active_nuts_lookup())
+    tagList(
+      h5(area),
+      renderTable(table, striped = TRUE, bordered = TRUE, spacing = "s", align = "l"),
+      if (openable) {
+        actionButton("map_open_series", "Abrir a série na Mortalidade Observada", icon = icon("chart-line"))
+      } else {
+        helpText("Esta área não se escolhe na Mortalidade Observada (as ULS partilhadas só existem nos Indicadores de Planeamento).")
+      }
+    )
+  })
+
+  # The clicked area's series in the observed tab: same cause and sex, the
+  # standardised rate (under 75 for that metric), loaded at once.
+  observeEvent(input$map_open_series, {
+    m <- cause_map()
+    area <- cause_map_area()
+    updateSelectInput(session, "area", selected = area)
+    updateSelectInput(session, "cause", selected = m$settings$cause)
+    updateSelectInput(session, "sex", selected = m$settings$sex)
+    updateRadioButtons(session, "rate_type", selected = "dsr")
+    updateRadioButtons(session, "population", selected = if (identical(m$settings$metric, "dsr75")) "Menos de 75 anos" else "Total")
+    updateNavbarPage(session, "main_nav", selected = "Mortalidade Observada")
+    session$sendCustomMessage("click-button", "go_rates")
+  })
+
+  observe({
+    session$sendCustomMessage("lock-downloads", list(ids = c("downloadCauseMapCSV", "downloadCauseMapPNG"), locked = is.null(map_settings())))
+  })
+
+  cause_map_file <- function(extension) {
+    s <- map_settings()
+    paste0("mapa_", planning_cause_file_token(s$cause), "_", s$sex, "_", s$metric, "_", s$level, "_", Sys.Date(), extension)
+  }
+  output$downloadCauseMapCSV <- downloadHandler(
+    filename = function() cause_map_file(".csv"),
+    content = function(file) {
+      m <- cause_map()
+      v <- m$values
+      write_csv_utf8(tibble::tibble(
+        causa = m$settings$cause, sexo = m$settings$sex, triennio = paste0(m$end_year - 2L, "-", m$end_year),
+        metrica = cause_map_metric_label(m$settings$metric), area = v$area, valor = v$value, valor_observado = v$observed_value,
+        ic95_inferior = v$lower, ic95_superior = v$upper, obitos = v$observed, esperados = v$expected, marca = v$flag,
+        portugal = v$benchmark_value, indice_portugal_100 = round(v$index, 1), face_a_portugal = v$significance, quintil = v$quintile
+      ), file)
+    }
+  )
+  output$downloadCauseMapPNG <- downloadHandler(
+    filename = function() cause_map_file(".png"),
+    content = function(file) {
+      m <- cause_map()
+      s <- m$settings
+      title <- gsub("<br><sup>|</sup>", "\n", cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed))
+      values <- dplyr::mutate(m$values, panel = trimws(title), direction = "worse")
+      grDevices::png(file, width = 8, height = 9, units = "in", res = 150, bg = "white")
+      on.exit(grDevices::dev.off(), add = TRUE)
+      planning_map_draw(planning_map_chart(values, m$boundaries, s$scale))
+    }
+  )
 
   planning_funnel <- reactive({
     spec <- planning_spec()
@@ -5442,11 +5762,11 @@ server <- function(input, output, session) {
   output$forecastTable <- renderTable({
     dat <- advanced_forecast_result()
     validate(need(length(dat$fits) > 0, "Nenhum modelo foi estimado com sucesso."))
-    build_forecast_display_table(
+    recent_forecast_rows(build_forecast_display_table(
       dat = dat,
       view_mode = input$forecast_output_view,
       selected_model = advanced_forecast_focus_model()
-    )
+    ), dat)
   }, sanitize.text.function = identity)
   
   output$downloadForecastCSV <- downloadHandler(

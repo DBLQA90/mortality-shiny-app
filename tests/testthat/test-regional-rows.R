@@ -336,6 +336,28 @@ test_that("a region's own rows replace the sum of its municipalities", {
   })
 })
 
+test_that("a cause the rows do not carry is missing, so the region falls back to its municipalities", {
+  year <- 2014L
+  plan <- regional_row_plan("Centro", "2024", year)
+  rows <- dplyr::bind_rows(lapply(split_list(plan$codes), function(code) regional(year, code, cause = planning_all_causes, deaths = 10)))
+  with_regional_snapshot(rows, year, plan$indicator, {
+    block <- rr_block(c("Sertã", "Vila de Rei"), per_band = 3)
+    # An extra measure, as planning_cause_age_block() adds for a map's cause.
+    extra <- "Neoplasia maligna do pâncreas"
+    measures <- c(dimnames(block$deaths)[[3]], extra)
+    deaths <- array(1, c(2, length(age_levels), length(measures)), dimnames = list(c("Sertã", "Vila de Rei"), age_levels, measures))
+    deaths[, , dimnames(block$deaths)[[3]]] <- block$deaths
+    block$deaths <- deaths
+    total <- planning_regional_area_deaths("Centro", year, "HM", block, "2024")
+    # In the block's order, by name.
+    expect_equal(colnames(total), measures)
+    expect_equal(unname(total["0 - 4 anos", "all"]), 10 * length(split_list(plan$codes)) + 6)
+    expect_true(all(is.na(total[, extra])))
+    expect_false(planning_rows_have(total, extra))
+    expect_true(planning_rows_have(total, "all"))
+  })
+})
+
 test_that("rows from another edition than the year's deaths are not used", {
   year <- 2014L
   plan <- regional_row_plan("Norte", "2024", year)

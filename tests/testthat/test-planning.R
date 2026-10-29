@@ -1076,6 +1076,38 @@ test_that("missing deaths by age follow the national gap, so the municipal sum m
   })
 })
 
+test_that("a map's cause is an extra measure, equal to its group and missing where a year has no file", {
+  with_cause_age_fixture(function(lookup) {
+    root <- Sys.getenv("MORTALITY_SNAPSHOT_DIR")
+    write_cause <- function(cause, years, file) {
+      for (year in years) {
+        rows <- readRDS(file.path(root, "deaths", "0008206", paste0("year_", year), "cause_todas_as_causas_de_morte.rds"))
+        rows$cause <- cause
+        rows$deaths <- rows$deaths / 2
+        saveRDS(rows, file.path(root, "deaths", "0008206", paste0("year_", year), file))
+      }
+    }
+    write_cause("Doenças do aparelho circulatório", 2020:2022, "cause_doencas_do_aparelho_circulatorio.rds")
+    write_cause("Diabetes mellitus", 2021:2022, "cause_diabetes_mellitus.rds")
+    planning_clear_cache()
+    expect_equal(planning_cause_measure(c("Todas as causas de morte", "Doenças do aparelho circulatório", "Diabetes mellitus")),
+                 c("all", "C33", "Diabetes mellitus"))
+    groups <- planning_cause_standardised(c("Alfa", "Beta"), 2022L, lookup = lookup)
+    chosen <- planning_cause_standardised(c("Alfa", "Beta"), 2022L, lookup = lookup, causes = "Doenças do aparelho circulatório")
+    expect_equal(nrow(chosen), 2)
+    expect_equal(chosen$smr, groups$smr[groups$code == "C33"])
+    expect_equal(chosen$dsr, groups$dsr[groups$code == "C33"])
+    # Without the benchmark among the areas the interval still holds its value.
+    expect_true(all(chosen$smr_lower <= chosen$smr & chosen$smr <= chosen$smr_upper))
+    # Diabetes has no file for 2020: its triennium is missing, not zero.
+    diabetes <- planning_cause_standardised(c("Alfa", "Beta"), 2022L, lookup = lookup, causes = "Diabetes mellitus")
+    expect_true(all(is.na(diabetes$observed)))
+    # The standard block is left as it was.
+    block <- planning_cause_age_block(2022L, c("Alfa", "Beta"))
+    expect_false("Diabetes mellitus" %in% dimnames(block$HM$deaths)[[3]])
+  })
+})
+
 test_that("a published row present at only one year-end does not halve the person-years", {
   with_cause_age_fixture(function(lookup) {
     # As in INE's files: Continente first appears in the 2021 estimates.

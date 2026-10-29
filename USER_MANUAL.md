@@ -248,6 +248,12 @@ Nas análises temporais e nas previsões, a taxa seleccionada define a série a 
 
 Os principais gráficos de taxas e de previsão são interactivos. Passe o rato sobre um ponto para ver o ano e o valor exactos. Pode também aproximar (zoom) uma zona do gráfico arrastando o rato e voltar ao início com os botões da barra de ferramentas que aparece no canto do gráfico. Para guardar uma imagem fixa, use o botão `Descarregar gráfico (PNG)`.
 
+Os mapas também são interactivos: o rato mostra o valor de cada área, a roda do rato aproxima, e um clique numa área mostra os seus valores.
+
+### Avisos e descargas
+
+Os avisos sobre os dados de uma análise (mudanças de base da população, anos reconstruídos, idades em falta, selecções que se sobrepõem) aparecem no topo do painel do separador, numa caixa amarela, e as notas numa caixa azul. Cada nova análise do separador substitui-os; a cruz fecha a caixa. Os botões de descarga ficam inactivos até a análise ter sido carregada.
+
 ## 4. Métricas de Mortalidade
 
 ### Óbitos
@@ -581,7 +587,7 @@ Controlos principais:
 - `Taxa`;
 - `Fonte de dados`;
 - `Janela de ajuste`;
-- horizonte da previsão;
+- horizonte da previsão, em anos a partir do último ano com dados; o rótulo diz o ano a que chega (por exemplo «até 2030»);
 - modo de previsão;
 - em `Mostrar opções avançadas` (opcional): a `Projecção apresentada` (média de 6 modelos ou o modelo com menor erro), o método de validação e o `Tamanho do teste (% dos anos)`.
 
@@ -589,6 +595,8 @@ Em `Indicador` pode escolher a taxa de mortalidade (por causa) ou a **mortalidad
 
 - **Projectar a série anual e agregar no fim** (recomendado): os modelos aprendem com as taxas de cada ano, com a sua variação real, e cada período projectado é a média, pesada pelos nascimentos, dos anos que contém;
 - **Projectar a série de médias móveis**: os modelos aprendem com a série de taxas de 3 ou 5 anos. Como cada valor partilha quase todos os anos com o anterior, a série é suave por construção e os intervalos ficam demasiado estreitos. Use-o para comparar com valores calculados dessa forma.
+
+A tabela da previsão mostra os últimos cinco anos observados e os anos previstos; o CSV tem a série completa.
 
 Por predefinição, a aplicação usa boas escolhas automáticas, pelo que basta escolher local, causa e horizonte e clicar em `Gerar previsão`. As opções de validação só são necessárias para afinar como o modelo é escolhido e ficam escondidas até activar `Mostrar opções avançadas`.
 
@@ -983,7 +991,53 @@ Cuidados:
 - as taxas exigem denominador, pelo que os anos sem população publicada não
   estão disponíveis neste separador.
 
-## 10-B. Separador Indicadores de Planeamento
+## 10-B. Separador Mapas
+
+Uma causa de morte em todas as áreas de um nível, num triénio: para ver onde a
+mortalidade por essa causa é mais alta ou mais baixa do que em Portugal.
+
+- **Causa:** qualquer causa da lista sucinta (todos os anos) ou um dos tumores
+  malignos detalhados do INE 0008461 (triénios de 2002-2004 a 2020-2022).
+- **Sexo:** ambos, homens ou mulheres.
+- **Métrica:**
+  - **SMR face a Portugal (= 100)**, a predefinição: os óbitos observados a
+    dividir pelos que a área teria com as taxas por idade de Portugal. É a métrica
+    indicada para comparar municípios, porque só precisa do total de óbitos.
+  - **Taxa padronizada** (todas as idades ou menos de 75 anos), por 100 000, com
+    a População Padrão Europeia de 2013. No mapa, cada taxa aparece dividida pela
+    de Portugal (= 100).
+- **Triénio:** os três anos somados. Só se oferecem triénios com óbitos por causa
+  nos três anos.
+- **Unidades:** municípios, NUTS III, ULS ou NUTS II, na definição NUTS do topo da
+  página.
+- **Cores:** face a Portugal, de 67 a 150 (vermelho acima, azul abaixo), ou
+  quintis (a ordenação).
+- **Suavizar a SMR:** aproxima as áreas pequenas da média (Bayes empírico). O rato
+  continua a mostrar a SMR observada.
+
+Passe o rato sobre uma área para ver o valor, o intervalo de 95%, os óbitos
+observados e esperados e se a diferença face a Portugal é significativa (▲ acima,
+▼ abaixo). Um clique mostra o quadro da área e o botão **Abrir a série na
+Mortalidade Observada**, que leva a área, a causa e o sexo para esse separador e
+carrega a série da taxa padronizada.
+
+Os separadores Mortalidade Observada, Previsão Guiada e Métricas Anuais têm o
+botão **Ver esta causa no mapa**, que abre este separador com a causa e o sexo
+escolhidos e o último triénio.
+
+**Áreas a cinzento** não têm valor: o triénio não tem óbitos por idade para essa
+causa, ou mais de 25% dos óbitos não têm idade publicada (o INE oculta as idades
+nas células pequenas). Os valores são os mesmos dos Indicadores de Planeamento:
+os óbitos sem idade são distribuídos pelas idades, as regiões usam as linhas
+regionais do INE quando existem, e as ULS que partilham um município usam as suas
+freguesias. Nos tumores detalhados de 2022, as regiões são a soma dos seus
+municípios, porque o INE não publica as linhas regionais desse indicador com a
+geografia de 2024.
+
+A descarga em CSV tem todas as áreas, com o valor observado e o suavizado, o
+intervalo, os óbitos e a significância; a de PNG é o mapa fixo.
+
+## 10-C. Separador Indicadores de Planeamento
 
 Os indicadores demográficos e de mortalidade que os Planos Locais de Saúde
 apresentam para cada ULS, calculados para qualquer local da aplicação: Portugal,
@@ -1189,7 +1243,10 @@ com os valores observados) e não substitui os valores observados em relatórios
 
 O subseparador **Mapa** mostra Portugal com até quatro indicadores lado a lado,
 por município, NUTS III, ULS ou NUTS II, para comparar onde vários estão altos ou
-baixos ao mesmo tempo.
+baixos ao mesmo tempo. Os mapas são interactivos: o rato mostra o valor, o valor
+de Portugal, o índice e o quintil de cada área; a roda do rato aproxima. Para um
+mapa de uma causa de morte em particular, use o separador **Mapas** (secção
+10-B).
 
 - **Cores face a Portugal (= 100)**: todos os mapas de 67 a 150, coloridos pelo
   que a diferença significa: **vermelho onde a área está pior** do que Portugal,
@@ -1204,8 +1261,9 @@ baixos ao mesmo tempo.
   como no funil), só nos indicadores com modelo de contagem.
 
 Cada mapa usa o último período disponível até ao último ano escolhido (no
-título). Clique numa área para ver os seus valores; o local escolhido tem
-contorno escuro. Os limites são os oficiais (CAOP, Direção-Geral do Território).
+título). Clique numa área para ver os seus valores em todos os indicadores; o
+local escolhido tem contorno escuro. A descarga em PNG é a versão fixa, para
+relatórios. Os limites são os oficiais (CAOP, Direção-Geral do Território).
 
 ### Tendência do indicador
 
@@ -1661,7 +1719,7 @@ copiados. Os mapas de municípios por região e por ULS são sempre os actuais.
 
 Todas as tabelas podem ser descarregadas em CSV e os gráficos estáticos em PNG. O
 separador de Indicadores de Planeamento exporta ainda dois ficheiros Excel (ver a
-secção 10-B).
+secção 10-C).
 
 **Todos os ficheiros dizem de que versão dos dados vieram.** No fim de cada CSV há
 uma linha de comentário, e no rodapé de cada PNG uma legenda, com a data de

@@ -221,25 +221,34 @@ planning_calendar_block <- function(year, municipalities, measures = NULL) {
 # INE's own regional rows by age band, summed into the tab's measures: one
 # matrix per measure, region code by band. Their bands add up to their totals,
 # so a region built from them needs no deaths spread over ages at all.
-planning_regional_measure_block <- function(year, sex = "HM") {
-  key <- paste(infant_snapshot_root(), "regionalmeasures", year, sex, sep = "|")
+# A cause in `extra` that the year's rows do not carry is NA, so that the area
+# falls back to its municipalities: the rows of 0008461 join only 0008206's, and
+# in 2022 the year is read from 0013166.
+planning_regional_measure_block <- function(year, sex = "HM", extra = character(0)) {
+  key <- paste(infant_snapshot_root(), "regionalmeasures", year, sex, paste(extra, collapse = "+"), sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
   indicator <- planning_death_indicator(year)
   rows <- if (is.null(indicator)) NULL else read_regional_rows(indicator, year)
   value <- NULL
   if (!is.null(rows) && nrow(rows) > 0) {
     measures <- planning_standardised_measures()
+    measures <- c(measures, stats::setNames(extra, extra))
     leaf <- list(preventable = AVOIDABLE_PREVENTABLE, treatable = AVOIDABLE_TREATABLE)
     rows <- rows[rows$sex == sex & rows$age_band %in% age_levels, , drop = FALSE]
     codes <- sort(unique(rows$region_code))
     bands <- age_levels
-    out <- array(0, c(length(codes), length(bands), length(measures) + 1L),
-                 dimnames = list(codes, bands, c(names(measures), "avoidable")))
+    # In the order of planning_cause_age_block(): the standard measures,
+    # "avoidable", then the extra causes.
+    layers <- c(names(planning_standardised_measures()), "avoidable", extra)
+    out <- array(0, c(length(codes), length(bands), length(layers)), dimnames = list(codes, bands, layers))
     index <- cbind(match(rows$region_code, codes), match(rows$age_band, bands))
     for (m in names(measures)) {
       parts <- if (m %in% names(leaf)) leaf[[m]] else measures[[m]]
       take <- rows$cause %in% parts
-      if (!any(take)) next
+      if (!any(take)) {
+        if (m %in% extra) out[, , m] <- NA_real_
+        next
+      }
       flat <- index[take, 1] + (index[take, 2] - 1L) * length(codes)
       summed <- rowsum(rows$deaths[take], flat, reorder = FALSE)
       out[, , m][as.integer(rownames(summed))] <- summed[, 1]
@@ -255,9 +264,10 @@ planning_regional_measure_block <- function(year, sex = "HM") {
 # with the municipalities the caller still has to add or take away (the two
 # compositions a municipality move keeps from being exact). NULL where the area
 # has no usable row: the caller then falls back to summing municipalities.
-planning_regional_row_parts <- function(area, year, sex, vintage = default_nuts_vintage(), lookup = get_nuts_lookup()) {
+planning_regional_row_parts <- function(area, year, sex, vintage = default_nuts_vintage(), lookup = get_nuts_lookup(),
+                                        extra = character(0)) {
   if (area %in% planning_published_areas) return(NULL)
-  regional <- planning_regional_measure_block(year, sex)
+  regional <- planning_regional_measure_block(year, sex, extra)
   if (is.null(regional)) return(NULL)
   plan <- regional_row_plan(area, vintage, year)
   if (nrow(plan) == 0) {
@@ -286,11 +296,12 @@ planning_regional_area_deaths <- function(area, year, sex, block, vintage = defa
     out[, "all"] <- deaths
     return(out)
   }
-  parts <- planning_regional_row_parts(area, year, sex, vintage, lookup)
-  if (is.null(parts)) return(NULL)
   municipal <- block$deaths
+  extra <- if (is.null(measure)) setdiff(dimnames(municipal)[[3]], c(names(planning_standardised_measures()), "avoidable")) else character(0)
+  parts <- planning_regional_row_parts(area, year, sex, vintage, lookup, extra)
+  if (is.null(parts)) return(NULL)
   if (!all(c(parts$plus, parts$minus) %in% rownames(municipal))) return(NULL)
-  total <- if (is.null(measure)) parts$deaths else parts$deaths[, measure]
+  total <- if (is.null(measure)) parts$deaths[, dimnames(municipal)[[3]], drop = FALSE] else parts$deaths[, measure]
   add <- function(names) {
     if (is.null(measure)) apply(municipal[names, , , drop = FALSE], c(2, 3), sum)
     else colSums(municipal[names, , drop = FALSE])
@@ -317,18 +328,52 @@ planning_regional_area_deaths <- function(area, year, sex, block, vintage = defa
 # Per year and sex: completed deaths [label x band x measure], deaths spread
 # [label x measure], end-of-year population [label x band] and infant deaths.
 # Cached per year.
-planning_cause_age_block <- function(year, municipalities) {
-  key <- paste(infant_snapshot_root(), "causeage", year, length(municipalities), sep = "|")
+#
+# `extra`: causes of the short list or of 0008461 beyond the tab's measures, for
+# the maps of any cause (R/cause_maps.R). Each is a further measure named by the
+# cause itself, computed in a block of its own and bound to the standard one,
+# so the standard block is neither recomputed nor changed. A year without the
+# cause's file (a detailed tumour outside 2002-2022) has NA, not 0.
+planning_cause_age_block <- function(year, municipalities, extra = character(0)) {
+  base <- planning_cause_age_build(year, municipalities)
+  if (is.null(base) || length(extra) == 0) return(base)
+  extra <- setdiff(unique(as.character(extra)), dimnames(base$HM$deaths)[[3]])
+  if (length(extra) == 0) return(base)
+  added <- if (isTRUE(base$HM$calendar)) NULL else planning_cause_age_build(year, municipalities, extra)
+  lapply(stats::setNames(names(base), names(base)), function(sex) {
+    b <- base[[sex]]
+    labels <- dimnames(b$deaths)[[1]]
+    bands <- dimnames(b$deaths)[[2]]
+    old <- dimnames(b$deaths)[[3]]
+    deaths <- array(NA_real_, c(length(labels), length(bands), length(old) + length(extra)),
+                    dimnames = list(labels, bands, c(old, extra)))
+    deaths[, , old] <- b$deaths
+    spread <- cbind(b$spread, matrix(0, length(labels), length(extra), dimnames = list(labels, extra)))
+    if (!is.null(added)) {
+      deaths[, , extra] <- added[[sex]]$deaths[labels, , extra, drop = FALSE]
+      spread[, extra] <- added[[sex]]$spread[labels, extra, drop = FALSE]
+    }
+    b$deaths <- deaths
+    b$spread <- spread
+    b
+  })
+}
+
+# The block itself: the tab's measures (`extra` empty) or only the causes in
+# `extra`, each its own measure.
+planning_cause_age_build <- function(year, municipalities, extra = character(0)) {
+  key <- paste(infant_snapshot_root(), "causeage", year, length(municipalities), paste(extra, collapse = "+"), sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
 
-  measures <- planning_standardised_measures()
-  leaf <- list(preventable = AVOIDABLE_PREVENTABLE, treatable = AVOIDABLE_TREATABLE)
+  standard <- length(extra) == 0
+  measures <- if (standard) planning_standardised_measures() else stats::setNames(extra, extra)
+  leaf <- if (standard) list(preventable = AVOIDABLE_PREVENTABLE, treatable = AVOIDABLE_TREATABLE) else list()
   causes <- unique(c(measures[!names(measures) %in% names(leaf)], unlist(leaf)))
   pop <- read_year_file("population", year)
   totals <- read_death_totals_year(year)
   files <- lapply(stats::setNames(causes, causes), planning_death_cause_file, year = year)
-  if (is.null(pop) || is.null(files[[planning_all_causes]])) {
-    value <- if (is.null(pop)) NULL else planning_calendar_block(year, municipalities, c(names(measures), "avoidable"))
+  if (is.null(pop) || is.null(planning_death_cause_file(year, planning_all_causes))) {
+    value <- if (is.null(pop) || !standard) NULL else planning_calendar_block(year, municipalities, c(names(measures), "avoidable"))
     assign(key, value, envir = planning_cache)
     return(value)
   }
@@ -371,18 +416,21 @@ planning_cause_age_block <- function(year, municipalities) {
       planning_complete_by_age(recorded, population, total, labels)
     }
     completed <- lapply(stats::setNames(causes, causes), complete_cause)
-    deaths <- array(0, c(length(labels), length(bands), length(measures) + 1L),
-                    dimnames = list(labels, bands, c(names(measures), "avoidable")))
-    spread <- matrix(0, length(labels), length(measures) + 1L, dimnames = list(labels, c(names(measures), "avoidable")))
+    names_out <- if (standard) c(names(measures), "avoidable") else names(measures)
+    deaths <- array(0, c(length(labels), length(bands), length(names_out)), dimnames = list(labels, bands, names_out))
+    spread <- matrix(0, length(labels), length(names_out), dimnames = list(labels, names_out))
     for (m in names(measures)) {
       parts <- if (m %in% names(leaf)) leaf[[m]] else measures[[m]]
       for (cause in parts) {
         deaths[, , m] <- deaths[, , m] + completed[[cause]]$deaths
         spread[, m] <- spread[, m] + completed[[cause]]$spread
       }
+      if (!standard && is.null(files[[m]])) deaths[, , m] <- NA_real_
     }
-    deaths[, , "avoidable"] <- deaths[, , "preventable"] + deaths[, , "treatable"]
-    spread[, "avoidable"] <- spread[, "preventable"] + spread[, "treatable"]
+    if (standard) {
+      deaths[, , "avoidable"] <- deaths[, , "preventable"] + deaths[, , "treatable"]
+      spread[, "avoidable"] <- spread[, "preventable"] + spread[, "treatable"]
+    }
 
     infant_deaths <- stats::setNames(rep(0, length(labels)), labels)
     if (!is.null(infant)) {
@@ -392,8 +440,9 @@ planning_cause_age_block <- function(year, municipalities) {
         infant_deaths[intersect(names(agg), labels)] <- agg[intersect(names(agg), labels)]
       }
     }
+    all_frame <- if (standard) frames[[planning_all_causes]] else NULL
     list(deaths = deaths, spread = spread, population = population, infant = infant_deaths,
-         has_row = rowSums(matrix_of(frames[[planning_all_causes]], "deaths", sex)) > 0)
+         has_row = rowSums(matrix_of(all_frame, "deaths", sex)) > 0)
   })
   names(by_sex) <- c("HM", "H", "M")
   assign(key, by_sex, envir = planning_cache)
@@ -406,14 +455,15 @@ planning_standardised_years <- function() life_expectancy_years()
 # measure, person-years, deaths spread, infant deaths. NULL when a year is
 # missing.
 planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLANNING_DEFAULT_SPLIT_MODE,
-                                       vintage = planning_lookup_vintage(lookup), basis = default_population_basis()) {
+                                       vintage = planning_lookup_vintage(lookup), basis = default_population_basis(),
+                                       extra = character(0)) {
   end_of_year <- identical(normalize_population_basis(basis), "end")
   # 0/1 here: planning_band_product() applies the parish weights per age band.
   membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
   window <- seq.int(end_year - 2L, end_year)
-  blocks <- lapply(window, planning_cause_age_block, municipalities = municipalities)
+  blocks <- lapply(window, planning_cause_age_block, municipalities = municipalities, extra = extra)
   if (any(vapply(blocks, is.null, logical(1)))) return(NULL)
   previous <- lapply(window - 1L, planning_cause_age_block, municipalities = municipalities)
 
@@ -438,11 +488,11 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
       summed <- planning_band_product(membership, block$deaths[municipalities, , m, drop = TRUE], mode,
                                       target = planning_parish_weights(areas, municipalities, "mortality", mode, window[[j]]))
       for (area in published) if (isTRUE(block$has_row[[area]])) summed[area, ] <- block$deaths[area, , m]
-      for (area in areas) if (!is.null(from_rows[[area]])) summed[area, ] <- from_rows[[area]][, m]
+      for (area in areas) if (planning_rows_have(from_rows[[area]], m)) summed[area, ] <- from_rows[[area]][, m]
       deaths[, , m] <- deaths[, , m] + summed
     }
     s <- membership %*% block$spread[municipalities, , drop = FALSE]
-    for (area in areas) if (!is.null(from_rows[[area]])) s[area, ] <- 0
+    for (area in areas) for (m in measures) if (planning_rows_have(from_rows[[area]], m)) s[area, m] <- 0
     if (identical(mode, "parish")) {
       s <- apply(block$spread[municipalities, , drop = FALSE], 2, function(v) planning_weighted_sum(membership, v, "mortality", mode, window[[j]]))
       dimnames(s) <- list(rownames(membership), colnames(block$spread))
@@ -468,6 +518,9 @@ planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLAN
   joint <- Reduce(`|`, lapply(window, function(y) planning_joint_split(membership, y, "deaths")))
   list(deaths = deaths, spread = spread, person_years = person_years, infant = infant, joint = stats::setNames(joint, areas))
 }
+
+# Whether an area's INE rows give measure `m`: not where the rows lack that cause.
+planning_rows_have <- function(rows, m) !is.null(rows) && all(is.finite(rows[, m]))
 
 # Directly standardised rate per 100,000 with Dobson's interval, for each row of
 # `deaths` / `person_years` (areas x bands), over the bands in `keep`.
@@ -567,17 +620,35 @@ planning_standardised_table <- function(areas, end_years, ids = standardised_ids
   dplyr::bind_rows(rows)
 }
 
+# The measure of the standardised block that holds `cause`: "all", a group's
+# code, or - for any other cause of the short list or of 0008461 - the cause
+# itself, computed as an extra measure (planning_cause_age_block()).
+planning_cause_measure <- function(cause) {
+  measures <- planning_standardised_measures()
+  hit <- names(measures)[match(cause, measures)]
+  ifelse(is.na(hit), cause, hit)
+}
+
 # Mortality by cause group for one triennium: observed, expected, SMR against
-# the benchmark, and the standardised rates at all ages and under 75.
+# the benchmark, and the standardised rates at all ages and under 75. `causes`
+# (cause names) replaces the groups with those causes, for the maps.
 planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_lookup(), benchmark = "Portugal", sex = "HM",
                                         mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup),
-                                        basis = default_population_basis()) {
+                                        basis = default_population_basis(), causes = NULL) {
   areas <- unique(as.character(areas))
-  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis)
+  standard <- planning_standardised_measures()
+  if (is.null(causes)) {
+    measures <- standard[!names(standard) %in% c("preventable", "treatable")]
+    labels <- c(all = "Todas as causas de morte", stats::setNames(PLANNING_CAUSE_GROUPS$label, PLANNING_CAUSE_GROUPS$code))
+    extra <- character(0)
+  } else {
+    codes <- planning_cause_measure(causes)
+    measures <- stats::setNames(causes, codes)
+    labels <- stats::setNames(causes, codes)
+    extra <- codes[!codes %in% names(standard)]
+  }
+  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis, extra)
   if (is.null(pool)) return(tibble::tibble())
-  measures <- planning_standardised_measures()
-  measures <- measures[!names(measures) %in% c("preventable", "treatable")]
-  labels <- c(all = "Todas as causas de morte", stats::setNames(PLANNING_CAUSE_GROUPS$label, PLANNING_CAUSE_GROUPS$code))
   upper <- planning_band_upper(age_levels)
   py <- pool$person_years
   ref <- match(benchmark, rownames(py))
@@ -592,12 +663,15 @@ planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_looku
     under75 <- planning_dsr(d, py, upper <= 75)
     spread_share <- pool$spread[, m] / pmax(observed, 1)
     withheld <- !is.na(spread_share[idx]) & spread_share[idx] > PLANNING_SPREAD_SUPPRESS
+    # Computed before the tibble: inside it, `observed` and `expected` would
+    # already be the areas' columns and no longer line up with `ci` and `idx`.
+    smr <- ifelse(expected > 0, observed / expected * 100, NA_real_)[idx]
+    smr_lower <- ifelse(expected > 0, ci$lower / expected * 100, NA_real_)[idx]
+    smr_upper <- ifelse(expected > 0, ci$upper / expected * 100, NA_real_)[idx]
     out <- tibble::tibble(
       area = areas, code = m, group = unname(labels[[m]]), period = paste0(end_year - 2L, "-", end_year), end_year = as.integer(end_year),
       observed = unname(observed[idx]), expected = unname(expected[idx]),
-      smr = ifelse(expected > 0, observed / expected * 100, NA_real_)[idx],
-      smr_lower = ifelse(expected > 0, ci$lower / expected * 100, NA_real_)[idx],
-      smr_upper = ifelse(expected > 0, ci$upper / expected * 100, NA_real_)[idx],
+      smr = unname(smr), smr_lower = unname(smr_lower), smr_upper = unname(smr_upper),
       dsr = all_ages$value[idx], dsr_lower = all_ages$lower[idx], dsr_upper = all_ages$upper[idx],
       dsr75 = under75$value[idx], dsr75_lower = under75$lower[idx], dsr75_upper = under75$upper[idx],
       flag = ifelse(spread_share[idx] > PLANNING_SPREAD_FLAG & !withheld, "‡", "")

@@ -244,6 +244,18 @@ Tudo o que a aplicação faz nesta secção pode ser desligado com o controlo `D
 
 **Porquê.** Assim, quatro indicadores em unidades diferentes lêem-se lado a lado. Uma mortalidade alta e uma esperança de vida baixa ficam ambas a vermelho.
 
+### Mapas de uma causa: a SMR, num triénio
+
+**O que fazemos.** O separador Mapas mostra, por predefinição, a SMR face a Portugal (Portugal = 100), com os óbitos de três anos somados. A taxa padronizada também está disponível, apresentada face à de Portugal. A suavização é opcional e só existe para a SMR.
+
+**Porquê.**
+
+- A SMR só precisa do total de óbitos de cada área, não de uma taxa em cada idade. A taxa padronizada precisa de óbitos em todas as idades e fica instável num município pequeno.
+- Três anos somados dão óbitos suficientes para a maior parte das causas na maior parte dos municípios.
+- A cor de um mapa chama a atenção para os extremos, e nas áreas pequenas os extremos são muitas vezes acaso. Por isso o rato diz sempre se o intervalo de 95% exclui Portugal (▲ ▼).
+
+**O que significa para si.** Compare cada área com Portugal (100), não com a área vizinha. Antes de tirar conclusões sobre uma área a vermelho, veja se a diferença é significativa, ou ligue a suavização. As áreas a cinzento não têm valor: preferimos não mostrar um valor a mostrar um que depende sobretudo das idades que o INE não publicou.
+
 ---
 
 ## 6. Tendências e projecções

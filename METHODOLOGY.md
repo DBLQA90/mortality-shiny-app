@@ -1192,6 +1192,32 @@ level is divided by everyone of that age and over; 1991 and 2001 have no age
 breakdown and stay empty. With 0 (the default, as in the workbook) the
 historical series `0014380` is used unchanged.
 
+### Maps of any cause
+
+The Mapas tab maps one cause of the short list or of `0008461` for every area of
+a level (municipalities, NUTS III, ULS, NUTS II) over a triennium. The
+computation is the planning tab's: `planning_cause_standardised(areas, end_year,
+causes = cause)` pools the three years, fills in deaths without a published age
+and reads INE's regional rows where they exist, exactly as for the 13 large
+groups. A cause that is not one of the tab's measures becomes an extra measure,
+named by the cause, of the cause-by-age block: `planning_cause_age_block(year,
+municipalities, extra)` computes it in a block of its own, cached apart, and binds
+it to the standard block, which is neither recomputed nor changed. A year with
+no file for the cause gives NA, not 0, so a detailed tumour outside 2002-2022
+has no value rather than no deaths. The regional rows carry the extra cause in
+the same order of measures as the municipal block, and an area whose rows lack
+the cause (0008461's regional rows join 0008206's only; 2022 is read from
+0013166) is summed from its municipalities for that measure
+(`planning_rows_have()`).
+
+The SMR is against Portugal's age-specific rates in the same triennium, with
+the Poisson interval of the observed deaths; the standardised rates use the
+European Standard Population 2013 with Dobson's interval, and the map shows
+them as an index of Portugal's rate. Values with more than 25% of deaths spread
+over ages are withheld, as everywhere in the planning tab. Smoothing, for the
+SMR only, is the funnel's empirical Bayes estimator with the expected deaths as
+denominator (Poisson-gamma, method of moments).
+
 ### Standardised, premature and avoidable mortality
 
 `R/planning_standardised.R` adds, per triennium and area: the SMR against the

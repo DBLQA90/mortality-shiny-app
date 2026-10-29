@@ -14,6 +14,10 @@ For calculation details, assumptions, and forecasting notes, see [METHODOLOGY.md
 
 Since method version 2.0 (October 2026):
 
+- **Maps of any cause (`Mapas` tab):** any cause of the short list or of `0008461`, by sex and triennium, for every municipality, NUTS III, ULS or NUTS II: the SMR against Portugal or the standardised rate (all ages or under 75), with optional empirical Bayes smoothing of the SMR. Interactive (hover, zoom, click), and a click opens the area's series in the observed tab. The observed, guided and annual tabs open it with their cause and sex (`Ver esta causa no mapa`). The planning tab's maps are interactive too; their PNG stays static.
+- **Usability:** a one-line header with tooltips; warnings about a tab's data shown at the top of that tab instead of floating notifications; downloads locked until their analysis has run; the forecast tables on screen show the last five observed years (the CSV keeps the series); the horizon sliders name the year they reach.
+- **Fix:** `planning_cause_standardised()` took the SMR and its interval from the areas' own columns inside the tibble, which no longer lined up with the pool when the benchmark was not among the areas asked for. Every caller passed the benchmark, so no published value changed.
+
 - **Annual metrics: comparators to choose** instead of a fixed Norte column; by default Portugal and the local area's NUTS II region. Standardised rate by default.
 - **INE's regional rows for the current indicator (`0013166`) have no last year**: they had stopped at 2024, so the first year INE publishes next would have fallen back to the municipal sum without warning.
 
@@ -140,6 +144,7 @@ The app entry point is `mortality-shiny-app.R`. Most helper logic is split into 
 - `R/forecast_helpers.R`: pure forecast-metric and out-of-sample validation helpers, infant mortality windows and the combination of models (unit tested).
 - `R/trend.R`: annual percentage change, Joinpoint-style (unit tested).
 - `R/planning_maps.R`: the maps of the planning tab (unit tested).
+- `R/cause_maps.R`: the maps of any cause (Mapas tab) and the interactive choropleth both map views use.
 - `R/data_access.R`: shared data assembly for snapshot and live INE sources, including the fill of deaths without a published age and the latest year's rebuilt deaths.
 - `R/ui_helpers.R`: reusable Shiny UI panels and tabs.
 
@@ -356,11 +361,27 @@ municipality, NUTS III, ULS or NUTS II, each against Portugal (= 100) on one
 common scale or by its own quintiles. The boundaries are the official CAOP
 limits (Direção-Geral do Território), taken from the
 [geopt](https://github.com/c-matos/geopt) package by `tools/build_boundaries.R`
-and stored in `data/boundaries/`; the app draws them with ggplot2 and needs
-neither geopt nor sf at run time. Rebuilding them needs both
+and stored in `data/boundaries/`; the app draws them with plotly on screen and
+ggplot2 in the PNG, and needs neither geopt nor sf at run time. Plotly asks for
+a world topojson for every geographic map even when none is drawn; an empty one
+in `data/boundaries/topojson/`, served by the app, keeps the maps off the
+internet. Rebuilding them needs both
 (`Rscript tools/build_boundaries.R`). The indicator view also gives each area's
 trend over the chosen years, and the funnel can show empirical Bayes smoothed
 values.
+
+### Maps
+
+The `Mapas` tab maps one cause of death for every area of a level over a
+triennium: the SMR against Portugal (default), or the standardised rate at all
+ages or under 75 as an index of Portugal's. Values come from the planning tab's
+standardised module (`planning_cause_standardised(causes = ...)`), the chosen
+cause being an extra measure of the cause-by-age block, computed apart and
+bound to the standard one (`planning_cause_age_block(extra = ...)`): the same
+filled-in ages, INE regional rows and ULS parish weights as every planning
+figure. A detailed tumour has no 0008461 regional rows in 2022 (that year is
+read from 0013166's NUTS 2024 rows), so its regions fall back to their
+municipalities. See `R/cause_maps.R`.
 
 ### Data Availability
 
@@ -458,7 +479,13 @@ deaths, population and under-1 deaths, re-checking the last year. Logs go to
 tree; `AUTO_COMMIT=1` and `AUTO_PUSH=1` in `~/.config/mortality-refresh.env`
 commit and push `data/` only.
 
+Without lingering, systemd stops every user unit at logout, a refresh halfway
+through an INE download among them; `loginctl enable-linger` keeps them running
+with no one logged in (`loginctl show-user "$USER" --property=Linger` says
+`Linger=yes`).
+
 ```sh
+loginctl enable-linger "$USER"
 ln -sf "$PWD/tools/systemd/mortality-refresh."{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now mortality-refresh.timer
 systemctl --user list-timers mortality-refresh.timer

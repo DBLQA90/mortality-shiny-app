@@ -122,104 +122,86 @@ data_version_badge <- function() {
 # A single app-wide control, in the navbar header rather than in each tab: the
 # vintage is a definition, not a per-analysis parameter, and six region names
 # mean different things under the two vintages, so it must be on screen
-# wherever a regional figure is read.
+# wherever a regional figure is read. The other three sit beside it because
+# they too change what every tab's figures mean.
+#
+# One compact line: short labels, native selects as wide as their text (the
+# selectize boxes cut it off), and each explanation in the control's tooltip.
+header_select <- function(input_id, label, choices, selected, tooltip) {
+  tags$span(
+    class = "app-header-item",
+    title = tooltip,
+    tags$label(label, `for` = input_id),
+    selectInput(input_id, label = NULL, choices = choices, selected = selected, selectize = FALSE, width = NULL)
+  )
+}
+
 nuts_vintage_control <- function() {
   tags$div(
-    class = "nuts-vintage-header",
-    style = paste(
-      "display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;",
-      "padding:0.35rem 0.9rem; margin:0 0 0.4rem 0;",
-      "border-bottom:1px solid rgba(128,128,128,0.25);"
+    class = "nuts-vintage-header app-header",
+    tags$style(HTML(paste(
+      ".app-header { display:flex; align-items:center; gap:0.35rem 1.1rem; flex-wrap:wrap;",
+      "  padding:0.3rem 0.9rem; margin:0 0 0.5rem 0; border-bottom:1px solid rgba(128,128,128,0.25); font-size:0.9em; }",
+      ".app-header-item { display:inline-flex; align-items:center; gap:0.4rem; }",
+      ".app-header-item label { margin:0; font-weight:600; white-space:nowrap; }",
+      ".app-header-item .form-group { margin:0; display:inline-block; width:auto; }",
+      ".app-header-item select.form-control { width:auto; height:28px; padding:2px 6px; font-size:0.95em; }",
+      ".navbar-nav > li > a { padding-left:9px; padding-right:9px; }",
+      ".download-locked { pointer-events:none; opacity:0.45; }",
+      ".tab-notes { margin-bottom:0.8rem; padding-top:0.6rem; padding-bottom:0.6rem; }",
+      ".tab-notes li { white-space:pre-line; }",
+      ".tab-notes ul { margin:0.3rem 0 0 0; padding-left:1.2rem; }",
+      sep = "\n"
+    ))),
+    header_select(
+      "nuts_vintage", "Regiões:", nuts_vintage_choices, default_nuts_vintage(),
+      "Definição das regiões. Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
     ),
-    tags$label(
-      "Definição das regiões:",
-      `for` = "nuts_vintage",
-      style = "margin:0; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:16rem;",
-      selectInput(
-        "nuts_vintage",
-        label = NULL,
-        choices = nuts_vintage_choices,
-        selected = default_nuts_vintage(),
-        width = "100%"
-      )
-    ),
-    tags$span(
-      style = "font-size:0.85em; opacity:0.75;",
-      "Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
-    ),
-    # How a region's deaths are built. Sits beside the vintage because both
-    # change what a regional figure means, and both apply to every tab.
-    tags$label(
-      "Óbitos das regiões:",
-      `for` = "region_source",
-      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:17rem;",
-      selectInput(
-        "region_source",
-        label = NULL,
-        choices = region_source_choices,
-        selected = default_region_source(),
-        width = "100%"
+    header_select(
+      "region_source", "Óbitos das regiões:", region_source_choices, default_region_source(),
+      paste(
+        "Como se obtêm os óbitos de uma região: das linhas regionais que o INE publica (com a repartição por idade completa)",
+        "ou da soma dos seus municípios."
       )
     ),
     # The denominator of every rate per inhabitant, in every tab. Life
     # expectancy and the fertility index keep mid-year person-years.
-    # Label and control in one block, so that they wrap together.
-    tags$div(
-      style = "display:flex; align-items:center; gap:0.6rem;",
-    tags$label(
-      "População no denominador:",
-      `for` = "population_basis",
-      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:19rem;",
-      title = paste(
-        "As estimativas de população do INE referem-se a 31 de dezembro.",
+    header_select(
+      "population_basis", "Denominador:", population_basis_choices, default_population_basis(),
+      paste(
+        "População no denominador. As estimativas de população do INE referem-se a 31 de dezembro.",
         "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
         "A população a 31 de dezembro sozinha dá taxas mais baixas quando a população cresce e mais altas quando diminui (nas regiões, em 2019-2025, até cerca de 4%).",
         "Não se aplica à esperança de vida nem ao índice de fecundidade."
-      ),
-      selectInput(
-        "population_basis",
-        label = NULL,
-        choices = population_basis_choices,
-        selected = default_population_basis(),
-        width = "100%"
       )
-    )
     ),
     # Whether the app's corrections of INE's data apply (DADOS_INE_LIMITACOES.md).
-    tags$div(
-      style = "display:flex; align-items:center; gap:0.6rem;",
-    tags$label(
-      "Dados:",
-      `for` = "data_mode",
-      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:14rem;",
-      title = paste(
+    header_select(
+      "data_mode", "Dados:", data_mode_choices, default_data_mode(),
+      paste(
         "Corrigidos: a aplicação corrige erros de publicação do INE, distribui pelas idades os óbitos sem idade,",
         "reconstrói totais confidenciais, recupera emprego e ganhos ocultados e reconstrói o último ano sem causas de morte.",
         "Originais do INE: os dados tal como o INE os publica, sem nada disto.",
         "A lista completa e as razões estão em DADOS_INE_LIMITACOES.md."
-      ),
-      selectInput(
-        "data_mode",
-        label = NULL,
-        choices = data_mode_choices,
-        selected = default_data_mode(),
-        width = "100%"
       )
-    )
     ),
-    data_version_badge()
+    data_version_badge(),
+    # Downloads stay locked until their analysis has data (lock-downloads), and
+    # the map can open a series in another tab (click-button).
+    tags$script(HTML(paste(
+      "Shiny.addCustomMessageHandler('lock-downloads', function(m) {",
+      "  (m.ids || []).forEach(function(id) {",
+      "    var el = document.getElementById(id); if (!el) return;",
+      "    el.classList.toggle('download-locked', !!m.locked);",
+      "    el.setAttribute('aria-disabled', m.locked ? 'true' : 'false');",
+      "    el.title = m.locked ? 'Carregue primeiro os dados desta análise.' : '';",
+      "  });",
+      "});",
+      "Shiny.addCustomMessageHandler('click-button', function(id) {",
+      "  setTimeout(function() { var el = document.getElementById(id); if (el) el.click(); }, 400);",
+      "});",
+      sep = "\n"
+    )))
   )
 }
 bias_adjust_help <- function() {
@@ -490,7 +472,8 @@ beginner_forecast_controls_panel <- function() {
     ),
     actionButton("go_beginner_forecast", "Gerar previsão"),
     br(), br(),
-    actionButton("cancel_beginner_forecast", "Interromper carregamento")
+    actionButton("cancel_beginner_forecast", "Interromper carregamento"),
+    map_link_button("map_from_beginner")
   )
 }
 
@@ -634,8 +617,22 @@ intro_tab_ui <- function() {
           tags$li(tags$strong("Previsão Guiada"), " — obter uma previsão simples, com explicação. Recomendado para a maioria dos utilizadores."),
           tags$li(tags$strong("Previsão Avançada"), " — controlar modelos, diagnósticos e testes. Destinado a utilizadores técnicos; não é necessário para uma previsão simples."),
           tags$li(tags$strong("Métricas Anuais"), " — comparar um local com Portugal e a sua região, ou com outras áreas à escolha, num único ano."),
-          tags$li(tags$strong("Disponibilidade de Dados"), " — verificar que anos, locais e causas existem nos ficheiros antes de carregar.")
+          tags$li(tags$strong("Mortalidade Evitável"), " — os óbitos antes dos 75 anos que se poderiam ter evitado, por prevenção ou por tratamento."),
+          tags$li(tags$strong("Mapas"), " — qualquer causa de morte em todos os municípios, NUTS III, ULS ou regiões, num triénio. Passe o rato para ver os valores; clique numa área para abrir a sua série. Os separadores de mortalidade têm um botão ", tags$em("Ver esta causa no mapa"), "."),
+          tags$li(tags$strong("Indicadores de Planeamento"), " — os indicadores dos Planos Locais de Saúde (população, natalidade, mortalidade, esperança de vida, condições sociais) de um local face aos seus comparadores, com mapas, funil e descarga em Excel."),
+          tags$li(tags$strong("Disponibilidade de Dados"), " — verificar que anos, locais e causas existem nos ficheiros antes de carregar."),
+          tags$li(tags$strong("Glossário"), " — os termos usados, em linguagem simples.")
         ),
+
+        h3("Os controlos do topo da página"),
+        p("Aplicam-se a todos os separadores. As predefinições servem para quase todos os usos; passe o rato sobre cada um para ver o que faz."),
+        tags$ul(
+          tags$li(tags$strong("Regiões:"), " a definição das regiões, NUTS 2024 (a actual) ou NUTS 2013. Agrupa os mesmos municípios de outra forma."),
+          tags$li(tags$strong("Óbitos das regiões:"), " das linhas regionais que o INE publica (recomendado) ou da soma dos municípios."),
+          tags$li(tags$strong("Denominador:"), " a população por que se dividem os óbitos, como o INE (média de dois fins de ano) ou a de 31 de dezembro."),
+          tags$li(tags$strong("Dados:"), " os dados corrigidos pela aplicação (recomendado) ou tal como o INE os publica. As correcções estão explicadas em DADOS_INE_LIMITACOES.md.")
+        ),
+        p("Os avisos sobre os dados de uma análise aparecem no topo do seu separador. As descargas ficam activas quando a análise tem dados."),
 
         h3("Alguns termos que vai encontrar"),
         tags$ul(
@@ -662,6 +659,54 @@ intro_tab_ui <- function() {
             "encontrados nos dados do INE e o que a aplicação faz com cada um, DADOS_INE_LIMITACOES.md."
           ))
         )
+      )
+    )
+  )
+}
+
+# Opens the Maps tab with the cause and sex chosen in this tab.
+map_link_button <- function(input_id) {
+  tagList(br(), br(), actionButton(input_id, "Ver esta causa no mapa", icon = icon("map")))
+}
+
+FORECAST_TABLE_RECENT_YEARS <- 5L
+forecast_table_note <- function() {
+  helpText(paste0("Os últimos ", FORECAST_TABLE_RECENT_YEARS, " anos observados e a previsão. O CSV tem a série completa."))
+}
+
+maps_tab_ui <- function() {
+  tabPanel(
+    "Mapas",
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("map_cause", "Causa de Morte:", choices = cause_choices, selected = "Todas as causas de morte"),
+        radioButtons("map_sex", "Sexo:", choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE),
+        selectInput("map_metric", "Métrica:", choices = CAUSE_MAP_METRICS, selected = "smr"),
+        helpText(
+          "SMR: óbitos observados a dividir pelos esperados com as taxas por idade de Portugal (100 = Portugal). ",
+          "É a métrica indicada para comparar municípios. A taxa padronizada usa a População Padrão Europeia de 2013."
+        ),
+        selectInput("map_end_year", "Triénio:", choices = NULL),
+        radioButtons("map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio"),
+        radioButtons(
+          "map_scale", "Cores:",
+          choices = c("Face a Portugal (= 100): vermelho acima, azul abaixo" = "index", "Quintis" = "quintile"),
+          selected = "index"
+        ),
+        conditionalPanel(
+          "input.map_metric == 'smr'",
+          checkboxInput("map_smoothed", "Suavizar a SMR das áreas pequenas (Bayes empírico)", value = FALSE)
+        ),
+        actionButton("go_map", "Desenhar mapa")
+      ),
+      mainPanel(
+        uiOutput("mapsNotes"),
+        plotly::plotlyOutput("causeMap", height = "720px"),
+        uiOutput("causeMapNote"),
+        uiOutput("causeMapClicked"),
+        br(),
+        downloadButton("downloadCauseMapCSV", "Descarregar valores (CSV)"),
+        downloadButton("downloadCauseMapPNG", "Descarregar mapa (PNG)")
       )
     )
   )
@@ -710,7 +755,8 @@ glossary_tab_ui <- function() {
     list("Definição das regiões (NUTS 2013 / NUTS 2024)", "As duas versões da nomenclatura que a aplicação oferece, no controlo do topo da página. Agrupam os mesmos 308 municípios de formas diferentes: seis nomes existem nas duas e significam coisas diferentes em cada uma."),
     list("Área Metropolitana de Lisboa", "A região de Lisboa em NUTS 2013. Em NUTS 2024 está dividida em Grande Lisboa e Península de Setúbal."),
     list("Oeste e Vale do Tejo", "Região criada em NUTS 2024 com o Oeste, o Médio Tejo e a Lezíria do Tejo. Apesar do nome, não inclui Lisboa."),
-    list("Agregação por municípios", "As regiões são sempre somadas a partir dos seus municípios, com a mesma lista aplicada a todos os anos. Mantém a série contínua apesar da revisão NUTS de 2024, mas os totais não coincidem exactamente com os publicados pelo INE."),
+    list("Óbitos das regiões", "Por predefinição, os óbitos de uma região vêm das linhas regionais que o INE publica, que têm a repartição por idade completa. A alternativa é a soma dos seus municípios, a que o INE publica com idades em falta em alguns anos e causas. A população é sempre a soma dos municípios, com a mesma lista aplicada a todos os anos, o que mantém a série contínua apesar da revisão NUTS de 2024."),
+    list("Triénio", "Três anos seguidos somados (por exemplo 2022-2024), como nos mapas e nos Indicadores de Planeamento: os óbitos e as pessoas-ano dos três anos, para estabilizar áreas pequenas."),
     list("Revisão da população (2021)", "O INE publica duas estimativas de população que não coincidem; a aplicação usa a revista a partir de 2021. Todas as taxas desde esse ano mudaram, e há um degrau de cerca de 1,7% em 2020/2021.")
   )
 
@@ -734,7 +780,9 @@ glossary_tab_ui <- function() {
     list("INE", "Instituto Nacional de Estatística, a fonte oficial dos dados de mortalidade e população."),
     list("Indicador", "Um conjunto de dados específico do INE (por exemplo, óbitos por causa), identificado por um código."),
     list("Ficheiros RDS", "Dados já preparados e guardados no repositório, que a aplicação lê rapidamente sem consultar o INE em directo."),
-    list("Fonte de dados", "A escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos).")
+    list("Fonte de dados", "A escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos)."),
+    list("Dados corrigidos / originais do INE", "O controlo Dados, no topo da página. Corrigidos: a aplicação corrige erros de publicação do INE, distribui pelas idades os óbitos sem idade e reconstrói valores confidenciais e o último ano. Originais do INE: tal como publicados. A lista completa está em DADOS_INE_LIMITACOES.md."),
+    list("Suavização (Bayes empírico)", "Nos mapas e no funil, aproxima o valor de cada área pequena da média de todas, tanto mais quanto menos óbitos tem. Reduz as cores extremas que só se devem ao acaso; o valor observado continua no rato e no CSV.")
   )
 
   tabPanel(
@@ -783,9 +831,11 @@ observed_mortality_tab_ui <- function() {
         data_source_input("data_source"),
         actionButton("go_rates", "Carregar dados"),
         br(), br(),
-        actionButton("cancel_rates", "Interromper carregamento")
+        actionButton("cancel_rates", "Interromper carregamento"),
+        map_link_button("map_from_observed")
       ),
       mainPanel(
+        uiOutput("observedNotes"),
         h4("Resumo"),
         tableOutput("rateSummaryTable"),
         downloadButton("downloadRateSummaryCSV", "Descarregar resumo (CSV)"),
@@ -830,6 +880,7 @@ beginner_forecasting_tab_ui <- function() {
         beginner_forecast_controls_panel()
       ),
       mainPanel(
+        uiOutput("beginnerNotes"),
         conditionalPanel(
           "input.beginner_areas_mode == 'separate'",
           h4("Previsão por local"),
@@ -856,6 +907,7 @@ beginner_forecasting_tab_ui <- function() {
         uiOutput("beginnerForecastReliability"),
         br(),
         h4("Tabela da previsão"),
+        forecast_table_note(),
         tableOutput("beginnerForecastTable"),
         downloadButton("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)")
         )
@@ -931,9 +983,11 @@ annual_metrics_tab_ui <- function() {
         data_source_input("annual_data_source"),
         actionButton("go_annual_metrics", "Carregar métricas"),
         br(), br(),
-        actionButton("cancel_annual_metrics", "Interromper carregamento")
+        actionButton("cancel_annual_metrics", "Interromper carregamento"),
+        map_link_button("map_from_annual")
       ),
       mainPanel(
+        uiOutput("annualNotes"),
         tableOutput("annualMetricsTable"),
         uiOutput("annualMetricsFootnote"),
         br(),
@@ -986,6 +1040,7 @@ avoidable_tab_ui <- function() {
         actionButton("cancel_avoidable", "Interromper carregamento")
       ),
       mainPanel(
+        uiOutput("avoidableNotes"),
         helpText(avoidable_scope_note()),
         h4("Repartição dos óbitos com menos de 75 anos"),
         tableOutput("avoidableTable"),
@@ -1111,7 +1166,7 @@ planning_tab_ui <- function() {
             ),
             checkboxInput("planning_map_smoothed", "Suavizar as taxas de áreas pequenas (Bayes empírico)", value = FALSE),
             uiOutput("planningMapNote"),
-            plotOutput("planningMapPlot", height = "auto", click = "planning_map_click"),
+            uiOutput("planningMapWidgets"),
             uiOutput("planningMapClicked"),
             downloadButton("downloadPlanningMapCSV", "Descarregar valores (CSV)"),
             downloadButton("downloadPlanningMapPNG", "Descarregar mapas (PNG)")
@@ -1333,6 +1388,7 @@ advanced_model_spec_tab_ui <- function() {
 advanced_forecast_output_tab_ui <- function() {
   tabPanel(
     "Resultados da Previsão",
+    uiOutput("forecastNotes"),
     forecast_selection_note_ui(),
     fluidRow(
       column(
@@ -1363,6 +1419,7 @@ advanced_forecast_output_tab_ui <- function() {
     br(),
     downloadButton("downloadForecastPlot", "Descarregar gráfico (PNG)"),
     br(), br(),
+    forecast_table_note(),
     tableOutput("forecastTable"),
     br(),
     downloadButton("downloadForecastCSV", "Descarregar tabela (CSV)")

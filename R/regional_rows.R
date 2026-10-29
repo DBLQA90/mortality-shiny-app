@@ -440,9 +440,12 @@ municipal_age_detail_warning <- function(areas,
     ))
   }
   if (includes_2014) {
-    parts <- c(parts, paste0(
+    parts <- c(parts, if (cause_specific) paste0(
       "em 2014 essa perda é muito maior (cerca de 30% dos óbitos municipais por ",
       "cancro do pulmão sem idade), pelo que esse ano não é fiável ao nível municipal"
+    ) else paste0(
+      "em 2014 o INE publica uma parte dos óbitos municipais sem idade (no cancro do pulmão, ",
+      "cerca de 30%), pelo que esse ano é menos fiável ao nível municipal"
     ))
   }
 
