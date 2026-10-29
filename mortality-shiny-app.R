@@ -57,6 +57,7 @@ for (app_file in c(
   "R/forecast_helpers.R",
   "R/trend.R",
   "R/data_access.R",
+  "R/shared_selection.R",
   "R/ui_helpers.R"
 )) {
   sys.source(file.path(app_dir, app_file), envir = bootstrap_env)
@@ -66,9 +67,12 @@ for (app_file in c(
 # UI
 # =========================================================
 
-ui <- navbarPage(
+ui <- bslib::page_navbar(
   title = "PNS Monitorização",
-  header = nuts_vintage_control(),
+  theme = app_theme(),
+  lang = "pt",
+  fillable = FALSE,
+  header = app_settings_header(),
 
   intro_tab_ui(),
   observed_mortality_tab_ui(),
@@ -87,6 +91,15 @@ ui <- navbarPage(
 
 server <- function(input, output, session) {
   cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L, avoidable = 0L)
+
+  # One selection for every tab: see R/shared_selection.R.
+  register_shared_selection(input, session)
+
+  # The data source is one app-wide setting, in the settings panel, read by
+  # every tab that loads deaths.
+  active_data_source <- reactive({
+    normalize_data_source(if (is.null(input$data_source)) get_default_data_source() else input$data_source)
+  })
 
   # -------------------------
   # NUTS vintage
@@ -119,6 +132,11 @@ server <- function(input, output, session) {
   # like the two above, so no tab divides by a different population.
   active_population_basis <- reactive({
     normalize_population_basis(value_or_default_input(input$population_basis, default_population_basis()))
+  })
+
+  # The settings in force, in the strip above the tabs.
+  output$appSettingsSummary <- renderText({
+    app_settings_summary(active_nuts_vintage(), active_region_source(), active_population_basis(), active_data_source())
   })
 
   # The planning tab recomputes on its own; the tabs that load on a button keep
@@ -3433,7 +3451,7 @@ server <- function(input, output, session) {
       input$area_label,
       input$cause,
       input$sex,
-      input$data_source
+      active_data_source()
     )
 
     shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
@@ -3635,7 +3653,7 @@ server <- function(input, output, session) {
       input$beginner_area_label,
       input$beginner_cause,
       input$beginner_sex,
-      input$beginner_data_source
+      active_data_source()
     )
     build_guided_history(query_spec, isolate(cancel_seq$beginner), isolate(year_load_state$beginner_order))
   }, ignoreNULL = TRUE)
@@ -3787,7 +3805,7 @@ server <- function(input, output, session) {
     results <- list()
     shiny::withProgress(message = "A ajustar e validar modelos, área a área...", value = 0, {
       for (area in areas) {
-        query_spec <- make_query_spec(area, "", input$beginner_cause, input$beginner_sex, input$beginner_data_source)
+        query_spec <- make_query_spec(area, "", input$beginner_cause, input$beginner_sex, active_data_source())
         history <- build_guided_history(query_spec, token, order)
         results[[area]] <- tryCatch(run_guided_forecast(history, token), error = function(e) {
           if (inherits(e, "shiny.silent.error")) stop(e)
@@ -3963,7 +3981,7 @@ server <- function(input, output, session) {
       selected_areas = input$annual_area,
       custom_label = input$annual_area_label,
       region_mode = region_mode,
-      available_areas = get_available_areas(input$annual_data_source)
+      available_areas = get_available_areas(active_data_source())
     )
     annual_causes_needed <- unique(c(
       selected_causes,
@@ -4051,12 +4069,12 @@ server <- function(input, output, session) {
       years = pooled_years,
       areas = annual_areas_needed,
       causes = annual_causes_needed,
-      data_source = input$annual_data_source,
+      data_source = active_data_source(),
       include_population = selected_metric %in% annual_metrics_needing_population,
       include_deaths = TRUE
     )
 
-    shiny::withProgress(message = get_data_source_progress_message(input$annual_data_source, context = "annual"), value = 0, {
+    shiny::withProgress(message = get_data_source_progress_message(active_data_source(), context = "annual"), value = 0, {
       with_data_load_cancel_checker(
         cancel_checker = function() !identical(cancel_seq$annual, token),
         {
@@ -4069,7 +4087,7 @@ server <- function(input, output, session) {
               sex = input$annual_sex,
               year = year,
               token = token,
-              data_source = input$annual_data_source,
+              data_source = active_data_source(),
               pooling_window = pooling_window,
               reference_areas = reference_areas
             )
@@ -4192,7 +4210,7 @@ server <- function(input, output, session) {
       label = get_selection_label(selected_areas, input$avoidable_area_label),
       areas = selected_areas,
       region_mode = default_region_mode(),
-      available_areas = get_available_areas(input$avoidable_data_source)
+      available_areas = get_available_areas(active_data_source())
     )
 
     for (message_text in area_spec$warnings) {
@@ -4216,7 +4234,7 @@ server <- function(input, output, session) {
             cause = causes[[i]],
             years = years,
             year_order = "desc",
-            data_source = input$avoidable_data_source,
+            data_source = active_data_source(),
             population_basis = active_population_basis()
           )$full,
           area_spec$expanded
@@ -5140,7 +5158,7 @@ server <- function(input, output, session) {
       input$area_label2,
       input$cause2,
       input$sex2,
-      input$data_source2
+      active_data_source()
     )
 
     shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {

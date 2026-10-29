@@ -7,6 +7,8 @@ required_packages <- c(
   "PHEindicatormethods",
   "tidyverse",
   "shiny",
+  # Layout, theme, cards and tooltips of the interface.
+  "bslib",
   "plotly",
   "openxlsx",
   "forecast",

@@ -51,7 +51,7 @@ testServer(app, {
       annual_year = year, annual_cause = "Todas as causas de morte", annual_sex = "HM",
       annual_area = area, annual_area_label = "", annual_metric = metric,
       annual_pooling = pooling, annual_smr_reference = ref,
-      annual_data_source = "snapshot", go_annual_metrics = 1
+      data_source = "snapshot", go_annual_metrics = 1
     )
     out <- tryCatch(annual_metrics_long(), error = function(e) e)
     what <- paste(metric, pooling, year, paste(area, collapse = "+"), vintage)
@@ -355,7 +355,7 @@ testServer(app, {
   cat("\n=== Guided forecast, several areas, mean of six models ===\n")
   session$setInputs(beginner_area = c("Norte", "Alentejo"), beginner_area_label = "", beginner_indicator = "mortality",
                     beginner_areas_mode = "separate", beginner_model_policy = "mean6", beginner_cause = "Todas as causas de morte",
-                    beginner_sex = "HM", beginner_population = "Total", beginner_rate_type = "dsr", beginner_data_source = "snapshot",
+                    beginner_sex = "HM", beginner_population = "Total", beginner_rate_type = "dsr", data_source = "snapshot",
                     beginner_horizon = 4, beginner_years_fit = c(2001, 2025), beginner_mode = "recommended",
                     beginner_validation = "rolling", beginner_test_pct = 25, go_beginner_forecast = 10)
   multi <- tryCatch(beginner_multi_table(), error = function(e) e)
@@ -367,7 +367,7 @@ testServer(app, {
   cat("\n=== Guided forecast of five-year infant mortality, Norte ===\n")
   for (method in c("annual", "rolling")) {
     session$setInputs(beginner_area = "Norte", beginner_area_label = "", beginner_indicator = "infant",
-                      beginner_infant_window = "5", beginner_infant_method = method, beginner_data_source = "snapshot",
+                      beginner_infant_window = "5", beginner_infant_method = method, data_source = "snapshot",
                       beginner_cause = "Todas as causas de morte", beginner_sex = "HM", beginner_horizon = 4,
                       beginner_years_fit = c(2004, 2025), beginner_mode = "recommended", beginner_validation = "rolling",
                       beginner_test_pct = 25, go_beginner_forecast = match(method, c("annual", "rolling")))

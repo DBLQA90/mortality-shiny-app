@@ -2,6 +2,96 @@
 # UI Helpers
 # =========================================================
 
+# Theme ---------------------------------------------------------------------
+
+# Bootstrap 5 through bslib. Server-rendered markup still uses Bootstrap 3
+# classes (wellPanel, helpText), which bslib's compatibility layer keeps
+# working; the rules below bring them in line with the cards.
+APP_CSS <- "
+.help-tip { color: var(--bs-secondary-color); cursor: help; margin-left: .35rem; font-size: .85em; }
+.help-tip:hover, .help-tip:focus { color: var(--bs-primary); outline: none; }
+.tooltip-inner { max-width: 380px; text-align: left; }
+.app-settings-strip {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  padding: .4rem 1rem; font-size: .875rem;
+  background: var(--bs-tertiary-bg); border-bottom: 1px solid var(--bs-border-color);
+}
+.app-settings-summary { color: var(--bs-secondary-color); }
+.data-version-badge { margin-left: auto; white-space: nowrap; color: var(--bs-secondary-color); }
+.sidebar-actions { display: flex; flex-direction: column; gap: .5rem; margin-top: .25rem; }
+.card-header { font-weight: 600; }
+.card-header .btn-sm { font-weight: 400; white-space: nowrap; }
+.callout {
+  border-left: 4px solid var(--bs-primary); background: var(--bs-tertiary-bg);
+  padding: .75rem 1rem; margin-bottom: 1rem; border-radius: var(--bs-border-radius);
+}
+.callout p:last-child { margin-bottom: 0; }
+.panel-heading-row { display: flex; align-items: center; gap: .35rem; margin-bottom: .5rem; }
+.panel-heading-row h5 { margin: 0; }
+.prose-page { max-width: 1000px; margin: 1rem auto; }
+.well {
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg); box-shadow: none;
+}
+"
+
+app_theme <- function() {
+  bslib::bs_add_rules(
+    bslib::bs_theme(version = 5, preset = "shiny", primary = "#1F5F8B"),
+    APP_CSS
+  )
+}
+
+# Building blocks -----------------------------------------------------------
+
+# Help text sits behind an info icon next to the control or card it explains,
+# so sidebars fit on one screen. The wording is the helpers' below, unchanged.
+help_tip <- function(...) {
+  bslib::tooltip(
+    tags$span(class = "help-tip", tabindex = "0", role = "button", `aria-label` = "Ajuda", shiny::icon("circle-info")),
+    ...,
+    placement = "auto"
+  )
+}
+
+with_help <- function(label, ...) {
+  tags$span(label, help_tip(...))
+}
+
+download_tool <- function(output_id, label, short) {
+  downloadButton(output_id, short, class = "btn-sm btn-outline-secondary", title = label)
+}
+
+# A titled block of results: help and downloads in the header, outputs below.
+result_card <- function(title, ..., help = NULL, tools = NULL) {
+  bslib::card(
+    bslib::card_header(
+      class = "d-flex align-items-center gap-2 flex-wrap",
+      tags$span(title),
+      if (!is.null(help)) help_tip(help),
+      if (!is.null(tools)) tags$div(class = "ms-auto d-flex gap-1 flex-wrap", tools)
+    ),
+    bslib::card_body(...)
+  )
+}
+
+# A heading inside a card's tab, for the planning views that have no card of
+# their own.
+panel_heading <- function(title, help = NULL) {
+  tags$div(class = "panel-heading-row", tags$h5(title), if (!is.null(help)) help_tip(help))
+}
+
+analysis_sidebar <- function(..., actions = NULL) {
+  bslib::sidebar(width = 320, ..., if (!is.null(actions)) tags$div(class = "sidebar-actions", actions))
+}
+
+load_actions <- function(go_id, go_label, cancel_id) {
+  tagList(
+    actionButton(go_id, go_label, class = "btn-primary", icon = shiny::icon("play")),
+    actionButton(cancel_id, "Interromper carregamento", class = "btn-outline-secondary btn-sm")
+  )
+}
+
 # `years` bounds the slider. Tabs that can only show rates pass `rate_years`,
 # the years that have both a numerator and a denominator: with the full range
 # the observed tab defaulted to a span whose last year had no denominator and
@@ -21,32 +111,23 @@ year_range_slider <- function(input_id, label, years = year_of_interest, value =
   )
 }
 
-data_source_input <- function(input_id) {
-  selectInput(
-    input_id,
-    "Fonte de dados:",
-    choices = data_source_choices,
-    selected = get_default_data_source()
-  )
-}
-
-# Plain-language help notes shown under controls, for users unfamiliar with the
-# underlying statistics. Kept as small helpers so the wording stays consistent
-# across the observed, guided and advanced panels.
+# Plain-language help notes for users unfamiliar with the underlying
+# statistics, shown through help_tip(). Kept as small helpers so the wording
+# stays consistent across the observed, guided and advanced panels.
 rate_type_help <- function() {
-  helpText(
+  tagList(
     "Bruta: mortes por 100.000 habitantes. Padronizada: ajustada à idade, ",
     "para comparar de forma justa locais com estruturas etárias diferentes."
   )
 }
 population_help <- function() {
-  helpText(
+  tagList(
     "'Menos de 75 anos' foca a mortalidade prematura (potencialmente evitável) ",
     "e não representa a mortalidade total."
   )
 }
 trend_help <- function() {
-  helpText(
+  tagList(
     "Variação percentual anual (APC): o ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%, ",
     "de uma regressão log-linear em que cada ano pesa conforme a sua precisão (método Joinpoint do National Cancer ",
     "Institute). Com mudanças de tendência, a recta pode quebrar em até um ou dois anos, escolhidos pelo critério BIC, ",
@@ -55,19 +136,19 @@ trend_help <- function() {
   )
 }
 horizon_help <- function() {
-  helpText("Número de anos a projectar para o futuro. Quanto maior o horizonte, maior a incerteza.")
+  tagList("Número de anos a projectar para o futuro. Quanto maior o horizonte, maior a incerteza.")
 }
 models_help <- function() {
-  helpText(
+  tagList(
     "Cada família é um método estatístico diferente. Em caso de dúvida, use a ",
     "'Previsão Guiada', que escolhe um método por si."
   )
 }
 confidence_help <- function() {
-  helpText("Largura do intervalo de incerteza apresentado. 95% é o valor habitual.")
+  tagList("Largura do intervalo de incerteza apresentado. 95% é o valor habitual.")
 }
 annual_metric_help <- function() {
-  helpText(
+  tagList(
     "Padronizada (directa): compara com a população-padrão europeia; instável ",
     "em concelhos pequenos. SMR (indirecta): compara os óbitos observados com ",
     "os esperados se o local tivesse as taxas da referência — 100 = igual à ",
@@ -79,13 +160,13 @@ annual_metric_help <- function() {
   )
 }
 smr_reference_help <- function() {
-  helpText(
+  tagList(
     "As taxas por idade desta referência são aplicadas à estrutura etária de ",
     "cada local para calcular os óbitos esperados."
   )
 }
 pooling_help <- function() {
-  helpText(
+  tagList(
     "Soma óbitos e população de vários anos (denominador em pessoas-ano) para ",
     "estabilizar concelhos pequenos e causas raras. Reduz a largura dos ",
     "intervalos, mas suaviza variações anuais reais."
@@ -93,9 +174,10 @@ pooling_help <- function() {
 }
 # What a regional figure is made of: the vintage groups the municipalities, the
 # region source decides whether deaths come from INE's regional rows or from the
-# municipal sum. Both are chosen in the header; this note says what they mean.
+# municipal sum. Both are chosen in the settings panel; this note says what they
+# mean, next to the place selector.
 region_aggregation_note <- function() {
-  helpText(
+  tagList(
     "As regiões seguem a definição escolhida no topo da página (NUTS 2013 ou ",
     "2024), aplicada a todos os anos. Os óbitos de cada região vêm, por ",
     "predefinição, das linhas regionais do INE sempre que existem, porque a ",
@@ -103,115 +185,21 @@ region_aggregation_note <- function() {
     "causa. A população é sempre a soma dos municípios."
   )
 }
-
-# When the data in use was last imported, on every page: two exports of the same
-# analysis with different figures can then be told apart by this date.
-data_version_badge <- function() {
-  date <- tryCatch(
-    latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))),
-    error = function(e) NA_character_
-  )
-  if (is.na(date)) return(NULL)
-  tags$span(
-    style = "font-size:0.85em; opacity:0.75; margin-left:auto; white-space:nowrap;",
-    title = "Data da importação mais recente dos dados em uso. O histórico está no separador Disponibilidade de Dados.",
-    paste0("Dados importados até ", date)
-  )
-}
-
-# A single app-wide control, in the navbar header rather than in each tab: the
-# vintage is a definition, not a per-analysis parameter, and six region names
-# mean different things under the two vintages, so it must be on screen
-# wherever a regional figure is read.
-nuts_vintage_control <- function() {
-  tags$div(
-    class = "nuts-vintage-header",
-    style = paste(
-      "display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;",
-      "padding:0.35rem 0.9rem; margin:0 0 0.4rem 0;",
-      "border-bottom:1px solid rgba(128,128,128,0.25);"
-    ),
-    tags$label(
-      "Definição das regiões:",
-      `for` = "nuts_vintage",
-      style = "margin:0; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:16rem;",
-      selectInput(
-        "nuts_vintage",
-        label = NULL,
-        choices = nuts_vintage_choices,
-        selected = default_nuts_vintage(),
-        width = "100%"
-      )
-    ),
-    tags$span(
-      style = "font-size:0.85em; opacity:0.75;",
-      "Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
-    ),
-    # How a region's deaths are built. Sits beside the vintage because both
-    # change what a regional figure means, and both apply to every tab.
-    tags$label(
-      "Óbitos das regiões:",
-      `for` = "region_source",
-      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:17rem;",
-      selectInput(
-        "region_source",
-        label = NULL,
-        choices = region_source_choices,
-        selected = default_region_source(),
-        width = "100%"
-      )
-    ),
-    # The denominator of every rate per inhabitant, in every tab. Life
-    # expectancy and the fertility index keep mid-year person-years.
-    # Label and control in one block, so that they wrap together.
-    tags$div(
-      style = "display:flex; align-items:center; gap:0.6rem;",
-    tags$label(
-      "População no denominador:",
-      `for` = "population_basis",
-      style = "margin:0 0 0 0.8rem; font-weight:600; white-space:nowrap;"
-    ),
-    tags$div(
-      style = "min-width:19rem;",
-      title = paste(
-        "As estimativas de população do INE referem-se a 31 de dezembro.",
-        "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
-        "A população a 31 de dezembro sozinha dá taxas mais baixas quando a população cresce e mais altas quando diminui (nas regiões, em 2019-2025, até cerca de 4%).",
-        "Não se aplica à esperança de vida nem ao índice de fecundidade."
-      ),
-      selectInput(
-        "population_basis",
-        label = NULL,
-        choices = population_basis_choices,
-        selected = default_population_basis(),
-        width = "100%"
-      )
-    )
-    ),
-    data_version_badge()
-  )
-}
 bias_adjust_help <- function() {
-  helpText(
+  tagList(
     "Com transformação log, a retransformação directa devolve a mediana, não a ",
     "média. Esta correcção devolve o valor esperado; a diferença cresce com o ",
     "horizonte. Os intervalos não mudam, porque são quantis."
   )
 }
 transform_help <- function() {
-  helpText(
+  tagList(
     "A transformação log estabiliza séries positivas e evita previsões negativas; ",
     "'Sem transformação' modela a taxa directamente."
   )
 }
 model_policy_help <- function() {
-  helpText(
+  tagList(
     "Para comparar locais ou fixar metas, use o mesmo método em todos: com «o melhor de cada local», um local pode ",
     "ficar com uma tendência e o vizinho com uma linha plana só porque o acaso favoreceu modelos diferentes. A ",
     "média de 6 modelos é igual em todos os locais e foi a que menos errou a 4 anos em testes com dados passados. ",
@@ -220,7 +208,7 @@ model_policy_help <- function() {
   )
 }
 infant_method_help <- function() {
-  helpText(
+  tagList(
     "Série anual: os modelos são ajustados às taxas de cada ano, com a variação real de ano para ano, e cada ",
     "período projectado é depois a média, pesada pelos nascimentos, dos anos que contém (os anos futuros com os ",
     "nascimentos do último ano observado). O intervalo trata os erros dos anos como totalmente correlacionados, ",
@@ -232,7 +220,7 @@ infant_method_help <- function() {
   )
 }
 beginner_method_help <- function() {
-  helpText(
+  tagList(
     "Por omissão, a projecção é a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido), com um ",
     "intervalo que junta a incerteza de cada um e o desacordo entre eles. Em testes com dados passados, a 4 anos, ",
     "errou menos do que escolher o modelo com menor erro e foi mais estável: a escolha muda muitas vezes de modelo ",
@@ -240,10 +228,115 @@ beginner_method_help <- function() {
   )
 }
 beginner_validation_help <- function() {
-  helpText(
+  tagList(
     "A validação testa cada modelo, e as duas médias, a prever anos recentes reservados para avaliação. ",
     "Mostra o erro de cada um e, na opção «modelo com menor erro», decide a projecção apresentada. ",
     "'Validação móvel' é a opção mais fiável. Se não souber, mantenha as predefinições."
+  )
+}
+
+# App-wide settings ---------------------------------------------------------
+
+# When the data in use was last imported, on every page: two exports of the same
+# analysis with different figures can then be told apart by this date.
+data_version_badge <- function() {
+  date <- tryCatch(
+    latest_import_date(read_import_log(app_data_root(get_snapshot_dir()))),
+    error = function(e) NA_character_
+  )
+  if (is.na(date)) return(NULL)
+  tags$span(
+    class = "data-version-badge",
+    title = "Data da importação mais recente dos dados em uso. O histórico está no separador Disponibilidade de Dados.",
+    paste0("Dados importados até ", date)
+  )
+}
+
+# The settings that apply to every tab, in a side panel rather than in each
+# tab: the vintage is a definition, not a per-analysis parameter. Six region
+# names mean different things under the two vintages, so the strip above the
+# tabs keeps the settings in force on screen wherever a regional figure is read
+# (output$appSettingsSummary).
+app_settings_header <- function() {
+  tagList(
+    tags$div(
+      class = "app-settings-strip",
+      tags$button(
+        type = "button",
+        class = "btn btn-sm btn-outline-secondary",
+        `data-bs-toggle` = "offcanvas",
+        `data-bs-target` = "#app-settings",
+        `aria-controls` = "app-settings",
+        shiny::icon("sliders"), " Definições"
+      ),
+      tags$span(class = "app-settings-summary", textOutput("appSettingsSummary", inline = TRUE)),
+      data_version_badge()
+    ),
+    app_settings_panel()
+  )
+}
+
+app_settings_panel <- function() {
+  tags$div(
+    class = "offcanvas offcanvas-end",
+    tabindex = "-1",
+    id = "app-settings",
+    `aria-labelledby` = "app-settings-title",
+    tags$div(
+      class = "offcanvas-header",
+      tags$h5(class = "offcanvas-title", id = "app-settings-title", "Definições"),
+      tags$button(type = "button", class = "btn-close", `data-bs-dismiss` = "offcanvas", `aria-label` = "Fechar")
+    ),
+    tags$div(
+      class = "offcanvas-body",
+      radioButtons(
+        "nuts_vintage",
+        with_help(
+          "Definição das regiões:",
+          "Agrupa os mesmos 308 municípios de outra forma; não altera os dados lidos."
+        ),
+        choices = nuts_vintage_choices,
+        selected = default_nuts_vintage()
+      ),
+      # How a region's deaths are built. Sits beside the vintage because both
+      # change what a regional figure means, and both apply to every tab.
+      radioButtons(
+        "region_source",
+        "Óbitos das regiões:",
+        choices = region_source_choices,
+        selected = default_region_source()
+      ),
+      # The denominator of every rate per inhabitant, in every tab. Life
+      # expectancy and the fertility index keep mid-year person-years.
+      radioButtons(
+        "population_basis",
+        with_help(
+          "População no denominador:",
+          paste(
+            "As estimativas de população do INE referem-se a 31 de dezembro.",
+            "O INE divide os acontecimentos de um ano pela média das estimativas no fim do ano anterior e no fim desse ano.",
+            "A população a 31 de dezembro sozinha dá taxas mais baixas quando a população cresce e mais altas quando diminui (nas regiões, em 2019-2025, até cerca de 4%).",
+            "Não se aplica à esperança de vida nem ao índice de fecundidade."
+          )
+        ),
+        choices = population_basis_choices,
+        selected = default_population_basis()
+      ),
+      # Where the deaths are read from. The prepared files are the normal
+      # case; live INE queries are for data the files do not contain.
+      bslib::accordion(
+        open = FALSE,
+        bslib::accordion_panel(
+          "Avançado",
+          radioButtons(
+            "data_source",
+            "Fonte de dados:",
+            choices = data_source_choices,
+            selected = get_default_data_source()
+          )
+        )
+      )
+    )
   )
 }
 
@@ -251,76 +344,67 @@ beginner_validation_help <- function() {
 
 forecast_controls_panel <- function() {
   tagList(
-    selectInput("area2", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
+    selectInput(
+      "area2", with_help("Local de residência:", region_aggregation_note()),
+      choices = local_area, multiple = TRUE, selected = get_default_area_selection()
+    ),
     textInput("area_label2", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
     selectInput("cause2", "Causa de Morte:", choices = diseases),
     selectInput("sex2", "Sexo:", choices = sex_levels, selected = "HM"),
     radioButtons(
       "population2",
-      "População:",
+      with_help("População:", population_help()),
       choices = c("Total", "Menos de 75 anos")
     ),
-    population_help(),
     radioButtons(
       "rate_type2",
-      "Taxa:",
+      with_help("Taxa:", rate_type_help()),
       choices = c("Bruta" = "crude", "Padronizada" = "dsr")
     ),
-    rate_type_help(),
-    region_aggregation_note(),
     year_range_slider(
       years = rate_years,
       "years_fit",
       "Anos a importar / ajustar:"
     ),
-    data_source_input("data_source2"),
     checkboxGroupInput(
       "models",
-      "Famílias de modelos:",
+      with_help("Famílias de modelos:", models_help()),
       choices = forecast_model_choices,
       selected = c("arima", "ets")
     ),
-    models_help(),
     sliderInput(
       "horizon",
-      "Horizonte de projecção (anos):",
+      with_help("Horizonte de projecção (anos):", horizon_help()),
       min   = 1,
       max   = 30,
       value = 7
     ),
-    horizon_help(),
     sliderInput(
       "conf_level2",
-      "Nível de confiança (%):",
+      with_help("Nível de confiança (%):", confidence_help()),
       min = 80,
       max = 99,
       value = 95,
       step = 1
     ),
-    confidence_help(),
     selectInput(
       "transform2",
-      "Transformação:",
+      with_help("Transformação:", transform_help()),
       choices = c(
         "Transformação log com offset" = "log_offset",
         "Sem transformação" = "none"
       ),
       selected = "log_offset"
     ),
-    transform_help(),
     conditionalPanel(
       "input.transform2 != 'none'",
       checkboxInput(
         "bias_adjust2",
-        "Corrigir enviesamento da retransformação",
+        with_help("Corrigir enviesamento da retransformação", bias_adjust_help()),
         value = TRUE
-      ),
-      bias_adjust_help()
+      )
     ),
-    uiOutput("advancedModelParameterPanels"),
-    actionButton("go_forecast", "Carregar projecções"),
-    br(), br(),
-    actionButton("cancel_forecast", "Interromper carregamento")
+    uiOutput("advancedModelParameterPanels")
   )
 }
 
@@ -328,7 +412,7 @@ beginner_forecast_controls_panel <- function() {
   tagList(
     selectInput(
       "beginner_area",
-      "Local de residência:",
+      with_help("Local de residência:", region_aggregation_note()),
       choices = local_area,
       multiple = TRUE,
       selected = get_default_area_selection()
@@ -344,7 +428,7 @@ beginner_forecast_controls_panel <- function() {
       "input.beginner_areas_mode == 'separate'",
       radioButtons(
         "beginner_model_policy",
-        "Modelo em cada local:",
+        with_help("Modelo em cada local:", model_policy_help()),
         choices = c(
           "Média de 6 modelos (recomendado)" = "mean6",
           "Combinação dos 3 melhores modelos de cada local" = "combo",
@@ -352,8 +436,7 @@ beginner_forecast_controls_panel <- function() {
           "O melhor modelo de cada local" = "best"
         ),
         selected = "mean6"
-      ),
-      model_policy_help()
+      )
     ),
     radioButtons(
       "beginner_indicator",
@@ -367,17 +450,14 @@ beginner_forecast_controls_panel <- function() {
       selectInput("beginner_sex", "Sexo:", choices = sex_levels, selected = "HM"),
       radioButtons(
         "beginner_population",
-        "População:",
+        with_help("População:", population_help()),
         choices = c("Total", "Menos de 75 anos")
       ),
-      population_help(),
       radioButtons(
         "beginner_rate_type",
-        "Taxa:",
+        with_help("Taxa:", rate_type_help()),
         choices = c("Bruta" = "crude", "Padronizada" = "dsr")
-      ),
-      rate_type_help(),
-      region_aggregation_note()
+      )
     ),
     conditionalPanel(
       "input.beginner_indicator == 'infant'",
@@ -391,25 +471,22 @@ beginner_forecast_controls_panel <- function() {
         "input.beginner_infant_window != '1'",
         radioButtons(
           "beginner_infant_method",
-          "Como projectar:",
+          with_help("Como projectar:", infant_method_help()),
           choices = c(
             "Projectar a série anual e agregar no fim (recomendado)" = "annual",
             "Projectar a série de médias móveis" = "rolling"
           ),
           selected = "annual"
-        ),
-        infant_method_help()
+        )
       )
     ),
-    data_source_input("beginner_data_source"),
     sliderInput(
       "beginner_horizon",
-      "Horizonte de projecção (anos):",
+      with_help("Horizonte de projecção (anos):", horizon_help()),
       min = 1,
       max = 30,
       value = 5
     ),
-    horizon_help(),
     year_range_slider(
       years = rate_years,
       "beginner_years_fit",
@@ -431,17 +508,16 @@ beginner_forecast_controls_panel <- function() {
       "input.beginner_show_advanced == true",
       radioButtons(
         "beginner_method",
-        "Projecção apresentada:",
+        with_help("Projecção apresentada:", beginner_method_help()),
         choices = c(
           "Média de 6 modelos (recomendada)" = "mean6",
           "O modelo com menor erro na validação" = "selected"
         ),
         selected = "mean6"
       ),
-      beginner_method_help(),
       radioButtons(
         "beginner_validation",
-        "Como escolher o modelo recomendado:",
+        with_help("Como escolher o modelo recomendado:", beginner_validation_help()),
         choices = c(
           "Validação móvel (recomendada)" = "rolling",
           "Divisão única treino/teste" = "single",
@@ -460,27 +536,25 @@ beginner_forecast_controls_panel <- function() {
           step = 5,
           post = "%"
         )
-      ),
-      beginner_validation_help()
-    ),
-    actionButton("go_beginner_forecast", "Gerar previsão"),
-    br(), br(),
-    actionButton("cancel_beginner_forecast", "Interromper carregamento")
+      )
+    )
   )
 }
 
 forecast_selection_note_ui <- function() {
-  wellPanel(
+  tags$div(
+    class = "callout",
     p("Estas vistas avançadas utilizam a especificação técnica definida em 'Especificação do Modelo'."),
     p("Execute 'Carregar projecções' nesse separador para preencher os resultados abaixo.")
   )
 }
 
 data_availability_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Disponibilidade de Dados",
-    sidebarLayout(
-      sidebarPanel(
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
         radioButtons(
           "availability_dataset",
           "Conjunto:",
@@ -515,47 +589,51 @@ data_availability_tab_ui <- function() {
           value = TRUE
         )
       ),
-      mainPanel(
-        h4("Resumo RDS"),
+      result_card(
+        "Resumo RDS",
         tableOutput("snapshotInventorySummary"),
-        downloadButton("downloadSnapshotInventorySummaryCSV", "Descarregar resumo (CSV)"),
-        br(), br(),
-        h4("Cobertura Seleccionada"),
+        tools = download_tool("downloadSnapshotInventorySummaryCSV", "Descarregar resumo (CSV)", "CSV")
+      ),
+      result_card(
+        "Cobertura Seleccionada",
         tableOutput("snapshotAvailabilityTable"),
-        downloadButton("downloadSnapshotAvailabilityCSV", "Descarregar cobertura (CSV)"),
-        br(), br(),
-        h4("Histórico dos dados"),
-        helpText(
-          "O INE revê dados já publicados: anos provisórios passam a definitivos, e ",
-          "séries de população são re-estimadas. Cada importação fica registada com a ",
-          "sua data, e a versão anterior de qualquer ficheiro que mude é guardada. Se ",
-          "uma análise der hoje valores diferentes dos de uma análise anterior, veja ",
-          "aqui se os dados foram revistos entretanto."
+        tools = download_tool("downloadSnapshotAvailabilityCSV", "Descarregar cobertura (CSV)", "CSV")
+      ),
+      result_card(
+        "Histórico dos dados",
+        help = tagList(
+          p(
+            "O INE revê dados já publicados: anos provisórios passam a definitivos, e ",
+            "séries de população são re-estimadas. Cada importação fica registada com a ",
+            "sua data, e a versão anterior de qualquer ficheiro que mude é guardada. Se ",
+            "uma análise der hoje valores diferentes dos de uma análise anterior, veja ",
+            "aqui se os dados foram revistos entretanto."
+          ),
+          p(
+            "Para repetir uma análise com os dados tal como estavam numa data: ",
+            tags$code("Rscript tools/data_as_of.R date=AAAA-MM-DD"),
+            " e depois abrir a aplicação com ",
+            tags$code("MORTALITY_SNAPSHOT_DIR=<pasta indicada>/snapshots"),
+            ". Ver o manual, secção sobre o histórico dos dados."
+          )
         ),
-        h5("Conjuntos de dados"),
+        tools = download_tool("downloadImportLogCSV", "Descarregar registo completo (CSV)", "Registo (CSV)"),
+        h6("Conjuntos de dados"),
         tableOutput("dataImportDatasets"),
-        h5("Importações"),
+        h6("Importações"),
         tableOutput("dataImportRuns"),
         selectInput("data_import_run", "Ver os valores revistos numa importação:", choices = NULL, width = "100%"),
-        tableOutput("dataImportChanges"),
-        downloadButton("downloadImportLogCSV", "Descarregar registo completo (CSV)"),
-        br(), br(),
-        helpText(
-          "Para repetir uma análise com os dados tal como estavam numa data: ",
-          tags$code("Rscript tools/data_as_of.R date=AAAA-MM-DD"),
-          " e depois abrir a aplicação com ",
-          tags$code("MORTALITY_SNAPSHOT_DIR=<pasta indicada>/snapshots"),
-          ". Ver o manual, secção sobre o histórico dos dados."
-        )
+        tableOutput("dataImportChanges")
       )
     )
   )
 }
 
 intro_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Introdução",
     fluidRow(
+      class = "prose-page",
       column(
         width = 10, offset = 1,
         h2("Bem-vindo"),
@@ -711,9 +789,10 @@ glossary_tab_ui <- function() {
     list("Fonte de dados", "A escolha entre ler os Ficheiros RDS (rápido) ou consultar o INE em directo (mais lento, para dados não incluídos).")
   )
 
-  tabPanel(
+  bslib::nav_panel(
     "Glossário",
     fluidRow(
+      class = "prose-page",
       column(
         width = 10, offset = 1,
         h2("Glossário"),
@@ -727,111 +806,124 @@ glossary_tab_ui <- function() {
   )
 }
 
+
 observed_mortality_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Mortalidade Observada",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("area", "Local de residência:", choices = local_area, multiple = TRUE, selected = get_default_area_selection()),
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
+        selectInput(
+          "area", with_help("Local de residência:", region_aggregation_note()),
+          choices = local_area, multiple = TRUE, selected = get_default_area_selection()
+        ),
         textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
         selectInput("cause", "Causa de Morte:", choices = diseases),
         selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
           "population",
-          "População:",
+          with_help("População:", population_help()),
           choices = c("Total", "Menos de 75 anos")
         ),
-        population_help(),
         radioButtons(
           "rate_type",
-          "Taxa:",
+          with_help("Taxa:", rate_type_help()),
           choices = c("Bruta" = "crude", "Padronizada" = "dsr")
         ),
-        rate_type_help(),
-        region_aggregation_note(),
         year_range_slider(
           years = rate_years,
           "years_import",
           "Anos a importar:"
         ),
-        data_source_input("data_source"),
-        actionButton("go_rates", "Carregar dados"),
-        br(), br(),
-        actionButton("cancel_rates", "Interromper carregamento")
+        actions = load_actions("go_rates", "Carregar dados", "cancel_rates")
       ),
-      mainPanel(
-        h4("Resumo"),
+      result_card(
+        "Resumo",
         tableOutput("rateSummaryTable"),
-        downloadButton("downloadRateSummaryCSV", "Descarregar resumo (CSV)"),
-        br(),
+        tools = download_tool("downloadRateSummaryCSV", "Descarregar resumo (CSV)", "CSV")
+      ),
+      result_card(
+        "Evolução da taxa",
         plotly::plotlyOutput("ratePlot", height = "400px"),
-        helpText(
+        help = paste0(
           "A zona sombreada mostra o intervalo de confiança de 95% (a incerteza ",
           "em torno da taxa). Passe o rato sobre um ponto para ver os valores."
         ),
-        br(),
-        downloadButton("downloadRatePlot", "Descarregar gráfico (PNG)"),
-        br(),
-        h4("Tendência"),
-        fluidRow(
-          column(6, selectInput(
+        tools = download_tool("downloadRatePlot", "Descarregar gráfico (PNG)", "PNG")
+      ),
+      result_card(
+        "Tendência",
+        help = trend_help(),
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          selectInput(
             "observed_trend_span", "Período da tendência:",
             choices = c("Últimos 10 anos" = "10", "Últimos 5 anos" = "5", "Últimos 15 anos" = "15", "Todos os anos carregados" = "all"),
             selected = "10"
-          )),
-          column(6, selectInput(
+          ),
+          selectInput(
             "observed_trend_joinpoints", "Mudanças de tendência:",
             choices = c("Nenhuma (uma só recta)" = "0", "Até 1" = "1", "Até 2" = "2"),
             selected = "0"
-          ))
+          )
         ),
         tableOutput("rateTrendTable"),
-        uiOutput("rateTrendNote"),
-        trend_help(),
-        h4("Série anual observada"),
+        uiOutput("rateTrendNote")
+      ),
+      result_card(
+        "Série anual observada",
         tableOutput("rateTable"),
-        downloadButton("downloadRateTableCSV", "Descarregar tabela (CSV)")
+        tools = download_tool("downloadRateTableCSV", "Descarregar tabela (CSV)", "CSV")
       )
     )
   )
 }
 
 beginner_forecasting_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Previsão Guiada",
-    sidebarLayout(
-      sidebarPanel(
-        beginner_forecast_controls_panel()
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
+        beginner_forecast_controls_panel(),
+        actions = load_actions("go_beginner_forecast", "Gerar previsão", "cancel_beginner_forecast")
       ),
-      mainPanel(
-        conditionalPanel(
-          "input.beginner_areas_mode == 'separate'",
-          h4("Previsão por local"),
+      conditionalPanel(
+        "input.beginner_areas_mode == 'separate'",
+        result_card(
+          "Previsão por local",
           plotly::plotlyOutput("beginnerMultiPlot", height = "560px"),
-          uiOutput("beginnerMultiNote"),
-          div(style = "overflow-x:auto;", tableOutput("beginnerMultiTable")),
-          downloadButton("downloadBeginnerMultiCSV", "Descarregar tabela (CSV)")
+          uiOutput("beginnerMultiNote")
         ),
-        conditionalPanel(
-          "input.beginner_areas_mode != 'separate'",
-        plotly::plotlyOutput("beginnerForecastPlot", height = "400px"),
-        helpText(
-          "Azul: taxa observada usada no ajuste. Cinzento: restante histórico. ",
-          "Linha tracejada e zona sombreada: previsão e a sua incerteza. ",
-          "Passe o rato sobre um ponto para ver os valores."
-        ),
-        br(),
+        result_card(
+          "Tabela por local",
+          tableOutput("beginnerMultiTable"),
+          tools = download_tool("downloadBeginnerMultiCSV", "Descarregar tabela (CSV)", "CSV")
+        )
+      ),
+      conditionalPanel(
+        "input.beginner_areas_mode != 'separate'",
         uiOutput("beginnerForecastWarnings"),
-        br(),
-        downloadButton("downloadBeginnerForecastPlot", "Descarregar gráfico (PNG)"),
-        br(),
-        uiOutput("beginnerForecastSummary"),
-        br(),
-        uiOutput("beginnerForecastReliability"),
-        br(),
-        h4("Tabela da previsão"),
-        tableOutput("beginnerForecastTable"),
-        downloadButton("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)")
+        result_card(
+          "Previsão",
+          plotly::plotlyOutput("beginnerForecastPlot", height = "400px"),
+          help = paste0(
+            "Azul: taxa observada usada no ajuste. Cinzento: restante histórico. ",
+            "Linha tracejada e zona sombreada: previsão e a sua incerteza. ",
+            "Passe o rato sobre um ponto para ver os valores."
+          ),
+          tools = download_tool("downloadBeginnerForecastPlot", "Descarregar gráfico (PNG)", "PNG")
+        ),
+        # Both are server-rendered panels with their own headings.
+        bslib::layout_columns(
+          col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
+          uiOutput("beginnerForecastSummary"),
+          uiOutput("beginnerForecastReliability")
+        ),
+        result_card(
+          "Tabela da previsão",
+          tableOutput("beginnerForecastTable"),
+          tools = download_tool("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)", "CSV")
         )
       )
     )
@@ -839,10 +931,11 @@ beginner_forecasting_tab_ui <- function() {
 }
 
 annual_metrics_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Métricas Anuais",
-    sidebarLayout(
-      sidebarPanel(
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
         selectInput(
           "annual_year",
           "Ano:",
@@ -859,7 +952,7 @@ annual_metrics_tab_ui <- function() {
         selectInput("annual_sex", "Sexo:", choices = sex_levels, selected = "HM"),
         selectInput(
           "annual_area",
-          "Local adicional:",
+          with_help("Local adicional:", region_aggregation_note()),
           # Portugal and Norte are always the first two columns.
           choices = setdiff(local_area, c("Portugal", "Norte")),
           multiple = TRUE,
@@ -868,57 +961,53 @@ annual_metrics_tab_ui <- function() {
         textInput("annual_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ACES / ULS"),
         selectInput(
           "annual_metric",
-          "Métrica:",
+          with_help("Métrica:", annual_metric_help()),
           choices = annual_metric_choices,
           selected = "deaths"
         ),
-        annual_metric_help(),
-        region_aggregation_note(),
         conditionalPanel(
           "input.annual_metric == 'smr' || input.annual_metric == 'isr'",
           selectInput(
             "annual_smr_reference",
-            "Referência da padronização indirecta:",
+            with_help("Referência da padronização indirecta:", smr_reference_help()),
             choices = smr_reference_choices,
             selected = "Portugal"
-          ),
-          smr_reference_help()
+          )
         ),
         selectInput(
           "annual_pooling",
-          "Agregação plurianual:",
+          with_help("Agregação plurianual:", pooling_help()),
           choices = POOLING_WINDOW_CHOICES,
           selected = "1"
         ),
-        pooling_help(),
-        data_source_input("annual_data_source"),
-        actionButton("go_annual_metrics", "Carregar métricas"),
-        br(), br(),
-        actionButton("cancel_annual_metrics", "Interromper carregamento")
+        actions = load_actions("go_annual_metrics", "Carregar métricas", "cancel_annual_metrics")
       ),
-      mainPanel(
+      result_card(
+        "Métricas",
         tableOutput("annualMetricsTable"),
         uiOutput("annualMetricsFootnote"),
-        br(),
-        downloadButton("downloadAnnualMetricsCSV", "Descarregar tabela (CSV)"),
-        br(), br(),
+        tools = download_tool("downloadAnnualMetricsCSV", "Descarregar tabela (CSV)", "CSV")
+      ),
+      result_card(
+        "Gráfico",
         plotOutput("annualMetricsPlot", height = "420px"),
-        br(),
-        downloadButton("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)"),
-        br(), br(),
-        h4("Fontes usadas"),
+        tools = download_tool("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)", "PNG")
+      ),
+      result_card(
+        "Fontes usadas",
         tableOutput("annualSourcesTable"),
-        downloadButton("downloadAnnualSourcesCSV", "Descarregar fontes (CSV)")
+        tools = download_tool("downloadAnnualSourcesCSV", "Descarregar fontes (CSV)", "CSV")
       )
     )
   )
 }
 
 avoidable_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Mortalidade Evitável",
-    sidebarLayout(
-      sidebarPanel(
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
         selectInput(
           "avoidable_year",
           "Ano:",
@@ -928,7 +1017,7 @@ avoidable_tab_ui <- function() {
         ),
         selectInput(
           "avoidable_area",
-          "Local de residência:",
+          with_help("Local de residência:", region_aggregation_note()),
           choices = local_area,
           multiple = TRUE,
           selected = "Portugal"
@@ -937,30 +1026,28 @@ avoidable_tab_ui <- function() {
         selectInput("avoidable_sex", "Sexo:", choices = sex_levels, selected = "HM"),
         selectInput(
           "avoidable_pooling",
-          "Agregação plurianual:",
+          with_help("Agregação plurianual:", pooling_help()),
           choices = POOLING_WINDOW_CHOICES,
           selected = "1"
         ),
-        pooling_help(),
-        region_aggregation_note(),
-        data_source_input("avoidable_data_source"),
-        actionButton("go_avoidable", "Carregar"),
-        br(), br(),
-        actionButton("cancel_avoidable", "Interromper carregamento")
+        actions = load_actions("go_avoidable", "Carregar", "cancel_avoidable")
       ),
-      mainPanel(
-        helpText(avoidable_scope_note()),
-        h4("Repartição dos óbitos com menos de 75 anos"),
+      result_card(
+        "Repartição dos óbitos com menos de 75 anos",
         tableOutput("avoidableTable"),
         uiOutput("avoidableNote"),
-        downloadButton("downloadAvoidableCSV", "Descarregar tabela (CSV)"),
-        br(), br(),
+        help = avoidable_scope_note(),
+        tools = download_tool("downloadAvoidableCSV", "Descarregar tabela (CSV)", "CSV")
+      ),
+      result_card(
+        "Gráfico",
         plotOutput("avoidablePlot", height = "360px"),
-        downloadButton("downloadAvoidablePlot", "Descarregar gráfico (PNG)"),
-        br(), br(),
-        h4("Que causas entram em cada grupo"),
+        tools = download_tool("downloadAvoidablePlot", "Descarregar gráfico (PNG)", "PNG")
+      ),
+      result_card(
+        "Que causas entram em cada grupo",
         tableOutput("avoidableCausesTable"),
-        downloadButton("downloadAvoidableCausesCSV", "Descarregar lista de causas (CSV)")
+        tools = download_tool("downloadAvoidableCausesCSV", "Descarregar lista de causas (CSV)", "CSV")
       )
     )
   )
@@ -978,110 +1065,121 @@ planning_tab_ui <- function() {
   if (length(years) == 0) years <- c(1991L, 2025L)
   last <- max(years)
 
-  tabPanel(
+  bslib::nav_panel(
     "Indicadores de Planeamento",
-    sidebarLayout(
-      sidebarPanel(
-        width = 3,
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
         selectInput("planning_area", "Local:", choices = local_area, selected = "Portugal"),
         selectInput("planning_indicator", "Indicador:", choices = planning_indicator_choices(), selected = "ageing_index"),
         uiOutput("planningComparatorsUI"),
         radioButtons(
-          "planning_split_mode", "ULS que partilham um município:",
+          "planning_split_mode",
+          with_help(
+            "ULS que partilham um município:",
+            paste0(
+              "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
+              "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas ",
+              "as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
+              "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
+              "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
+              "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha. ",
+              "Gondomar é a excepção: a freguesia da Lomba (0,8%) é da ULS Vila Nova de Gaia/Espinho, mas ",
+              "com «Município inteiro» Gondomar conta todo na ULS Santo António; ver as notas do indicador."
+            )
+          ),
           choices = PLANNING_SPLIT_MODES, selected = PLANNING_DEFAULT_SPLIT_MODE
         ),
-        helpText(
-          "Lisboa, Loures e Porto estão repartidos por ULS ao nível da freguesia. ",
-          "«Município inteiro»: cada ULS leva o município todo — nada é estimado, mas ",
-          "as seis ULS sobrepõem-se e a sua soma conta esses municípios mais do que uma vez. ",
-          "«Ponderação por freguesias»: cada município é repartido pela população das suas ",
-          "freguesias nos Censos de 2021, por grupo etário — as partes somam o país, ",
-          "assumindo que as quotas se mantêm. Os agrupamentos exactos de ULS não dependem da escolha. ",
-          "Gondomar é a excepção: a freguesia da Lomba (0,8%) é da ULS Vila Nova de Gaia/Espinho, mas ",
-          "com «Município inteiro» Gondomar conta todo na ULS Santo António; ver as notas do indicador."
-        ),
         radioButtons(
-          "planning_portugal", "Portugal:",
+          "planning_portugal",
+          with_help(
+            "Portugal:",
+            paste0(
+              "O total do INE inclui os acontecimentos de residência desconhecida (0,3-0,9% dos ",
+              "óbitos), que nenhuma região, ULS ou município contém. A soma dos municípios ",
+              "compara igual com igual. Vale para comparadores, significância e funil."
+            )
+          ),
           choices = c("Total publicado pelo INE" = "published", "Soma dos 308 municípios" = "municipal"),
           selected = "published"
-        ),
-        helpText(
-          "O total do INE inclui os acontecimentos de residência desconhecida (0,3-0,9% dos ",
-          "óbitos), que nenhuma região, ULS ou município contém. A soma dos municípios ",
-          "compara igual com igual. Vale para comparadores, significância e funil."
         ),
         selectInput(
           "planning_education_age", "Escolaridade [I24], população:",
           choices = planning_education_age_choices(), selected = 0L
         ),
         sliderInput(
-          "planning_years", "Anos:",
+          "planning_years",
+          with_help(
+            "Anos:",
+            paste0(
+              "Cada local é a soma dos seus municípios, e cada indicador a razão dessas ",
+              "somas. Portugal e o Continente usam as linhas publicadas pelo INE."
+            )
+          ),
           min = min(years), max = last, value = c(max(min(years), last - 19L), last), step = 1, sep = ""
-        ),
-        helpText(
-          "Cada local é a soma dos seus municípios, e cada indicador a razão dessas ",
-          "somas. Portugal e o Continente usam as linhas publicadas pelo INE."
         )
       ),
-      mainPanel(
-        width = 9,
-        tabsetPanel(
-          id = "planning_view",
-          tabPanel(
-            "Indicador",
-            br(),
-            uiOutput("planningIndicatorHeader"),
-            plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
-            uiOutput("planningIndicatorNotes"),
-            h5("Valores"),
-            div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
-            h5("Tendência nos anos escolhidos"),
-            div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
-            uiOutput("planningTrendNote")
-          ),
-          tabPanel(
+      bslib::navset_card_underline(
+        id = "planning_view",
+        bslib::nav_panel(
+          "Indicador",
+          uiOutput("planningIndicatorHeader"),
+          plotly::plotlyOutput("planningIndicatorPlot", height = "440px"),
+          uiOutput("planningIndicatorNotes"),
+          h5("Valores"),
+          div(style = "overflow-x:auto;", tableOutput("planningIndicatorTable")),
+          h5("Tendência nos anos escolhidos"),
+          div(style = "overflow-x:auto;", tableOutput("planningTrendTable")),
+          uiOutput("planningTrendNote")
+        ),
+        bslib::nav_panel(
+          "Resumo do local",
+          panel_heading(
             "Resumo do local",
-            br(),
-            helpText(
+            paste0(
               "Todos os indicadores no último período disponível para o local, até ao ",
               "último ano escolhido. As contagens absolutas não têm comparadores."
+            )
+          ),
+          div(style = "overflow-x:auto;", tableOutput("planningSummaryTable")),
+          uiOutput("planningSummaryNotes")
+        ),
+        bslib::nav_panel(
+          "Comparação entre ULS",
+          uiOutput("planningRankingNote"),
+          plotly::plotlyOutput("planningRankingPlot", height = "820px")
+        ),
+        bslib::nav_panel(
+          "Mapa",
+          bslib::layout_columns(
+            col_widths = bslib::breakpoints(sm = c(12, 12, 12), lg = c(6, 3, 3)),
+            selectizeInput(
+              "planning_map_indicators", "Indicadores (até 4):",
+              choices = planning_map_indicator_choices(), multiple = TRUE,
+              selected = c("smr_all", "dsr_premature", "ageing_index", "purchasing_power"),
+              options = list(maxItems = PLANNING_MAP_MAX_INDICATORS)
             ),
-            div(style = "overflow-x:auto;", tableOutput("planningSummaryTable")),
-            uiOutput("planningSummaryNotes")
+            radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio"),
+            radioButtons(
+              "planning_map_scale", "Cores:",
+              choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index", "Quintis de cada indicador" = "quintile"),
+              selected = "index"
+            )
           ),
-          tabPanel(
-            "Comparação entre ULS",
-            br(),
-            uiOutput("planningRankingNote"),
-            plotly::plotlyOutput("planningRankingPlot", height = "820px")
-          ),
-          tabPanel(
-            "Mapa",
-            br(),
-            fluidRow(
-              column(6, selectizeInput(
-                "planning_map_indicators", "Indicadores (até 4):",
-                choices = planning_map_indicator_choices(), multiple = TRUE,
-                selected = c("smr_all", "dsr_premature", "ageing_index", "purchasing_power"),
-                options = list(maxItems = PLANNING_MAP_MAX_INDICATORS)
-              )),
-              column(3, radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio")),
-              column(3, radioButtons(
-                "planning_map_scale", "Cores:",
-                choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index", "Quintis de cada indicador" = "quintile"),
-                selected = "index"
-              ))
-            ),
-            checkboxInput("planning_map_smoothed", "Suavizar as taxas de áreas pequenas (Bayes empírico)", value = FALSE),
-            uiOutput("planningMapNote"),
-            plotOutput("planningMapPlot", height = "auto", click = "planning_map_click"),
-            uiOutput("planningMapClicked"),
-            downloadButton("downloadPlanningMapCSV", "Descarregar valores (CSV)"),
-            downloadButton("downloadPlanningMapPNG", "Descarregar mapas (PNG)")
-          ),
-          tabPanel(
-            "Funil",
-            br(),
+          checkboxInput("planning_map_smoothed", "Suavizar as taxas de áreas pequenas (Bayes empírico)", value = FALSE),
+          uiOutput("planningMapNote"),
+          plotOutput("planningMapPlot", height = "auto", click = "planning_map_click"),
+          uiOutput("planningMapClicked"),
+          tags$div(
+            class = "d-flex gap-2 flex-wrap",
+            download_tool("downloadPlanningMapCSV", "Descarregar valores (CSV)", "Valores (CSV)"),
+            download_tool("downloadPlanningMapPNG", "Descarregar mapas (PNG)", "Mapas (PNG)")
+          )
+        ),
+        bslib::nav_panel(
+          "Funil",
+          bslib::layout_columns(
+            col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
             radioButtons(
               "planning_funnel_units", "Unidades:",
               choices = c("ULS" = "ULS", "Municípios" = "Município", "NUTS III" = "NUTS III"),
@@ -1091,95 +1189,93 @@ planning_tab_ui <- function() {
               "planning_funnel_values", "Valores:",
               choices = c("Observados (funil)" = "observed", "Suavizados (Bayes empírico)" = "smoothed"),
               selected = "observed", inline = TRUE
-            ),
-            uiOutput("planningFunnelNote"),
-            plotly::plotlyOutput("planningFunnelPlot", height = "560px")
+            )
           ),
-          tabPanel(
+          uiOutput("planningFunnelNote"),
+          plotly::plotlyOutput("planningFunnelPlot", height = "560px")
+        ),
+        bslib::nav_panel(
+          "Pirâmide etária",
+          panel_heading(
             "Pirâmide etária",
-            br(),
-            helpText(
+            paste0(
               "Percentagem da população em cada grupo etário e sexo, no último ano ",
               "escolhido. O contorno escuro é o primeiro comparador seleccionado ",
               "(ou Portugal), para comparar a estrutura de áreas de tamanhos diferentes."
-            ),
-            plotly::plotlyOutput("planningPyramidPlot", height = "540px")
+            )
           ),
-          tabPanel(
-            "Mortalidade proporcional",
-            br(),
-            radioButtons(
-              "planning_proportional_ages", "Idades:",
-              choices = c("Todas as idades [I45]" = "all", "Menos de 75 anos [I46]" = "under75"),
-              selected = "all", inline = TRUE
-            ),
-            uiOutput("planningProportionalNote"),
-            plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
-            div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
-          ),
-          tabPanel(
-            "Mortalidade por causa",
-            br(),
-            radioButtons(
-              "planning_cause_sex", "Sexo:",
-              choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE
-            ),
-            uiOutput("planningCauseNote"),
-            plotly::plotlyOutput("planningCausePlot", height = "560px"),
-            div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
-          ),
-          tabPanel(
-            "Cuidados de saúde primários",
-            br(),
-            selectInput("planning_sns_indicator", "Indicador (Portal da Transparência do SNS):", choices = planning_sns_choices(), width = "100%"),
-            uiOutput("planningSnsNote"),
-            plotly::plotlyOutput("planningSnsPlot", height = "420px"),
-            div(style = "overflow-x:auto;", tableOutput("planningSnsTable")),
-            h5("Todas as ULS no último período completo"),
-            plotly::plotlyOutput("planningSnsRanking", height = "820px")
-          ),
-          tabPanel(
-            "Mortalidade semanal",
-            br(),
-            radioButtons("planning_weekly_age", "Idades:", choices = WEEKLY_AGE_GROUPS, selected = "all", inline = TRUE),
-            uiOutput("planningWeeklyNote"),
-            plotly::plotlyOutput("planningWeeklyPlot", height = "420px"),
-            div(style = "overflow-x:auto;", tableOutput("planningWeeklyTable")),
-            h5("Excesso acumulado ao longo do ano"),
-            plotly::plotlyOutput("planningWeeklyCumulative", height = "380px")
-          ),
-          tabPanel("Notas", br(), planning_method_notes())
+          plotly::plotlyOutput("planningPyramidPlot", height = "540px")
         ),
-        hr(),
-        wellPanel(
-          h4("Descarregar em Excel"),
-          fluidRow(
-            column(
-              6,
-              downloadButton("downloadPlanningSelectionXLSX", "Local e comparadores"),
-              helpText(
+        bslib::nav_panel(
+          "Mortalidade proporcional",
+          radioButtons(
+            "planning_proportional_ages", "Idades:",
+            choices = c("Todas as idades [I45]" = "all", "Menos de 75 anos [I46]" = "under75"),
+            selected = "all", inline = TRUE
+          ),
+          uiOutput("planningProportionalNote"),
+          plotly::plotlyOutput("planningProportionalPlot", height = "520px"),
+          div(style = "overflow-x:auto;", tableOutput("planningProportionalTable"))
+        ),
+        bslib::nav_panel(
+          "Mortalidade por causa",
+          radioButtons(
+            "planning_cause_sex", "Sexo:",
+            choices = c("Ambos" = "HM", "Homens" = "H", "Mulheres" = "M"), selected = "HM", inline = TRUE
+          ),
+          uiOutput("planningCauseNote"),
+          plotly::plotlyOutput("planningCausePlot", height = "560px"),
+          div(style = "overflow-x:auto;", tableOutput("planningCauseTable"))
+        ),
+        bslib::nav_panel(
+          "Cuidados de saúde primários",
+          selectInput("planning_sns_indicator", "Indicador (Portal da Transparência do SNS):", choices = planning_sns_choices(), width = "100%"),
+          uiOutput("planningSnsNote"),
+          plotly::plotlyOutput("planningSnsPlot", height = "420px"),
+          div(style = "overflow-x:auto;", tableOutput("planningSnsTable")),
+          h5("Todas as ULS no último período completo"),
+          plotly::plotlyOutput("planningSnsRanking", height = "820px")
+        ),
+        bslib::nav_panel(
+          "Mortalidade semanal",
+          radioButtons("planning_weekly_age", "Idades:", choices = WEEKLY_AGE_GROUPS, selected = "all", inline = TRUE),
+          uiOutput("planningWeeklyNote"),
+          plotly::plotlyOutput("planningWeeklyPlot", height = "420px"),
+          div(style = "overflow-x:auto;", tableOutput("planningWeeklyTable")),
+          h5("Excesso acumulado ao longo do ano"),
+          plotly::plotlyOutput("planningWeeklyCumulative", height = "380px")
+        ),
+        bslib::nav_panel("Notas", planning_method_notes())
+      ),
+      bslib::card(
+        bslib::card_header("Descarregar"),
+        bslib::card_body(
+          bslib::layout_columns(
+            col_widths = bslib::breakpoints(sm = c(12, 12, 12), lg = c(4, 4, 4)),
+            tags$div(
+              downloadButton("downloadPlanningSelectionXLSX", "Local e comparadores (Excel)", class = "btn-outline-primary"),
+              help_tip(
                 "O local escolhido e os comparadores seleccionados, com todos os ",
                 "indicadores nos anos escolhidos: resumo, uma folha por indicador, ",
                 "dados com intervalos de confiança, pirâmide etária e mortalidade proporcional."
               )
             ),
-            column(
-              6,
-              downloadButton("downloadPlanningFullXLSX", "Todas as áreas"),
-              helpText(
+            tags$div(
+              downloadButton("downloadPlanningFullXLSX", "Todas as áreas (Excel)", class = "btn-outline-primary"),
+              help_tip(
                 "Portugal, NUTS I, II e III, ARS, ULS e os 308 municípios, todos os ",
                 "indicadores e anos, uma folha por indicador. Demora cerca de dois ",
                 "minutos a gerar da primeira vez; depois é reutilizado."
               )
+            ),
+            tags$div(
+              downloadButton("downloadPlanningProfile", "Perfil do local (Word)", class = "btn-outline-primary"),
+              help_tip(
+                "Documento Word editável com o retrato do local escolhido face aos comparadores: ",
+                "indicadores-chave com significância face a Portugal, pirâmide etária, evolução, ",
+                "posição entre as ULS, mortalidade proporcional e notas de método."
+              )
             )
-          ),
-          hr(),
-          h4("Perfil do local"),
-          downloadButton("downloadPlanningProfile", "Perfil do local (Word)"),
-          helpText(
-            "Documento Word editável com o retrato do local escolhido face aos comparadores: ",
-            "indicadores-chave com significância face a Portugal, pirâmide etária, evolução, ",
-            "posição entre as ULS, mortalidade proporcional e notas de método."
           ),
           uiOutput("planningDataDate")
         )
@@ -1273,163 +1369,169 @@ planning_method_notes <- function() {
   )
 }
 
+
 advanced_model_spec_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Especificação do Modelo",
-    fluidRow(
-      column(
-        width = 4,
-        wellPanel(
-          forecast_controls_panel()
-        )
+    bslib::layout_sidebar(
+      fillable = FALSE,
+      sidebar = analysis_sidebar(
+        forecast_controls_panel(),
+        actions = load_actions("go_forecast", "Carregar projecções", "cancel_forecast")
       ),
-      column(
-        width = 8,
-        forecast_selection_note_ui(),
+      forecast_selection_note_ui(),
+      result_card(
+        "Especificação",
         tableOutput("forecastSpecTable"),
-        downloadButton("downloadForecastSpecCSV", "Descarregar especificação (CSV)")
+        tools = download_tool("downloadForecastSpecCSV", "Descarregar especificação (CSV)", "CSV")
       )
     )
   )
 }
 
 advanced_forecast_output_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Resultados da Previsão",
     forecast_selection_note_ui(),
-    fluidRow(
-      column(
-        width = 4,
-        radioButtons(
-          "forecast_output_view",
-          "Vista:",
-          choices = c(
-            "Modelo único" = "single",
-            "Comparar modelos ajustados" = "compare"
-          ),
-          selected = "single",
-          inline = TRUE
-        )
+    bslib::layout_columns(
+      col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(4, 8)),
+      radioButtons(
+        "forecast_output_view",
+        "Vista:",
+        choices = c(
+          "Modelo único" = "single",
+          "Comparar modelos ajustados" = "compare"
+        ),
+        selected = "single",
+        inline = TRUE
       ),
-      column(
-        width = 8,
-        uiOutput("forecastOutputModelSelector")
-      )
+      uiOutput("forecastOutputModelSelector")
     ),
     uiOutput("forecastWarnings"),
-    br(),
-    tableOutput("forecastSummaryTable"),
-    downloadButton("downloadForecastSummaryCSV", "Descarregar resumo (CSV)"),
-    br(),
-    plotly::plotlyOutput("forecastPlot", height = "400px"),
-    helpText("Passe o rato sobre um ponto para ver os valores."),
-    br(),
-    downloadButton("downloadForecastPlot", "Descarregar gráfico (PNG)"),
-    br(), br(),
-    tableOutput("forecastTable"),
-    br(),
-    downloadButton("downloadForecastCSV", "Descarregar tabela (CSV)")
+    result_card(
+      "Resumo",
+      tableOutput("forecastSummaryTable"),
+      tools = download_tool("downloadForecastSummaryCSV", "Descarregar resumo (CSV)", "CSV")
+    ),
+    result_card(
+      "Previsão",
+      plotly::plotlyOutput("forecastPlot", height = "400px"),
+      help = "Passe o rato sobre um ponto para ver os valores.",
+      tools = download_tool("downloadForecastPlot", "Descarregar gráfico (PNG)", "PNG")
+    ),
+    result_card(
+      "Tabela da previsão",
+      tableOutput("forecastTable"),
+      tools = download_tool("downloadForecastCSV", "Descarregar tabela (CSV)", "CSV")
+    )
   )
 }
 
 advanced_diagnostics_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Diagnóstico",
     forecast_selection_note_ui(),
     uiOutput("diagnosticModelSelector"),
-    br(),
-    plotOutput("diagnosticResidualPlot", height = "260px"),
-    downloadButton("downloadDiagnosticResidualPlot", "Descarregar resíduos (PNG)"),
-    br(),
-    fluidRow(
-      column(
-        width = 6,
+    result_card(
+      "Resíduos",
+      plotOutput("diagnosticResidualPlot", height = "260px"),
+      tools = download_tool("downloadDiagnosticResidualPlot", "Descarregar resíduos (PNG)", "PNG")
+    ),
+    bslib::layout_columns(
+      col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
+      result_card(
+        "ACF",
         plotOutput("diagnosticAcfPlot", height = "260px"),
-        downloadButton("downloadDiagnosticAcfPlot", "Descarregar ACF (PNG)")
+        tools = download_tool("downloadDiagnosticAcfPlot", "Descarregar ACF (PNG)", "PNG")
       ),
-      column(
-        width = 6,
+      result_card(
+        "PACF",
         plotOutput("diagnosticPacfPlot", height = "260px"),
-        downloadButton("downloadDiagnosticPacfPlot", "Descarregar PACF (PNG)")
+        tools = download_tool("downloadDiagnosticPacfPlot", "Descarregar PACF (PNG)", "PNG")
       )
     ),
-    br(),
-    h4("Teste de Ljung-Box"),
-    tableOutput("diagnosticLjungBoxTable"),
-    downloadButton("downloadDiagnosticLjungCSV", "Descarregar Ljung-Box (CSV)"),
-    br(),
-    h4("Resumo do Modelo"),
-    verbatimTextOutput("diagnosticModelSummary"),
-    downloadButton("downloadDiagnosticSummaryTXT", "Descarregar resumo (TXT)")
+    result_card(
+      "Teste de Ljung-Box",
+      tableOutput("diagnosticLjungBoxTable"),
+      tools = download_tool("downloadDiagnosticLjungCSV", "Descarregar Ljung-Box (CSV)", "CSV")
+    ),
+    result_card(
+      "Resumo do Modelo",
+      verbatimTextOutput("diagnosticModelSummary"),
+      tools = download_tool("downloadDiagnosticSummaryTXT", "Descarregar resumo (TXT)", "TXT")
+    )
   )
 }
 
 advanced_backtesting_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Retroteste e Comparação",
     forecast_selection_note_ui(),
-    fluidRow(
-      column(
-        width = 6,
-        radioButtons(
-          "comparison_validation_mode",
-          "Abordagem de validação:",
-          choices = c(
-            "Métricas do ajuste actual" = "insample",
-            "Divisão única (últimos %)" = "single",
-            "Validação móvel (últimos %)" = "rolling"
-          ),
-          selected = "rolling",
-          inline = TRUE
-        )
+    bslib::layout_columns(
+      col_widths = bslib::breakpoints(sm = c(12, 12), lg = c(6, 6)),
+      radioButtons(
+        "comparison_validation_mode",
+        "Abordagem de validação:",
+        choices = c(
+          "Métricas do ajuste actual" = "insample",
+          "Divisão única (últimos %)" = "single",
+          "Validação móvel (últimos %)" = "rolling"
+        ),
+        selected = "rolling",
+        inline = TRUE
       ),
-      column(
-        width = 6,
-        uiOutput("comparisonHoldoutControl")
-      )
+      uiOutput("comparisonHoldoutControl")
     ),
     textOutput("comparisonValidationInfo"),
-    br(),
     uiOutput("comparisonWarnings"),
-    br(),
-    h4("Classificação"),
-    tableOutput("comparisonRankingTable"),
-    downloadButton("downloadComparisonRankingCSV", "Descarregar classificação (CSV)"),
-    br(),
-    h4("Valores das Métricas"),
-    tableOutput("accuracyTable"),
-    downloadButton("downloadAccuracyCSV", "Descarregar métricas (CSV)"),
-    br(),
-    plotOutput("comparisonPlot", height = "360px"),
-    downloadButton("downloadComparisonPlot", "Descarregar gráfico (PNG)")
+    result_card(
+      "Classificação",
+      tableOutput("comparisonRankingTable"),
+      tools = download_tool("downloadComparisonRankingCSV", "Descarregar classificação (CSV)", "CSV")
+    ),
+    result_card(
+      "Valores das Métricas",
+      tableOutput("accuracyTable"),
+      tools = download_tool("downloadAccuracyCSV", "Descarregar métricas (CSV)", "CSV")
+    ),
+    result_card(
+      "Comparação",
+      plotOutput("comparisonPlot", height = "360px"),
+      tools = download_tool("downloadComparisonPlot", "Descarregar gráfico (PNG)", "PNG")
+    )
   )
 }
 
 advanced_breaks_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Quebras e Estrutura",
     forecast_selection_note_ui(),
     uiOutput("breakInterpretation"),
-    br(),
-    plotOutput("breakPlot", height = "400px"),
-    downloadButton("downloadBreakPlot", "Descarregar gráfico (PNG)"),
-    br(),
-    tableOutput("breakTable"),
-    downloadButton("downloadBreakTableCSV", "Descarregar tabela (CSV)")
+    result_card(
+      "Quebras estruturais",
+      plotOutput("breakPlot", height = "400px"),
+      tools = download_tool("downloadBreakPlot", "Descarregar gráfico (PNG)", "PNG")
+    ),
+    result_card(
+      "Tabela",
+      tableOutput("breakTable"),
+      tools = download_tool("downloadBreakTableCSV", "Descarregar tabela (CSV)", "CSV")
+    )
   )
 }
 
 advanced_forecasting_tab_ui <- function() {
-  tabPanel(
+  bslib::nav_panel(
     "Previsão Avançada",
-    wellPanel(
+    tags$div(
+      class = "callout",
       p(tags$strong("Para uma previsão simples, use o separador 'Previsão Guiada'.")),
       p(
         "Este separador destina-se a utilizadores técnicos: permite escolher modelos, ",
         "ajustar parâmetros e ver diagnósticos. Não é necessário para obter uma previsão."
       )
     ),
-    tabsetPanel(
+    bslib::navset_underline(
       advanced_model_spec_tab_ui(),
       advanced_forecast_output_tab_ui(),
       advanced_diagnostics_tab_ui(),
