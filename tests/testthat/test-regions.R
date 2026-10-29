@@ -294,7 +294,7 @@ test_that("switching vintage keeps municipalities and drops absent regions", {
   expect_equal(both$selected, c("Centro", "Alentejo"))
   expect_length(both$dropped, 0)
 
-  # The annual tab's third column excludes the two fixed comparator columns.
+  # Excluded places are dropped from the choices.
   annual <- reconcile_area_selection("Beja", "2024", new, exclude = c("Portugal", "Norte"))
   expect_false("Portugal" %in% annual$choices)
   expect_false("Norte" %in% annual$choices)

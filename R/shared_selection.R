@@ -9,10 +9,10 @@
 # be split into two groups, by editing this list.
 #
 # `adapt` turns the shared value into one the linked input can hold: the
-# planning tab takes a single place, the annual tab's extra places exclude the
-# two fixed columns. A `required` field never propagates an empty value, so
-# clearing a tab whose empty selection means something of its own (the annual
-# tab with no extra place) does not empty the others.
+# planning tab takes a single place, and the tabs that take one cause or one sex
+# keep the first of the observed tab's several. A `required` field never
+# propagates an empty value, so clearing a field in one tab does not empty the
+# others.
 shared_link <- function(id, type = c("select", "radio", "slider", "text"), adapt = identity) {
   list(id = id, type = match.arg(type), adapt = adapt)
 }
@@ -28,7 +28,6 @@ SHARED_SELECTION_FIELDS <- list(
       shared_link("beginner_area"),
       shared_link("avoidable_area"),
       shared_link("availability_area"),
-      shared_link("annual_area", adapt = function(value) setdiff(value, c("Portugal", "Norte"))),
       shared_link("planning_area", adapt = first_only)
     )
   ),
@@ -38,17 +37,15 @@ SHARED_SELECTION_FIELDS <- list(
       shared_link("area_label", "text"),
       shared_link("area_label2", "text"),
       shared_link("beginner_area_label", "text"),
-      shared_link("annual_area_label", "text"),
       shared_link("avoidable_area_label", "text")
     )
   ),
   cause = list(
     required = TRUE,
     links = list(
-      shared_link("cause", adapt = first_only),
+      shared_link("cause"),
       shared_link("cause2", adapt = first_only),
       shared_link("beginner_cause", adapt = first_only),
-      shared_link("annual_cause"),
       shared_link("availability_cause")
     )
   ),
@@ -56,11 +53,10 @@ SHARED_SELECTION_FIELDS <- list(
     required = TRUE,
     links = list(
       shared_link("sex"),
-      shared_link("sex2"),
-      shared_link("beginner_sex"),
-      shared_link("annual_sex"),
-      shared_link("avoidable_sex"),
-      shared_link("planning_cause_sex", "radio")
+      shared_link("sex2", adapt = first_only),
+      shared_link("beginner_sex", adapt = first_only),
+      shared_link("avoidable_sex", adapt = first_only),
+      shared_link("planning_cause_sex", "radio", adapt = first_only)
     )
   ),
   population = list(
@@ -74,13 +70,12 @@ SHARED_SELECTION_FIELDS <- list(
   rate_type = list(
     required = TRUE,
     links = list(
-      shared_link("rate_type", "radio"),
       shared_link("rate_type2", "radio"),
       shared_link("beginner_rate_type", "radio")
     )
   ),
-  # Only the sliders over the same range of rate years. The planning, annual
-  # and avoidable tabs choose years over other ranges, or a single year.
+  # Only the sliders over the same range of rate years. The planning and
+  # avoidable tabs choose years over other ranges, or a single year.
   years = list(
     required = TRUE,
     links = list(

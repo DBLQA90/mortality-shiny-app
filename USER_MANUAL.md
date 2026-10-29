@@ -24,12 +24,11 @@ A aplicação permite:
 A ordem dos separadores é:
 
 1. `Introdução`
-2. `Mortalidade Observada`
+2. `Mortalidade Observada` e `Mortalidade Evitável` (no menu `Mortalidade`)
 3. `Previsão Guiada`
 4. `Previsão Avançada`
-5. `Métricas Anuais`
-6. `Disponibilidade de Dados`
-7. `Glossário`
+5. `Disponibilidade de Dados`
+6. `Glossário`
 
 O separador `Introdução` é a página inicial: explica em linguagem simples o que é uma previsão, como começar em três passos e qual separador usar. É o ponto de partida recomendado para quem abre a aplicação pela primeira vez.
 
@@ -490,51 +489,105 @@ A maioria dos concelhos portugueses fica abaixo do limiar, e isso é precisament
 
 ## 6. Separador Mortalidade Observada
 
-Use este separador para ver a evolução histórica de uma causa de morte.
+Use este separador para ver uma métrica de mortalidade num ano ou ao longo de vários, e para comparar locais, causas de morte e sexos. Reúne o que antes estava em dois separadores, `Mortalidade Observada` e `Métricas Anuais`.
 
 Fluxo típico:
 
-1. escolha `Local de residência`;
-2. escolha `Causa de Morte`;
-3. escolha `Sexo`;
-4. escolha `População`;
-5. escolha `Taxa`;
-6. escolha `Fonte de dados`;
-7. escolha os anos a importar;
-8. carregue os dados.
+1. escolha um ou vários `Local de residência`;
+2. em `Com vários locais`, escolha **Somar num único local** (os locais são tratados como um só território, por exemplo os concelhos de uma ULS, com óbitos e população somados; pode dar-lhe um nome) ou **Mostrar cada local em separado** (cada local é uma série própria);
+3. em `Comparar com`, escolha os locais a mostrar ao lado da selecção — por predefinição `Portugal` e `Norte`. Cada um é sempre uma série própria e nunca é somado à selecção; deixe vazio para não comparar;
+4. escolha uma ou várias `Causa de Morte`;
+5. escolha um ou vários `Sexo` (`HM`, `H`, `M`);
+6. escolha a `Métrica` e, quando se aplica, as `Idades` (todas, ou menos de 75 anos);
+7. escolha os `Anos` — para um só ano, junte as duas pontas do intervalo;
+8. escolha a `Agregação plurianual` e carregue os dados.
 
-Resultados principais:
+Por baixo das escolhas aparece o **tempo estimado** do carregamento. Depende sobretudo do número de locais, causas e anos; juntar sexos quase não o aumenta, porque vêm dos mesmos ficheiros. A estimativa supõe que nada está ainda em memória, pelo que um carregamento repetido costuma ser mais rápido.
 
-- gráfico temporal;
-- tabela anual;
-- resumo da selecção;
-- indicação dos indicadores usados como fonte;
-- botões para exportar tabelas e imagens.
+### Carregar uma vez, explorar depois
+
+Depois de carregar, o cartão **Filtrar resultados**, no topo, permite escolher que `Locais`, `Causas de morte`, `Sexo` e `Anos` ver, entre os que foram carregados. O gráfico, a tendência, a tabela e os CSV seguem essa escolha de imediato, sem voltar a calcular.
+
+Por isso, vale a pena carregar de uma vez tudo o que pode querer comparar — por exemplo, os três sexos e várias causas — e depois navegar com os filtros. Só é preciso carregar de novo para mudar a `Métrica`, as `Idades` ou a `Agregação plurianual`, ou para juntar locais, causas, sexos ou anos que não foram carregados. Cada carregamento repõe os filtros em tudo o que trouxe.
+
+Métricas disponíveis:
+
+- `Óbitos`;
+- `Mortalidade Bruta`;
+- `Mortalidade Padronizada (directa, ESP 2013)`;
+- `SMR (padronização indirecta, referência = 100)`;
+- `Taxa Padronizada Indirecta (por 100.000)`;
+- `Mortalidade Proporcional`;
+- `AVPP`;
+- `Óbitos infantis (< 1 ano)`;
+- `Mortalidade Infantil (por 1.000 nados-vivos)`.
+
+`Idades: Menos de 75 anos` aparece para `Óbitos`, as duas taxas, o `SMR` e a taxa indirecta: conta só os óbitos e a população abaixo dos 75 anos (mortalidade prematura). A taxa padronizada usa então a população-padrão ESP 2013 dos 0 aos 74 anos, e por isso não é comparável com a taxa padronizada de todas as idades. Não se aplica aos `AVPP` (que já param nos 70 anos), à mortalidade proporcional nem às métricas infantis.
+
+Resultados:
+
+- **Gráfico** — um painel por causa de morte. Ao longo dos anos, cada local é uma cor e cada sexo um tipo de linha, com o intervalo de confiança de 95% sombreado; num só ano, uma barra por local, com um painel por causa e sexo. O gráfico mostra no máximo **4 causas**: com mais, dá lugar a um aviso — escolha até 4 em `Filtrar resultados` — e os valores de todas continuam na tabela e no CSV;
+- **Tendência** — ver abaixo;
+- **Valores** — uma linha por ano, local, causa e sexo, com o intervalo de confiança. `Descarregar dados (CSV)` dá os mesmos valores como números (valor, limites do intervalo, período agregado, nota e fonte), prontos para uma folha de cálculo;
+- **Fontes usadas** — os indicadores do INE de onde vem cada valor.
+
+Os anos que uma combinação não pode ter são deixados de fora com um aviso, sem impedir os restantes: por exemplo, o último ano, que só existe para regiões inteiras, todas as causas e ambos os sexos, ou os anos de mortalidade infantil sem nados-vivos publicados.
 
 Quando usar:
 
 - para observar tendências históricas;
-- para ver diferenças entre taxa bruta e taxa padronizada;
-- para preparar uma série que depois será analisada nos separadores de previsão;
-- para verificar se há anos ausentes ou instáveis antes de avançar.
+- para comparar um território com Portugal, a região ou outros territórios;
+- para comparar causas e sexos num ano específico;
+- para criar estatísticas de territórios compostos (somando locais);
+- para verificar se há anos ausentes ou instáveis antes de avançar para uma previsão.
 
 Cuidados:
 
-- confirme se a fonte usada é RDS ou INE em directo;
-- em causas raras, pequenas flutuações podem produzir grandes variações nas taxas;
-- em áreas pequenas, observe sempre os intervalos de confiança.
+- em causas raras e áreas pequenas, pequenas flutuações produzem grandes variações — observe os intervalos de confiança, considere agregar 3 ou 5 anos, ou mude para `SMR`;
+- ao somar locais que se sobrepõem (Portugal com outro local, uma região com os seus concelhos), os óbitos são contados duas vezes; a aplicação avisa;
+- para `Mortalidade Proporcional`, lembre-se de que o denominador é `Todas as causas de morte`;
+- a definição NUTS activa, no topo da página, muda o que `Centro` ou `Alentejo` significam;
+- as taxas exigem denominador: os anos sem população publicada são deixados de fora com uma explicação, e as contagens, a mortalidade proporcional e os AVPP continuam disponíveis;
+- muitos locais, causas, sexos e anos ao mesmo tempo tornam o carregamento mais demorado.
 
 ### Tendência
 
-Por baixo do gráfico, a **Tendência** dá a variação percentual anual (APC): o
-ritmo a que a taxa sobe ou desce por ano, com o intervalo de confiança de 95%.
-Escolha o período (últimos 5, 10 ou 15 anos, ou todos os carregados) e se a
-recta pode mudar de inclinação (até uma ou duas vezes, nos anos que melhor
-descrevem a série). Com mudanças, a última linha dá a variação média de todo o
-período (AAPC). A tendência é **significativa** quando o intervalo não inclui 0.
-A linha tracejada no gráfico é a tendência ajustada. É o método Joinpoint do
+Por baixo do gráfico, a **Tendência** dá a variação percentual anual (APC) de
+cada série (local, causa e sexo): o ritmo a que o valor sobe ou desce por ano,
+com o intervalo de confiança de 95%. Escolha o período (últimos 5, 10 ou 15
+anos, ou todos os carregados) e se a recta pode mudar de inclinação (até uma ou
+duas vezes, nos anos que melhor descrevem a série). Com mudanças, a última linha
+de cada série dá a variação média de todo o período (AAPC). A tendência é
+**significativa** quando o intervalo não inclui 0. Quando há uma só série, a
+linha tracejada no gráfico é a tendência ajustada. É o método Joinpoint do
 National Cancer Institute (EUA): cada ano pesa conforme a sua precisão, pelo que
 um ano com poucos óbitos conta menos.
+
+A tendência só é estimada sem agregação plurianual: com médias móveis, anos
+vizinhos partilham dados e o intervalo da tendência sairia estreito demais.
+
+### Agregação Plurianual
+
+O controlo `Agregação plurianual` permite calcular a métrica sobre 1, 3 ou 5 anos centrados em cada ano. Serve para estabilizar concelhos pequenos e causas raras, onde um único ano tem demasiado poucos acontecimentos para ser lido. Com um intervalo de anos, dá uma média móvel.
+
+A agregação soma os óbitos **e** a população dos anos incluídos. O denominador passa a ser em *pessoas-ano*: cinco anos de um concelho com 10.000 habitantes são 50.000 pessoas-ano. Como numerador e denominador crescem juntos, a taxa continua a ser por ano e é directamente comparável com um valor não agregado — não é uma soma, é uma média ponderada.
+
+As contagens comportam-se de outra forma. `Óbitos` e `AVPP` são convertidos em **média anual**, porque somar três anos de óbitos triplicaria o número e leria como uma triplicação da mortalidade. `Óbitos infantis` é a excepção deliberada e fica como total do período, pela razão explicada na secção dessa métrica.
+
+Se a janela ultrapassar os anos disponíveis, é truncada, e o período efectivamente usado aparece indicado nos resultados. Uma janela de 5 anos centrada em 2024 usa 2022-2024.
+
+O que ganha e o que perde:
+
+- **ganha** intervalos mais estreitos e séries legíveis em locais pequenos;
+- **perde** a capacidade de ver variações anuais reais, que ficam suavizadas.
+
+As previsões usam sempre séries anuais não agregadas, porque uma média móvel introduz autocorrelação que invalidaria os intervalos de previsão.
+
+### Referência da Padronização Indirecta
+
+Aparece quando escolhe `SMR` ou `Taxa Padronizada Indirecta`. Define contra quem a comparação é feita: as taxas por idade desta referência são aplicadas à estrutura etária de cada local para calcular os óbitos esperados.
+
+`Portugal` é a predefinição, e faz com que 100 signifique «igual à média nacional».
 
 ## 7. Separador Previsão Guiada
 
@@ -825,66 +878,6 @@ Sugestão prática:
 - use MAPE com cautela em causas raras;
 - confirme se o modelo escolhido também faz sentido no gráfico;
 - não aceite um modelo só porque uma métrica ficou ligeiramente melhor.
-
-## 10. Separador Métricas Anuais
-
-Este separador compara métricas num único ano. Mostra sempre:
-
-- `Portugal`;
-- `Norte`;
-- a localização adicional seleccionada.
-
-Pode seleccionar uma ou várias causas de morte. A tabela é ordenada do maior para o menor valor segundo a localização adicional. Isto ajuda a perceber quais as causas com maior peso local, mantendo Portugal e Norte como comparadores.
-
-Métricas disponíveis:
-
-- `Óbitos`;
-- `Mortalidade Bruta`;
-- `Mortalidade Padronizada (directa, ESP 2013)`;
-- `SMR (padronização indirecta, referência = 100)`;
-- `Taxa Padronizada Indirecta (por 100.000)`;
-- `Mortalidade Proporcional`;
-- `AVPP`;
-- `Óbitos infantis (< 1 ano)`;
-- `Mortalidade Infantil (por 1.000 nados-vivos)`.
-
-### Agregação Plurianual
-
-O controlo `Agregação plurianual` permite calcular a métrica sobre 1, 3 ou 5 anos centrados no ano escolhido. Serve para estabilizar concelhos pequenos e causas raras, onde um único ano tem demasiado poucos acontecimentos para ser lido.
-
-A agregação soma os óbitos **e** a população dos anos incluídos. O denominador passa a ser em *pessoas-ano*: cinco anos de um concelho com 10.000 habitantes são 50.000 pessoas-ano. Como numerador e denominador crescem juntos, a taxa continua a ser por ano e é directamente comparável com um valor não agregado — não é uma soma, é uma média ponderada.
-
-As contagens comportam-se de outra forma. `Óbitos` e `AVPP` são convertidos em **média anual**, porque somar três anos de óbitos triplicaria o número e leria como uma triplicação da mortalidade. `Óbitos infantis` é a excepção deliberada e fica como total do período, pela razão explicada na secção dessa métrica.
-
-Se a janela ultrapassar os anos disponíveis, é truncada, e o período efectivamente usado aparece indicado nos resultados. Uma janela de 5 anos centrada em 2024 usa 2022-2024.
-
-O que ganha e o que perde:
-
-- **ganha** intervalos mais estreitos e séries legíveis em locais pequenos;
-- **perde** a capacidade de ver variações anuais reais, que ficam suavizadas.
-
-A agregação aplica-se apenas a este separador. As previsões usam sempre séries anuais não agregadas, porque uma média móvel introduz autocorrelação que invalidaria os intervalos de previsão.
-
-### Referência da Padronização Indirecta
-
-Aparece quando escolhe `SMR` ou `Taxa Padronizada Indirecta`. Define contra quem a comparação é feita: as taxas por idade desta referência são aplicadas à estrutura etária de cada local para calcular os óbitos esperados.
-
-`Portugal` é a predefinição, e faz com que 100 signifique «igual à média nacional».
-
-Quando usar:
-
-- para comparar prioridades num ano específico;
-- para ver se o perfil local difere de Portugal ou Norte;
-- para seleccionar causas que merecem análise temporal ou previsão;
-- para preparar quadros de apresentação.
-
-Cuidados:
-
-- para `Mortalidade Proporcional`, lembre-se de que o denominador é `Todas as causas de morte`;
-- causas raras podem surgir com taxas instáveis — considere agregar 3 ou 5 anos, ou mudar para `SMR`;
-- ordenação por valor local não significa importância causal ou evitabilidade;
-- a definição NUTS activa, no topo da página, muda o que `Centro` ou `Alentejo` significam;
-- as taxas exigem denominador: os anos sem população publicada são recusados com uma explicação, e as contagens, a mortalidade proporcional e os AVPP continuam disponíveis.
 
 ## 10-A. Separador Mortalidade Evitável
 
@@ -1398,7 +1391,7 @@ semanais por região e idade, que dão a repartição por idade.
 - Por causa não há valores até o INE publicar.
 
 Esses valores têm a marca **p** (provisório). Nos separadores Mortalidade
-Observada, Previsão e Métricas Anuais vale a mesma regra: com uma região inteira e
+Observada e Previsão vale a mesma regra: com uma região inteira e
 todas as causas, o último ano entra na série; num município, numa causa ou num
 sexo, fica de fora e a aplicação avisa.
 
@@ -1663,7 +1656,7 @@ de Dados).
 
 1. Abra `Mortalidade Observada`.
 2. Escolha `Ficheiros RDS`.
-3. Seleccione local, causa, sexo, população e taxa.
+3. Seleccione local, causa, sexo e métrica (por exemplo, `Mortalidade Padronizada`).
 4. Use uma janela de anos ampla.
 5. Observe gráfico, tabela e intervalos.
 6. Exporte se a série estiver coerente.
@@ -1689,12 +1682,12 @@ de Dados).
 
 ### Comparar Causas num Ano
 
-1. Abra `Métricas Anuais`.
-2. Escolha o ano.
+1. Abra `Mortalidade Observada`.
+2. Junte as duas pontas do intervalo de anos no ano pretendido.
 3. Seleccione várias causas.
 4. Escolha a métrica.
-5. Compare Portugal, Norte e a localização adicional.
-6. Use a ordenação local para identificar causas prioritárias para análise posterior.
+5. Deixe `Portugal` e `Norte` em `Comparar com`, ou escolha outros comparadores.
+6. Com mais de 4 causas, leia a tabela ou descarregue o CSV: o gráfico mostra no máximo 4.
 
 ### Resolver Problemas de Dados
 

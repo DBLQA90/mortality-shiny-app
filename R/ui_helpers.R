@@ -162,6 +162,23 @@ annual_metric_help <- function() {
     "com * e a contagem é mais informativa."
   )
 }
+area_mode_help <- function() {
+  tagList(
+    "Somar: os locais escolhidos são tratados como um só território (por exemplo, os concelhos de uma ULS), ",
+    "com óbitos e população somados. Em separado: cada local é uma série própria no gráfico e na tabela."
+  )
+}
+compare_help <- function() {
+  tagList(
+    "Locais mostrados ao lado da selecção, cada um como série própria. Nunca são somados à selecção."
+  )
+}
+cause_limit_help <- function() {
+  tagList(
+    "Pode escolher várias causas. O gráfico mostra no máximo 4 (um painel por causa); ",
+    "com mais, os valores de todas ficam na tabela e no CSV."
+  )
+}
 smr_reference_help <- function() {
   tagList(
     "As taxas por idade desta referência são aplicadas à estrutura etária de ",
@@ -686,10 +703,10 @@ intro_tab_ui <- function() {
 
         h3("Que separador usar"),
         tags$ul(
-          tags$li(tags$strong("Mortalidade Observada"), " — ver a evolução histórica de uma taxa e exportar tabelas e gráficos."),
+          tags$li(tags$strong("Mortalidade Observada"), " — ver a evolução de uma métrica num ou em vários anos, comparar locais, causas e sexos, e exportar tabelas e gráficos."),
+          tags$li(tags$strong("Mortalidade Evitável"), " — repartir os óbitos com menos de 75 anos em evitáveis por prevenção e por tratamento."),
           tags$li(tags$strong("Previsão Guiada"), " — obter uma previsão simples, com explicação. Recomendado para a maioria dos utilizadores."),
           tags$li(tags$strong("Previsão Avançada"), " — controlar modelos, diagnósticos e testes. Destinado a utilizadores técnicos; não é necessário para uma previsão simples."),
-          tags$li(tags$strong("Métricas Anuais"), " — comparar Portugal, Norte e um local à escolha num único ano."),
           tags$li(tags$strong("Disponibilidade de Dados"), " — verificar que anos, locais e causas existem nos ficheiros antes de carregar.")
         ),
 
@@ -811,6 +828,12 @@ glossary_tab_ui <- function() {
 
 
 observed_mortality_tab_ui <- function() {
+  # The age choice applies only to the metrics built from an age distribution.
+  age_scoped_condition <- sprintf(
+    "['%s'].indexOf(input.observed_metric) >= 0",
+    paste(age_scoped_metric_ids, collapse = "','")
+  )
+
   bslib::nav_panel(
     "Mortalidade Observada",
     bslib::layout_sidebar(
@@ -820,39 +843,99 @@ observed_mortality_tab_ui <- function() {
           "area", with_help("Local de residência:", region_aggregation_note()),
           choices = local_area, multiple = TRUE, selected = get_default_area_selection()
         ),
-        textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML"),
-        selectInput("cause", "Causa de Morte:", choices = diseases),
-        selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM"),
         radioButtons(
-          "population",
-          with_help("População:", population_help()),
-          choices = c("Total", "Menos de 75 anos")
+          "observed_area_mode",
+          with_help("Com vários locais:", area_mode_help()),
+          choices = c("Somar num único local" = "sum", "Mostrar cada local em separado" = "separate")
         ),
-        radioButtons(
-          "rate_type",
-          with_help("Taxa:", rate_type_help()),
-          choices = c("Bruta" = "crude", "Padronizada" = "dsr")
+        conditionalPanel(
+          "input.observed_area_mode == 'sum'",
+          textInput("area_label", "Nome da selecção (opcional):", placeholder = "Ex.: AML")
+        ),
+        selectInput(
+          "observed_compare",
+          with_help("Comparar com:", compare_help()),
+          choices = local_area,
+          multiple = TRUE,
+          selected = intersect(c("Portugal", "Norte"), local_area)
+        ),
+        selectInput(
+          "cause",
+          with_help("Causa de Morte:", cause_limit_help()),
+          choices = diseases,
+          selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
+          multiple = TRUE
+        ),
+        selectInput("sex", "Sexo:", choices = sex_levels, selected = "HM", multiple = TRUE),
+        selectInput(
+          "observed_metric",
+          with_help("Métrica:", annual_metric_help()),
+          choices = annual_metric_choices,
+          selected = "dsr"
+        ),
+        conditionalPanel(
+          "input.observed_metric == 'smr' || input.observed_metric == 'isr'",
+          selectInput(
+            "observed_smr_reference",
+            with_help("Referência da padronização indirecta:", smr_reference_help()),
+            choices = smr_reference_choices,
+            selected = "Portugal"
+          )
+        ),
+        conditionalPanel(
+          age_scoped_condition,
+          radioButtons(
+            "population",
+            with_help("Idades:", population_help()),
+            choices = c("Todas as idades" = "Total", "Menos de 75 anos" = "Menos de 75 anos")
+          )
         ),
         year_range_slider(
           years = rate_years,
           "years_import",
-          "Anos a importar:"
+          with_help("Anos:", "Para ver um só ano, junte as duas pontas do intervalo.")
         ),
+        selectInput(
+          "observed_pooling",
+          with_help("Agregação plurianual:", pooling_help()),
+          choices = POOLING_WINDOW_CHOICES,
+          selected = "1"
+        ),
+        uiOutput("observedLoadEstimate"),
         actions = load_actions("go_rates", "Carregar dados", "cancel_rates")
       ),
-      result_card(
-        "Resumo",
-        tableOutput("rateSummaryTable"),
-        tools = download_tool("downloadRateSummaryCSV", "Descarregar resumo (CSV)", "CSV")
+      # Filled in by the server after each load, with what that load brought.
+      conditionalPanel(
+        "input.go_rates > 0",
+        result_card(
+          "Filtrar resultados",
+          help = paste0(
+            "Filtra os dados já carregados, sem voltar a calcular: o gráfico, a tendência, a tabela e os CSV ",
+            "seguem esta escolha. Para outra métrica, outras idades ou agregação, ou para locais, causas, sexos ",
+            "ou anos que não foram carregados, use o painel à esquerda e carregue de novo."
+          ),
+          bslib::layout_columns(
+            col_widths = bslib::breakpoints(sm = c(12, 12, 12), lg = c(4, 4, 4)),
+            selectInput("observed_view_location", "Locais:", choices = NULL, multiple = TRUE, width = "100%"),
+            selectInput("observed_view_cause", "Causas de morte:", choices = NULL, multiple = TRUE, width = "100%"),
+            checkboxGroupInput("observed_view_sex", "Sexo:", choices = sex_levels, selected = sex_levels, inline = TRUE)
+          ),
+          sliderInput(
+            "observed_view_years", "Anos:",
+            min = min(rate_years), max = max(rate_years), value = range(rate_years),
+            step = 1, sep = "", width = "100%"
+          )
+        )
       ),
       result_card(
-        "Evolução da taxa",
-        plotly::plotlyOutput("ratePlot", height = "400px"),
+        "Gráfico",
+        plotly::plotlyOutput("observedPlot", height = "520px"),
         help = paste0(
-          "A zona sombreada mostra o intervalo de confiança de 95% (a incerteza ",
-          "em torno da taxa). Passe o rato sobre um ponto para ver os valores."
+          "Um painel por causa de morte. Ao longo dos anos, cada local é uma cor e cada sexo um tipo de linha; ",
+          "a zona sombreada é o intervalo de confiança de 95%. Num só ano, uma barra por local. ",
+          "Passe o rato sobre um ponto para ver os valores."
         ),
-        tools = download_tool("downloadRatePlot", "Descarregar gráfico (PNG)", "PNG")
+        tools = download_tool("downloadObservedPlot", "Descarregar gráfico (PNG)", "PNG")
       ),
       result_card(
         "Tendência",
@@ -874,9 +957,15 @@ observed_mortality_tab_ui <- function() {
         uiOutput("rateTrendNote")
       ),
       result_card(
-        "Série anual observada",
-        tableOutput("rateTable"),
-        tools = download_tool("downloadRateTableCSV", "Descarregar tabela (CSV)", "CSV")
+        "Valores",
+        tableOutput("observedTable"),
+        uiOutput("observedFootnote"),
+        tools = download_tool("downloadObservedCSV", "Descarregar dados (CSV)", "CSV")
+      ),
+      result_card(
+        "Fontes usadas",
+        tableOutput("observedSourcesTable"),
+        tools = download_tool("downloadObservedSourcesCSV", "Descarregar fontes (CSV)", "CSV")
       )
     )
   )
@@ -928,78 +1017,6 @@ beginner_forecasting_tab_ui <- function() {
           tableOutput("beginnerForecastTable"),
           tools = download_tool("downloadBeginnerForecastCSV", "Descarregar tabela (CSV)", "CSV")
         )
-      )
-    )
-  )
-}
-
-annual_metrics_tab_ui <- function() {
-  bslib::nav_panel(
-    "Métricas Anuais",
-    bslib::layout_sidebar(
-      fillable = FALSE,
-      sidebar = analysis_sidebar(
-        selectInput(
-          "annual_year",
-          "Ano:",
-          choices = sort(year_of_interest),
-          selected = max(year_of_interest)
-        ),
-        selectInput(
-          "annual_cause",
-          "Causa de Morte:",
-          choices = diseases,
-          selected = if ("Todas as causas de morte" %in% diseases) "Todas as causas de morte" else utils::head(diseases, 1),
-          multiple = TRUE
-        ),
-        selectInput("annual_sex", "Sexo:", choices = sex_levels, selected = "HM"),
-        selectInput(
-          "annual_area",
-          with_help("Local adicional:", region_aggregation_note()),
-          # Portugal and Norte are always the first two columns.
-          choices = setdiff(local_area, c("Portugal", "Norte")),
-          multiple = TRUE,
-          selected = character(0)
-        ),
-        textInput("annual_area_label", "Nome da selecção (opcional):", placeholder = "Ex.: ACES / ULS"),
-        selectInput(
-          "annual_metric",
-          with_help("Métrica:", annual_metric_help()),
-          choices = annual_metric_choices,
-          selected = "deaths"
-        ),
-        conditionalPanel(
-          "input.annual_metric == 'smr' || input.annual_metric == 'isr'",
-          selectInput(
-            "annual_smr_reference",
-            with_help("Referência da padronização indirecta:", smr_reference_help()),
-            choices = smr_reference_choices,
-            selected = "Portugal"
-          )
-        ),
-        selectInput(
-          "annual_pooling",
-          with_help("Agregação plurianual:", pooling_help()),
-          choices = POOLING_WINDOW_CHOICES,
-          selected = "1"
-        ),
-        actions = load_actions("go_annual_metrics", "Carregar métricas", "cancel_annual_metrics")
-      ),
-      result_card(
-        "Métricas",
-        tableOutput("annualMetricsTable"),
-        uiOutput("annualMetricsFootnote"),
-        tools = download_tool("downloadAnnualMetricsCSV", "Descarregar tabela (CSV)", "CSV")
-      ),
-      result_card(
-        "Gráfico",
-        plotOutput("annualMetricsPlot", height = "420px"),
-        tools = download_tool("downloadAnnualMetricsPlot", "Descarregar gráfico (PNG)", "PNG")
-      ),
-      result_card(
-        "Fontes usadas",
-        tableOutput("annualSourcesTable"),
-        tools = download_tool("downloadAnnualSourcesCSV", "Descarregar fontes (CSV)", "CSV")
       )
     )
   )
@@ -1099,7 +1116,6 @@ mortality_area_ui <- function() {
     bslib::navset_underline(
       id = "mortality_view",
       observed_mortality_tab_ui(),
-      annual_metrics_tab_ui(),
       avoidable_tab_ui()
     )
   )
@@ -1425,7 +1441,7 @@ planning_method_notes <- function() {
     h4("Mudanças de série"),
     tags$ul(
       tags$li("Pensões: em 2017 a Série 2017 da segurança social substitui a Série 1990-2023, com cerca de 5,5% menos pensionistas. Os anos antes e depois não são directamente comparáveis; o gráfico de evolução marca a mudança."),
-      tags$li("População: a série revista do INE a partir de 2021 (ver o separador Métricas Anuais e o manual)."),
+      tags$li("População: a série revista do INE a partir de 2021 (ver o separador Mortalidade Observada e o manual)."),
       tags$li("Óbitos com menos de 1 ano por município: completos desde 2011; em 1995-2001 a soma municipal fica abaixo do total nacional e o valor é marcado com \u2020.")
     ),
     h4("Lacunas nos dados municipais do INE"),

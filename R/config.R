@@ -324,6 +324,12 @@ annualised_metric_ids <- c("deaths", "ypll")
 # alongside the selected area.
 indirect_metric_ids <- c("smr", "isr")
 
+# Metrics that can be limited to deaths before 75: each is computed from an age
+# distribution, so dropping the bands from 75 up gives its premature version.
+# AVPP already stops at 70, the proportional share is a share of all deaths,
+# and the infant metrics cover a single age.
+age_scoped_metric_ids <- c("deaths", "crude", "dsr", "smr", "isr")
+
 # Reference geography for indirect standardisation. Portugal is the default so
 # an SMR of 100 always means "national average"; the region is offered for
 # users who want to know whether a municipality is unusual *within* its region.

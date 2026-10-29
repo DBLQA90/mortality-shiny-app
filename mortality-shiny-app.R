@@ -87,7 +87,7 @@ ui <- bslib::page_navbar(
 # =========================================================
 
 server <- function(input, output, session) {
-  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L, avoidable = 0L)
+  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, avoidable = 0L)
 
   # One selection for every tab: see R/shared_selection.R.
   register_shared_selection(input, session)
@@ -200,16 +200,14 @@ server <- function(input, output, session) {
       return()
     }
 
-    area_inputs <- c("area", "area2", "beginner_area", "availability_area", "annual_area", "avoidable_area", "planning_area")
+    area_inputs <- c("area", "observed_compare", "area2", "beginner_area", "availability_area", "avoidable_area", "planning_area")
     dropped <- character(0)
 
     for (input_id in area_inputs) {
       reconciled <- reconcile_area_selection(
         selected = input[[input_id]],
         vintage = vintage,
-        lookup = lookup,
-        # The annual tab's third column excludes the two fixed columns.
-        exclude = if (identical(input_id, "annual_area")) c("Portugal", "Norte") else character(0)
+        lookup = lookup
       )
 
       dropped <- c(dropped, reconciled$dropped)
@@ -236,7 +234,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$cancel_rates, {
     cancel_seq$rates <- cancel_seq$rates + 1L
-    showNotification("Pedido de interrupção recebido (Taxas).", type = "warning", duration = 3)
+    showNotification("Pedido de interrupção recebido (Mortalidade observada).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
 
   observeEvent(input$cancel_forecast, {
@@ -247,11 +245,6 @@ server <- function(input, output, session) {
   observeEvent(input$cancel_beginner_forecast, {
     cancel_seq$beginner <- cancel_seq$beginner + 1L
     showNotification("Pedido de interrupção recebido (Previsão Guiada).", type = "warning", duration = 3)
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$cancel_annual_metrics, {
-    cancel_seq$annual <- cancel_seq$annual + 1L
-    showNotification("Pedido de interrupção recebido (Métricas anuais).", type = "warning", duration = 3)
   }, ignoreInit = TRUE)
 
   observeEvent(input$cancel_avoidable, {
@@ -266,8 +259,6 @@ server <- function(input, output, session) {
   }
 
   year_load_state <- reactiveValues(
-    rates_range = NULL,
-    rates_order = "desc",
     beginner_range = NULL,
     beginner_order = "desc",
     forecast_range = NULL,
@@ -311,12 +302,6 @@ server <- function(input, output, session) {
 
     "desc"
   }
-
-  observeEvent(input$years_import, {
-    current_range <- clean_year_range(input$years_import)
-    year_load_state$rates_order <- detect_year_load_order(year_load_state$rates_range, current_range)
-    year_load_state$rates_range <- current_range
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   observeEvent(input$years_fit, {
     current_range <- clean_year_range(input$years_fit)
@@ -2779,45 +2764,58 @@ server <- function(input, output, session) {
     )
   }
 
-  get_annual_area_specs <- function(selected_areas,
-                                    custom_label = NULL,
-                                    region_mode = "original",
-                                    available_areas = NULL) {
-    selected_areas <- setdiff(sort(unique(as.character(selected_areas))), c("Portugal", "Norte"))
+  # The places of one request, in the order they are shown: the selection,
+  # summed into one geography or one place each, then every comparison place
+  # not already among them. A comparison is always its own place, never added
+  # to the selection.
+  get_observed_area_specs <- function(selected_areas,
+                                      custom_label = NULL,
+                                      area_mode = "sum",
+                                      compare_areas = character(0),
+                                      region_mode = "original",
+                                      available_areas = NULL) {
+    selected_areas <- sort(unique(as.character(selected_areas)))
+    compare_areas <- unique(as.character(compare_areas))
 
-    validate(
-      need(length(selected_areas) > 0, "Seleccione pelo menos um local adicional para a terceira coluna.")
-    )
+    validate(need(length(selected_areas) > 0, "Seleccione pelo menos um local de residência."))
 
     mismatch <- vintage_mismatch_message(
-      selected_areas,
+      unique(c(selected_areas, compare_areas)),
       active_nuts_vintage(),
       active_nuts_lookup()
     )
     validate(need(is.null(mismatch), mismatch))
 
-    # The third column sums whatever is selected into one geography, so an
-    # overlapping choice double-counts exactly as it does on the other tabs.
-    # Only reachable since NUTS I regions became selectable: before that every
-    # offered region sat at one level and so was disjoint from the others.
-    notify_uls_split(selected_areas)
-    overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
-    if (!is.null(overlap)) {
-      showNotification(overlap, type = "warning", duration = 20)
-    }
+    notify_uls_split(unique(c(selected_areas, compare_areas)))
 
-    list(
+    make_spec <- function(label, areas) {
       # Portugal is a national total under every NUTS vintage, so it is never
       # rebuilt from municipalities.
-      list(label = "Portugal", areas = "Portugal", expanded = character(0), warnings = character(0)),
-      make_annual_area_spec("Norte", "Norte", region_mode, available_areas),
-      make_annual_area_spec(
-        get_selection_label(selected_areas, custom_label),
-        selected_areas,
-        region_mode,
-        available_areas
-      )
-    )
+      if (identical(areas, "Portugal")) {
+        return(list(label = label, areas = "Portugal", expanded = character(0), warnings = character(0)))
+      }
+      make_annual_area_spec(label, areas, region_mode, available_areas)
+    }
+
+    specs <- if (identical(area_mode, "separate")) {
+      lapply(selected_areas, function(area) make_spec(area, area))
+    } else {
+      # A summed selection double-counts an overlapping choice (Portugal with
+      # anything, a region with its own municipalities). Warn rather than
+      # block: a user may knowingly want the combination.
+      overlap <- overlapping_selection_warning(selected_areas, lookup = active_nuts_lookup())
+      if (!is.null(overlap)) {
+        showNotification(overlap, type = "warning", duration = 20)
+      }
+      list(make_spec(get_selection_label(selected_areas, custom_label), selected_areas))
+    }
+
+    labels <- vapply(specs, `[[`, character(1), "label")
+    for (area in setdiff(compare_areas, labels)) {
+      specs <- c(specs, list(make_spec(area, area)))
+    }
+
+    specs
   }
 
   # Years contributing to a pooled value centred on `year`, clipped to the
@@ -2871,7 +2869,56 @@ server <- function(input, output, session) {
   # both indirect measures.
   annual_metrics_needing_population <- c("crude", "dsr", "smr", "isr")
 
-  load_annual_cause_data <- function(area_spec, cause, sex, years, metric_id, data_source = "ine") {
+  # Raw rows of `areas`: deaths with population ("full") or deaths alone.
+  load_raw_cause_data <- function(kind, areas, cause, years, data_source) {
+    if (identical(kind, "full")) {
+      get_data_for(
+        area = areas,
+        cause = cause,
+        years = years,
+        year_order = "desc",
+        data_source = data_source,
+        population_basis = active_population_basis()
+      )$full
+    } else {
+      get_death_data_for(
+        area = areas,
+        cause = cause,
+        years = years,
+        year_order = "desc",
+        data_source = data_source
+      )
+    }
+  }
+
+  # One load per cause for a whole request: the areas of every place are read
+  # together and each place takes its own rows. Every snapshot file holds every
+  # area, so reading one place costs nearly as much as reading them all, and
+  # loading place by place multiplied the time by the number of places. Each
+  # area's rows do not depend on which other areas are loaded with it. An area
+  # asked for that was not in `areas` is loaded then and added.
+  make_shared_loader <- function(areas, data_source) {
+    cache <- new.env(parent = emptyenv())
+    areas <- unique(as.character(areas))
+
+    function(kind, cause, years, wanted) {
+      key <- paste(kind, cause, paste(sort(as.integer(years)), collapse = ","), sep = "|")
+      entry <- if (exists(key, envir = cache, inherits = FALSE)) get(key, envir = cache, inherits = FALSE)
+      missing <- setdiff(as.character(wanted), entry$areas)
+      if (length(missing) > 0) {
+        load_areas <- if (is.null(entry)) union(areas, missing) else missing
+        data <- load_raw_cause_data(kind, load_areas, cause, years, data_source)
+        entry <- list(
+          areas = union(entry$areas, load_areas),
+          data = if (is.null(entry)) data else dplyr::bind_rows(entry$data, data)
+        )
+        assign(key, entry, envir = cache)
+      }
+      entry$data[entry$data$area %in% wanted, , drop = FALSE]
+    }
+  }
+
+  load_metric_cause_data <- function(area_spec, cause, sexes, years, metric_id, data_source = "ine", loader = NULL) {
     # The infant metrics read their own parallel datasets and take nothing from
     # the main archive. Loading it anyway is not merely wasted work: 2025 has
     # infant deaths and live births but no by-cause deaths, so the loader would
@@ -2883,27 +2930,15 @@ server <- function(input, output, session) {
       ))
     }
 
-    data <- if (metric_id %in% annual_metrics_needing_population) {
-      get_data_for(
-        area = area_spec$areas,
-        cause = cause,
-        years = years,
-        year_order = "desc",
-        data_source = data_source,
-        population_basis = active_population_basis()
-      )$full
+    kind <- if (metric_id %in% annual_metrics_needing_population) "full" else "deaths"
+    data <- if (is.null(loader)) {
+      load_raw_cause_data(kind, area_spec$areas, cause, years, data_source)
     } else {
-      get_death_data_for(
-        area = area_spec$areas,
-        cause = cause,
-        years = years,
-        year_order = "desc",
-        data_source = data_source
-      )
+      loader(kind, cause, years, area_spec$areas)
     }
 
     apply_region_source(data, area_spec$expanded) %>%
-      dplyr::filter(sex == .env$sex)
+      dplyr::filter(sex %in% .env$sexes)
   }
 
   # Collapse a multi-year, multi-area selection to one row per age band, which
@@ -2929,32 +2964,49 @@ server <- function(input, output, session) {
       }
     }
 
-    cause_data %>%
-      dplyr::group_by(age_band) %>%
-      dplyr::summarise(
-        deaths = sum(deaths, na.rm = TRUE),
-        pop = if ("pop" %in% names(cause_data)) sum(pop, na.rm = TRUE) else NA_real_,
-        .groups = "drop"
-      )
+    # Summed in base R rather than with group_by()/summarise(): a series calls
+    # this once per year, sex and place, and dplyr's set-up cost per call came
+    # to seconds. Bands come out in the order group_by() gives them (factor
+    # levels, or C-locale order for text).
+    bands <- sort(unique(cause_data$age_band), method = "radix")
+    group <- match(cause_data$age_band, bands)
+    band_sum <- function(x) {
+      x[is.na(x)] <- 0
+      out <- numeric(length(bands))
+      if (length(x) > 0) out[] <- rowsum(as.numeric(x), group, reorder = TRUE)[, 1]
+      out
+    }
+
+    tibble(
+      age_band = bands,
+      deaths = band_sum(cause_data$deaths),
+      pop = if ("pop" %in% names(cause_data)) band_sum(cause_data$pop) else rep(NA_real_, length(bands))
+    )
   }
 
-  calculate_annual_metric_values <- function(area_spec,
-                                             causes,
-                                             metric_id,
-                                             sex,
-                                             year,
-                                             token,
-                                             data_source = "ine",
-                                             pooling_window = 1L,
-                                             reference_areas = "Portugal") {
-    abort_if_cancelled("annual", token)
+  # The label of a metric, naming the under-75 scope when it applies. The
+  # under-75 standardised rate uses the ESP-2013 0-74 sub-population, a
+  # different standard from the all-age rate, so the label names it (as
+  # get_rate_mapping() does for the forecasts).
+  get_observed_metric_label <- function(metric_id, ages = "Total") {
+    label <- get_annual_metric_label(metric_id)
+    if (!identical(ages, "Menos de 75 anos")) {
+      return(label)
+    }
+    if (identical(metric_id, "dsr")) {
+      label <- "Mortalidade Padronizada (directa, padrão ESP 0-74)"
+    }
+    paste0(label, ", menos de 75 anos")
+  }
 
-    validate(
-      need(!is.na(get_annual_metric_label(metric_id)), "Seleccione uma métrica válida.")
-    )
-
-    pooling_window <- normalize_pooling_window(pooling_window)
+  # The years one value draws on: the pooled window centred on `year`, cut to
+  # the years that have what the metric needs. `refused` says why a year gives
+  # no value at all; `warnings` what a value that is given leaves out.
+  resolve_metric_window <- function(year, pooling_window, metric_id, areas, cause, sex, reference_areas) {
+    metric_label <- get_annual_metric_label(metric_id)
     years <- get_pooled_years(year, pooling_window, metric_id)
+    refuse <- function(message) list(years = integer(0), calendar_ok = FALSE, refused = message, warnings = character(0))
+    warnings <- character(0)
 
     # The latest year has deaths by age only for whole regions and all causes
     # (and the reference of an indirect rate must be one too). Outside that, a
@@ -2964,294 +3016,354 @@ server <- function(input, output, session) {
     calendar_ok <- FALSE
     if (length(calendar) > 0 && !(metric_id %in% infant_metric_ids)) {
       calendar_ok <- metric_id %in% c("deaths", "crude", "dsr", "smr", "isr", "ypll") &&
-        calendar_selection_supported(area_spec$areas, causes, sex) &&
-        (!metric_id %in% c("smr", "isr") || calendar_selection_supported(reference_areas, causes, sex))
+        calendar_selection_supported(areas, cause, sex) &&
+        (!metric_id %in% indirect_metric_ids || calendar_selection_supported(reference_areas, cause, sex))
       if (!calendar_ok) {
-        validate(need(!as.integer(year) %in% calendar, calendar_gap_message(calendar)))
+        if (as.integer(year) %in% calendar) {
+          return(refuse(calendar_gap_message(calendar)))
+        }
         years <- setdiff(years, calendar)
       }
     }
-    period_label <- make_period_label(min(years), max(years))
 
     # A rate needs a denominator for every year in the window. INE publishes
     # deaths ahead of population, so the most recent year(s) can be selectable
-    # for counts while being impossible for rates; say so plainly instead of
-    # failing later with an empty join.
-    if (metric_id %in% metrics_requiring_population) {
-      validate(
-        need(
-          length(years_without_population(years)) == 0,
-          population_gap_message(years, get_annual_metric_label(metric_id))
-        )
-      )
+    # for counts while being impossible for rates.
+    if (metric_id %in% metrics_requiring_population && length(years_without_population(years)) > 0) {
+      return(refuse(population_gap_message(years, metric_label)))
     }
 
     # Everything except the infant pair reads the by-cause death archive, which
-    # now ends a year before population does. Say so, rather than failing deep
-    # in the loader with a message about a missing snapshot file.
-    if (!(metric_id %in% infant_metric_ids)) {
-      validate(
-        need(
-          length(years_without_deaths(years, calendar_ok)) == 0,
-          death_gap_message(years, get_annual_metric_label(metric_id))
-        )
+    # ends a year before population does.
+    if (!(metric_id %in% infant_metric_ids) && length(years_without_deaths(years, calendar_ok)) > 0) {
+      return(refuse(death_gap_message(years, metric_label)))
+    }
+
+    # The infant metrics are bounded by their own datasets: the rate needs
+    # published live births (1995-), the count only the under-1 death archive.
+    # A year published only as an all-cause, both-sexes total cannot answer a
+    # cause- or sex-specific request; say which, rather than reporting zero.
+    if (metric_id %in% infant_metric_ids) {
+      infant_gap <- infant_gap_message(years, metric_id)
+      if (length(intersect(years, infant_metric_years(metric_id))) == 0) {
+        return(refuse(if (is.null(infant_gap)) "Sem dados de mortalidade infantil para o período seleccionado." else infant_gap))
+      }
+      detail_gap <- infant_detail_message(years, cause = cause, sex = sex)
+      if (!is.null(detail_gap) && length(infant_detail_years(years, cause, sex)) == 0) {
+        return(refuse(detail_gap))
+      }
+      warnings <- c(warnings, infant_gap, detail_gap)
+    }
+
+    list(years = years, calendar_ok = calendar_ok, refused = NULL, warnings = warnings)
+  }
+
+  # Every value of one place: one row per cause, sex and year in `years`, each
+  # from the pooled window centred on it. The data of each cause are loaded
+  # once, over every year any window reaches, and each window takes its own
+  # years from them - loading per year made a 30-year series 30 loads.
+  #
+  # Years that cannot be answered are left out rather than failing the whole
+  # request; the reasons are returned in the "notes" attribute.
+  calculate_metric_series <- function(area_spec,
+                                      causes,
+                                      sexes,
+                                      metric_id,
+                                      years,
+                                      token,
+                                      data_source = "ine",
+                                      pooling_window = 1L,
+                                      reference_areas = "Portugal",
+                                      ages = "Total",
+                                      loader = NULL) {
+    abort_if_cancelled("rates", token)
+
+    validate(
+      need(!is.na(get_annual_metric_label(metric_id)), "Seleccione uma métrica válida.")
+    )
+
+    pooling_window <- normalize_pooling_window(pooling_window)
+    under75 <- identical(ages, "Menos de 75 anos") && metric_id %in% age_scoped_metric_ids
+    metric_label <- get_observed_metric_label(metric_id, if (under75) ages else "Total")
+    keep_ages <- function(data) {
+      if (under75) dplyr::filter(data, !age_band %in% exclude_bands) else data
+    }
+    notes <- character(0)
+
+    # The reference must be built the same way as the areas it is compared
+    # against. Regions are summed from their municipalities, so a reference
+    # of "Norte" has to be expanded too - otherwise a municipal-sum area
+    # would be standardised against INE's own regional row, mixing the two
+    # conventions inside a single ratio.
+    reference_spec <- NULL
+    if (metric_id %in% indirect_metric_ids) {
+      reference_resolved <- resolve_region_areas(
+        areas = reference_areas,
+        region_mode = default_region_mode(),
+        lookup = active_nuts_lookup(),
+        available_areas = get_available_areas(data_source)
+      )
+      reference_spec <- list(
+        label = "referência",
+        areas = reference_resolved$areas,
+        expanded = reference_resolved$expanded
       )
     }
 
-    all_cause_deaths <- NA_real_
-    all_cause_source <- NA_character_
-    if (identical(metric_id, "proportional")) {
-      # Built exactly like the numerator, or the share would divide a regional
-      # row by a municipal sum.
-      all_cause_data <- apply_region_source(
-        get_death_data_for(
-          area = area_spec$areas,
-          cause = "Todas as causas de morte",
-          years = years,
-          year_order = "desc",
-          data_source = data_source
-        ),
-        area_spec$expanded
-      ) %>%
-        dplyr::filter(sex == .env$sex)
+    rows <- lapply(causes, function(cause) {
+      abort_if_cancelled("rates", token)
 
-      all_cause_deaths <- sum(all_cause_data$deaths, na.rm = TRUE)
-      all_cause_source <- get_loaded_source_summary(all_cause_data)$death_source
-
-      validate(
-        need(
-          is.finite(all_cause_deaths) && all_cause_deaths > 0,
-          glue::glue("Sem denominador válido de todas as causas para {area_spec$label}.")
-        )
-      )
-    }
-
-    metric_label <- get_annual_metric_label(metric_id)
-
-    dplyr::bind_rows(lapply(causes, function(cause) {
-      abort_if_cancelled("annual", token)
-
-      cause_data <- load_annual_cause_data(
-        area_spec = area_spec,
-        cause = cause,
-        sex = sex,
-        years = years,
-        metric_id = metric_id,
-        data_source = data_source
-      )
-
-      validate(
-        need(
-          nrow(cause_data) > 0 || metric_id %in% infant_metric_ids,
-          glue::glue("Sem dados para {area_spec$label} / {cause}.")
-        )
-      )
-
-      deaths <- sum(cause_data$deaths, na.rm = TRUE)
-      source_summary <- get_loaded_source_summary(cause_data)
-
-      # Age-band totals across the pooled window and the selected geography,
-      # reused by every metric that works from an age distribution.
-      pooled_bands <- collapse_annual_cause_data(cause_data)
-
-      metric_values <- switch(
-        metric_id,
-        deaths = {
-          ci <- compute_count_interval(deaths)
-          list(
-            value = deaths,
-            lower = unname(ci[[1]]),
-            upper = unname(ci[[2]]),
-            source_detail = source_summary$death_source
-          )
-        },
-        crude = {
-          # Computed from the pooled age bands, so a 3- or 5-year window gives
-          # total deaths over total person-years rather than a mean of yearly
-          # rates.
-          metric_row <- compute_metrics(
-            pooled_bands %>% dplyr::mutate(year = .env$year, sex = .env$sex, cause = .env$cause)
-          ) %>% dplyr::slice(1)
-          list(
-            value = first_numeric_or_na(metric_row$crude_rate),
-            lower = first_numeric_or_na(metric_row$crude_lower),
-            upper = first_numeric_or_na(metric_row$crude_upper),
-            source_detail = glue::glue("Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}")
-          )
-        },
-        dsr = {
-          metric_row <- compute_metrics(
-            pooled_bands %>% dplyr::mutate(year = .env$year, sex = .env$sex, cause = .env$cause)
-          ) %>% dplyr::slice(1)
-          list(
-            value = first_numeric_or_na(metric_row$dsr),
-            lower = first_numeric_or_na(metric_row$dsr_lower),
-            upper = first_numeric_or_na(metric_row$dsr_upper),
-            source_detail = glue::glue("Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}")
-          )
-        },
-        smr = ,
-        isr = {
-          # Indirect standardisation: the reference area's age-specific rates
-          # are applied to this area's age structure. The reference is loaded
-          # over the same pooled window, cause and sex, so both sides of the
-          # comparison rest on identical data.
-          # The reference must be built the same way as the areas it is compared
-          # against. Regions are summed from their municipalities, so a reference
-          # of "Norte" has to be expanded too - otherwise a municipal-sum area
-          # would be standardised against INE's own regional row, mixing the two
-          # conventions inside a single ratio.
-          reference_resolved <- resolve_region_areas(
-            areas = reference_areas,
-            region_mode = default_region_mode(),
-            lookup = active_nuts_lookup(),
-            available_areas = get_available_areas(data_source)
-          )
-
-          reference_bands <- collapse_annual_cause_data(
-            load_annual_cause_data(
-              # Carries the expansion so a regional reference is built the same
-              # way as the regional areas compared against it.
-              area_spec = list(
-                label = "referência",
-                areas = reference_resolved$areas,
-                expanded = reference_resolved$expanded
-              ),
-              cause = cause,
-              sex = sex,
-              years = years,
-              metric_id = "smr",
-              data_source = data_source
-            )
-          )
-
-          smr_row <- compute_smr(df_area = pooled_bands, df_ref = reference_bands)
-
-          if (identical(metric_id, "smr")) {
-            list(
-              value = first_numeric_or_na(smr_row$smr),
-              lower = first_numeric_or_na(smr_row$smr_lower),
-              upper = first_numeric_or_na(smr_row$smr_upper),
-              source_detail = glue::glue(
-                "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
-                "Ref.: {paste(reference_areas, collapse = '+')} ",
-                "(O={round(smr_row$observed)}, E={round(smr_row$expected, 1)})"
-              )
-            )
-          } else {
-            list(
-              value = first_numeric_or_na(smr_row$isr),
-              lower = first_numeric_or_na(smr_row$isr_lower),
-              upper = first_numeric_or_na(smr_row$isr_upper),
-              source_detail = glue::glue(
-                "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
-                "Ref.: {paste(reference_areas, collapse = '+')}"
-              )
-            )
+      windows <- list()
+      for (sex in sexes) {
+        for (year in years) {
+          w <- resolve_metric_window(year, pooling_window, metric_id, area_spec$areas, cause, sex, reference_areas)
+          notes <<- c(notes, w$warnings, w$refused)
+          if (is.null(w$refused)) {
+            windows[[length(windows) + 1L]] <- c(w, list(year = as.integer(year), sex = sex))
           }
-        },
-        proportional = {
-          ci <- compute_proportion_interval(deaths, all_cause_deaths)
-          list(
-            value = deaths / all_cause_deaths * 100,
-            lower = unname(ci[[1]]),
-            upper = unname(ci[[2]]),
-            source_detail = glue::glue("Óbitos: {source_summary$death_source}; Denom.: {all_cause_source}")
-          )
-        },
-        infant_deaths = {
-          # The count on its own. Available wherever the under-1 archive
-          # reaches, with no birth denominator involved, so it is readable at
-          # municipal scale where the rate is not.
-          count <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex)
-          ci <- compute_count_interval(count)
-          list(
-            value = count,
-            lower = unname(ci[[1]]),
-            upper = unname(ci[[2]]),
-            source_detail = get_loaded_source_summary(
-              get_infant_death_data(years, area_spec$areas, cause = cause, sex = sex)
-            )$death_source
-          )
-        },
-        infant = {
-          # Reads the parallel under-1 and births datasets rather than the main
-          # pipeline, which cannot separate infant deaths from deaths at ages
-          # one to four.
-          imr <- compute_infant_mortality(
-            deaths = infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex),
-            births = get_births_total(years, area_spec$areas)
-          )
-
-          list(
-            value = imr$value,
-            lower = imr$lower,
-            upper = imr$upper,
-            # Marks a rate whose denominator is too small to be read as a rate.
-            # The value is still shown; see infant_instability_footnote().
-            flag = if (infant_rate_is_unstable(imr$births)) infant_instability_mark else "",
-            source_detail = glue::glue(
-              "Óbitos <1 ano: {imr$deaths}; Nados-vivos: {format(imr$births, big.mark = '')}"
-            )
-          )
-        },
-        ypll = {
-          # Correct the weight of the `0 - 4 anos` band before summing years
-          # lost: nearly all of its deaths are infants, who lose almost the
-          # whole cutoff rather than the 67.5 years the band midpoint implies.
-          # Returns the frame unchanged when the under-1 counts do not cover the
-          # window, so AVPP is never half-corrected.
-          under_one <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex, complete = FALSE)
-          ypll_bands <- split_infant_age_band(pooled_bands, under_one)
-
-          ci <- compute_ypll_interval(ypll_bands, cutoff = 70)
-          list(
-            value = unname(ci[["estimate"]]),
-            lower = unname(ci[["lower"]]),
-            upper = unname(ci[["upper"]]),
-            source_detail = if (is.finite(under_one)) {
-              glue::glue("{source_summary$death_source}; <1 ano separado ({round(under_one)} óbitos)")
-            } else {
-              glue::glue("{source_summary$death_source}; <1 ano não separado")
-            }
-          )
-        },
-        list(value = NA_real_, lower = NA_real_, upper = NA_real_, source_detail = "N/D")
-      )
-
-      # Pooling is presented as a moving average, and rates already behave that
-      # way: they divide by pooled person-years, so they stay per-year. Counts
-      # do not - summing three years of deaths triples the number, which reads
-      # as a tripling of mortality rather than as smoothing, and cannot be
-      # compared with an unpooled value. Averaging them over the contributing
-      # years puts every metric on the same per-year footing. Intervals are
-      # scaled with the estimate, so they remain the interval of the average.
-      #
-      # Infant deaths are the exception and stay a window total - see
-      # annualised_metric_ids for why.
-      annualise <- if (metric_id %in% annualised_metric_ids && length(years) > 1L) {
-        length(years)
-      } else {
-        1L
+        }
+      }
+      if (length(windows) == 0) {
+        return(NULL)
       }
 
-      tibble(
-        location = area_spec$label,
-        cause = cause,
-        metric_id = metric_id,
-        metric = metric_label,
-        period = period_label,
-        n_years = length(years),
-        value = metric_values$value / annualise,
-        lower = metric_values$lower / annualise,
-        upper = metric_values$upper / annualise,
-        # Marks a value that should not be read at face value. Only the infant
-        # rate sets one today; every other metric carries an empty string so the
-        # column is always present and the table can paste it unconditionally.
-        flag = if (is.null(metric_values$flag)) "" else as.character(metric_values$flag),
-        source_detail = as.character(metric_values$source_detail)
-      )
-    }))
+      load_years <- sort(unique(unlist(lapply(windows, `[[`, "years"))))
+      cause_data <- keep_ages(load_metric_cause_data(area_spec, cause, sexes, load_years, metric_id, data_source, loader))
+
+      # The reference is loaded over the same years, cause and sex, so both
+      # sides of an indirect comparison rest on identical data.
+      reference_data <- if (!is.null(reference_spec)) {
+        keep_ages(load_metric_cause_data(reference_spec, cause, sexes, load_years, "smr", data_source, loader))
+      }
+
+      # Built exactly like the numerator, or the share would divide a regional
+      # row by a municipal sum.
+      all_cause_data <- if (identical(metric_id, "proportional")) {
+        apply_region_source(
+          if (is.null(loader)) {
+            load_raw_cause_data("deaths", area_spec$areas, "Todas as causas de morte", load_years, data_source)
+          } else {
+            loader("deaths", "Todas as causas de morte", load_years, area_spec$areas)
+          },
+          area_spec$expanded
+        ) %>%
+          dplyr::filter(sex %in% .env$sexes)
+      }
+
+      window_slice <- function(data, w) {
+        data[data$sex == w$sex & data$year %in% w$years, , drop = FALSE]
+      }
+
+      # Rates for every window in one call: each window's pooled age bands are
+      # stacked under its own year, which compute_metrics() groups by. A 3- or
+      # 5-year window gives total deaths over total person-years rather than a
+      # mean of yearly rates.
+      rate_rows <- NULL
+      if (metric_id %in% c("crude", "dsr")) {
+        stacked <- dplyr::bind_rows(lapply(windows, function(w) {
+          window_data <- window_slice(cause_data, w)
+          if (nrow(window_data) == 0) {
+            return(NULL)
+          }
+          collapse_annual_cause_data(window_data) %>%
+            dplyr::mutate(year = w$year, sex = w$sex, cause = .env$cause)
+        }))
+        if (nrow(stacked) > 0) {
+          rate_rows <- compute_metrics(stacked)
+        }
+      }
+
+      dplyr::bind_rows(lapply(windows, function(w) {
+        years <- w$years
+        sex <- w$sex
+        period_label <- make_period_label(min(years), max(years))
+        window_data <- window_slice(cause_data, w)
+
+        if (nrow(window_data) == 0 && !metric_id %in% infant_metric_ids) {
+          notes <<- c(notes, glue::glue("Sem dados para {area_spec$label} / {cause} / {sex} em {period_label}."))
+          return(NULL)
+        }
+
+        deaths <- sum(window_data$deaths, na.rm = TRUE)
+        source_summary <- get_loaded_source_summary(window_data)
+
+        # Age-band totals across the pooled window and the selected geography,
+        # reused by every metric that works from an age distribution.
+        pooled_bands <- collapse_annual_cause_data(window_data)
+
+        metric_values <- switch(
+          metric_id,
+          deaths = {
+            ci <- compute_count_interval(deaths)
+            list(
+              value = deaths,
+              lower = unname(ci[[1]]),
+              upper = unname(ci[[2]]),
+              source_detail = source_summary$death_source
+            )
+          },
+          crude = ,
+          dsr = {
+            metric_row <- rate_rows[rate_rows$year == w$year & rate_rows$sex == sex, , drop = FALSE]
+            cols <- if (identical(metric_id, "crude")) c("crude_rate", "crude_lower", "crude_upper") else c("dsr", "dsr_lower", "dsr_upper")
+            list(
+              value = first_numeric_or_na(metric_row[[cols[[1]]]]),
+              lower = first_numeric_or_na(metric_row[[cols[[2]]]]),
+              upper = first_numeric_or_na(metric_row[[cols[[3]]]]),
+              source_detail = paste0("Pop.: ", source_summary$population_source, "; Óbitos: ", source_summary$death_source)
+            )
+          },
+          smr = ,
+          isr = {
+            # Indirect standardisation: the reference area's age-specific rates
+            # are applied to this area's age structure.
+            reference_bands <- collapse_annual_cause_data(window_slice(reference_data, w))
+            smr_row <- compute_smr(df_area = pooled_bands, df_ref = reference_bands)
+
+            if (identical(metric_id, "smr")) {
+              list(
+                value = first_numeric_or_na(smr_row$smr),
+                lower = first_numeric_or_na(smr_row$smr_lower),
+                upper = first_numeric_or_na(smr_row$smr_upper),
+                source_detail = glue::glue(
+                  "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
+                  "Ref.: {paste(reference_areas, collapse = '+')} ",
+                  "(O={round(smr_row$observed)}, E={round(smr_row$expected, 1)})"
+                )
+              )
+            } else {
+              list(
+                value = first_numeric_or_na(smr_row$isr),
+                lower = first_numeric_or_na(smr_row$isr_lower),
+                upper = first_numeric_or_na(smr_row$isr_upper),
+                source_detail = glue::glue(
+                  "Pop.: {source_summary$population_source}; Óbitos: {source_summary$death_source}; ",
+                  "Ref.: {paste(reference_areas, collapse = '+')}"
+                )
+              )
+            }
+          },
+          proportional = {
+            all_cause_window <- window_slice(all_cause_data, w)
+            all_cause_deaths <- sum(all_cause_window$deaths, na.rm = TRUE)
+            if (!is.finite(all_cause_deaths) || all_cause_deaths <= 0) {
+              notes <<- c(notes, glue::glue("Sem denominador válido de todas as causas para {area_spec$label} em {period_label}."))
+              return(NULL)
+            }
+            ci <- compute_proportion_interval(deaths, all_cause_deaths)
+            list(
+              value = deaths / all_cause_deaths * 100,
+              lower = unname(ci[[1]]),
+              upper = unname(ci[[2]]),
+              source_detail = glue::glue(
+                "Óbitos: {source_summary$death_source}; Denom.: {get_loaded_source_summary(all_cause_window)$death_source}"
+              )
+            )
+          },
+          infant_deaths = {
+            # The count on its own. Available wherever the under-1 archive
+            # reaches, with no birth denominator involved, so it is readable at
+            # municipal scale where the rate is not.
+            count <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex)
+            ci <- compute_count_interval(count)
+            list(
+              value = count,
+              lower = unname(ci[[1]]),
+              upper = unname(ci[[2]]),
+              source_detail = get_loaded_source_summary(
+                get_infant_death_data(years, area_spec$areas, cause = cause, sex = sex)
+              )$death_source
+            )
+          },
+          infant = {
+            # Reads the parallel under-1 and births datasets rather than the main
+            # pipeline, which cannot separate infant deaths from deaths at ages
+            # one to four.
+            imr <- compute_infant_mortality(
+              deaths = infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex),
+              births = get_births_total(years, area_spec$areas)
+            )
+
+            list(
+              value = imr$value,
+              lower = imr$lower,
+              upper = imr$upper,
+              # Marks a rate whose denominator is too small to be read as a rate.
+              # The value is still shown; see infant_instability_footnote().
+              flag = if (infant_rate_is_unstable(imr$births)) infant_instability_mark else "",
+              source_detail = glue::glue(
+                "Óbitos <1 ano: {imr$deaths}; Nados-vivos: {format(imr$births, big.mark = '')}"
+              )
+            )
+          },
+          ypll = {
+            # Correct the weight of the `0 - 4 anos` band before summing years
+            # lost: nearly all of its deaths are infants, who lose almost the
+            # whole cutoff rather than the 67.5 years the band midpoint implies.
+            # Returns the frame unchanged when the under-1 counts do not cover the
+            # window, so AVPP is never half-corrected.
+            under_one <- infant_deaths_total(years, area_spec$areas, cause = cause, sex = sex, complete = FALSE)
+            ypll_bands <- split_infant_age_band(pooled_bands, under_one)
+
+            ci <- compute_ypll_interval(ypll_bands, cutoff = 70)
+            list(
+              value = unname(ci[["estimate"]]),
+              lower = unname(ci[["lower"]]),
+              upper = unname(ci[["upper"]]),
+              source_detail = if (is.finite(under_one)) {
+                glue::glue("{source_summary$death_source}; <1 ano separado ({round(under_one)} óbitos)")
+              } else {
+                glue::glue("{source_summary$death_source}; <1 ano não separado")
+              }
+            )
+          },
+          list(value = NA_real_, lower = NA_real_, upper = NA_real_, source_detail = "N/D")
+        )
+
+        # Pooling is presented as a moving average, and rates already behave that
+        # way: they divide by pooled person-years, so they stay per-year. Counts
+        # do not - summing three years of deaths triples the number, which reads
+        # as a tripling of mortality rather than as smoothing, and cannot be
+        # compared with an unpooled value. Averaging them over the contributing
+        # years puts every metric on the same per-year footing. Intervals are
+        # scaled with the estimate, so they remain the interval of the average.
+        #
+        # Infant deaths are the exception and stay a window total - see
+        # annualised_metric_ids for why.
+        annualise <- if (metric_id %in% annualised_metric_ids && length(years) > 1L) {
+          length(years)
+        } else {
+          1L
+        }
+
+        # A plain list per value, bound into the frame once below: building a
+        # one-row tibble for each of them was a noticeable share of the time.
+        list(
+          location = area_spec$label,
+          cause = cause,
+          sex = sex,
+          year = w$year,
+          metric_id = metric_id,
+          metric = metric_label,
+          period = period_label,
+          n_years = length(years),
+          value = metric_values$value / annualise,
+          lower = metric_values$lower / annualise,
+          upper = metric_values$upper / annualise,
+          # Marks a value that should not be read at face value. Only the infant
+          # rate sets one today; every other metric carries an empty string so the
+          # column is always present and the table can paste it unconditionally.
+          flag = if (is.null(metric_values$flag)) "" else as.character(metric_values$flag),
+          # Drawn on deaths by age rebuilt from INE's weekly deaths.
+          provisional = isTRUE(w$calendar_ok) && any(years %in% calendar_death_years),
+          source_detail = as.character(metric_values$source_detail)
+        )
+      }))
+    })
+
+    out <- dplyr::bind_rows(rows)
+    attr(out, "notes") <- unique(notes)
+    out
   }
 
   round_annual_metric_value <- function(metric_id, value) {
@@ -3278,19 +3390,6 @@ server <- function(input, output, session) {
     glue::glue("{value} ({lower}; {upper})")
   }
 
-  get_annual_sort_location <- function(metric_long) {
-    unique(metric_long$sort_location)[[1]]
-  }
-
-  get_annual_cause_order <- function(metric_long) {
-    sort_location <- get_annual_sort_location(metric_long)
-
-    metric_long %>%
-      dplyr::filter(location == .env$sort_location) %>%
-      dplyr::arrange(dplyr::desc(value)) %>%
-      dplyr::pull(cause)
-  }
-
   # Rows carry a `flag` column marking values that should not be read at face
   # value. Defaulted here so a frame built without one still renders.
   with_annual_flags <- function(metric_long) {
@@ -3315,120 +3414,421 @@ server <- function(input, output, session) {
     infant_instability_footnote()
   }
 
-  build_annual_metrics_table <- function(metric_long, selected_metric) {
-    cause_order <- get_annual_cause_order(metric_long)
-    sort_location <- get_annual_sort_location(metric_long)
-    location_order <- unique(metric_long$location)
+  # -------------------------
+  # Observed Mortality
+  # -------------------------
+  # More causes than this are listed in the table but not drawn: each cause is
+  # a panel, and past four the panels are too small to read.
+  OBSERVED_PLOT_MAX_CAUSES <- 4L
 
-    with_annual_flags(metric_long) %>%
-      dplyr::filter(metric_id == selected_metric) %>%
-      dplyr::mutate(
-        cause = factor(cause, levels = cause_order),
-        # The mark is appended to the formatted value so it travels into the
-        # CSV too: the caveat should follow the number rather than stay behind
-        # in the browser.
-        display_value = paste0(
-          purrr::pmap_chr(
-            list(metric_id, value, lower, upper),
-            format_annual_metric_interval
-          ),
-          flag
-        )
-      ) %>%
-      dplyr::arrange(cause) %>%
-      dplyr::select(`Causa de Morte` = cause, location, display_value) %>%
-      tidyr::pivot_wider(names_from = location, values_from = display_value) %>%
-      dplyr::arrange(`Causa de Morte`) %>%
-      dplyr::mutate(`Causa de Morte` = as.character(`Causa de Morte`)) %>%
-      dplyr::select(`Causa de Morte`, dplyr::all_of(location_order))
-  }
+  # One request: every place (the selection, summed or one by one, and the
+  # comparison places), cause and sex, over the chosen years, for one metric.
+  # The chart, the trend and the tables all read the rows this returns.
+  observed_metrics <- eventReactive(input$go_rates, {
+    token <- isolate(cancel_seq$rates)
+    selected_causes <- input$cause
+    selected_sexes <- intersect(sex_levels, input$sex)
+    selected_metric <- input$observed_metric
 
-  build_annual_sources_table <- function(metric_long, selected_metric) {
-    cause_order <- get_annual_cause_order(metric_long)
-    location_order <- unique(metric_long$location)
+    validate(
+      need(length(input$area) > 0, "Seleccione pelo menos um local de residência."),
+      need(length(selected_causes) > 0, "Seleccione pelo menos uma causa de morte."),
+      need(length(selected_sexes) > 0, "Seleccione pelo menos um sexo."),
+      need(length(selected_metric) == 1, "Seleccione uma métrica.")
+    )
 
-    metric_long %>%
-      dplyr::filter(metric_id == selected_metric) %>%
-      dplyr::mutate(cause = factor(cause, levels = cause_order)) %>%
-      dplyr::arrange(cause) %>%
-      dplyr::select(`Causa de Morte` = cause, location, source_detail) %>%
-      tidyr::pivot_wider(names_from = location, values_from = source_detail) %>%
-      dplyr::arrange(`Causa de Morte`) %>%
-      dplyr::mutate(`Causa de Morte` = as.character(`Causa de Morte`)) %>%
-      dplyr::select(`Causa de Morte`, dplyr::all_of(location_order))
-  }
+    pooling_window <- normalize_pooling_window(input$observed_pooling)
+    region_mode <- default_region_mode()
+    reference_areas <- value_or_default(input$observed_smr_reference, "Portugal")
+    ages <- if (selected_metric %in% age_scoped_metric_ids) value_or_default(input$population, "Total") else "Total"
+    target_years <- get_years_in_selected_range(input$years_import)
+    pooled_years <- sort(unique(unlist(lapply(target_years, function(year) {
+      get_pooled_years(year, pooling_window, selected_metric)
+    }))))
 
-  build_annual_metrics_plot <- function(metric_long, selected_metric) {
-    cause_order <- get_annual_cause_order(metric_long)
-    plot_df <- with_annual_flags(metric_long) %>%
-      dplyr::filter(metric_id == selected_metric) %>%
-      dplyr::mutate(
-        cause = factor(cause, levels = rev(cause_order)),
-        value = round_annual_metric_value(metric_id, value),
-        lower = round_annual_metric_value(metric_id, lower),
-        upper = round_annual_metric_value(metric_id, upper),
-        # Bars carry the mark on the location label, since a chart has no cell
-        # to append it to. Flagging the whole series is right: the denominator
-        # is a property of the place and period, not of one cause.
-        location = paste0(location, ifelse(nzchar(flag), paste0(" ", flag), ""))
-      )
+    area_specs <- get_observed_area_specs(
+      selected_areas = input$area,
+      custom_label = input$area_label,
+      area_mode = value_or_default(input$observed_area_mode, "sum"),
+      compare_areas = input$observed_compare,
+      region_mode = region_mode,
+      available_areas = get_available_areas(active_data_source())
+    )
+    all_areas <- unique(c(as.character(input$area), as.character(input$observed_compare)))
+    areas_needed <- sort(unique(unlist(
+      c(lapply(area_specs, `[[`, "areas"),
+        if (selected_metric %in% indirect_metric_ids) list(reference_areas) else NULL),
+      use.names = FALSE
+    )))
 
-    validate(need(nrow(plot_df) > 0, "Seleccione pelo menos uma causa de morte para apresentar."))
-
-    period_text <- if ("period" %in% names(plot_df)) {
-      periods <- unique(as.character(plot_df$period))
-      n_years <- if ("n_years" %in% names(plot_df)) max(plot_df$n_years, na.rm = TRUE) else 1L
-      if (length(periods) == 1 && n_years > 1) {
-        basis <- if (selected_metric %in% annualised_metric_ids) {
-          "média anual"
-        } else if (identical(selected_metric, infant_count_metric_id)) {
-          "total do período"
-        } else {
-          "pessoas-ano"
-        }
-        glue::glue("{periods} ({n_years} anos agregados, {basis})")
-      } else {
-        paste(periods, collapse = ", ")
-      }
-    } else {
-      NULL
+    # Surface any incomplete municipal rebuild, and the NUTS-2024 break when
+    # the user chose to keep INE's own regional rows.
+    for (message_text in unique(unlist(lapply(area_specs, `[[`, "warnings"), use.names = FALSE))) {
+      showNotification(message_text, type = "warning", duration = 15)
+    }
+    vintage_warning <- region_vintage_warning(areas = all_areas, years = pooled_years, region_mode = region_mode)
+    if (!is.null(vintage_warning)) {
+      showNotification(vintage_warning, type = "warning", duration = 20)
     }
 
-    plot <- ggplot(plot_df, aes(x = cause, y = value, fill = location)) +
-      geom_col(position = position_dodge(width = 0.72), width = 0.65) +
-      geom_errorbar(
-        aes(ymin = lower, ymax = upper),
-        position = position_dodge(width = 0.72),
-        width = 0.2,
-        linewidth = 0.4,
-        na.rm = TRUE
+    if (!selected_metric %in% infant_metric_ids) {
+      notify_region_source_warnings(
+        selected_areas = all_areas,
+        expanded_regions = unique(unlist(lapply(area_specs, `[[`, "expanded"), use.names = FALSE)),
+        causes = selected_causes,
+        years = pooled_years
       )
+    }
+
+    # A series or a pooled window straddling 2020/2021 mixes the two
+    # population series.
+    revision_warning <- population_revision_warning(pooled_years, selected_metric)
+    if (!is.null(revision_warning)) {
+      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
+    }
+
+    if (selected_metric %in% infant_metric_ids) {
+      undercount <- unique(unlist(lapply(selected_causes, function(cause) {
+        lapply(selected_sexes, function(sex) {
+          infant_undercount_message(
+            pooled_years,
+            areas = all_areas,
+            cause = cause,
+            sex = sex,
+            municipalities = active_nuts_lookup()$municipality
+          )
+        })
+      })))
+      if (length(undercount) > 0) {
+        showNotification(paste(undercount, collapse = "\n"), type = "warning", duration = 20)
+      }
+    }
+
+    notify_snapshot_request_warnings(
+      years = setdiff(pooled_years, calendar_death_years),
+      areas = areas_needed,
+      causes = unique(c(selected_causes, if (identical(selected_metric, "proportional")) "Todas as causas de morte")),
+      data_source = active_data_source(),
+      include_population = selected_metric %in% annual_metrics_needing_population,
+      include_deaths = TRUE
+    )
+
+    # Every area any place reads, the indirect reference resolved as
+    # calculate_metric_series() resolves it, so each cause is loaded once.
+    load_areas <- unlist(lapply(area_specs, `[[`, "areas"), use.names = FALSE)
+    if (selected_metric %in% indirect_metric_ids) {
+      load_areas <- c(load_areas, resolve_region_areas(
+        areas = reference_areas,
+        region_mode = default_region_mode(),
+        lookup = active_nuts_lookup(),
+        available_areas = get_available_areas(active_data_source())
+      )$areas)
+    }
+    loader <- make_shared_loader(load_areas, active_data_source())
+
+    results <- shiny::withProgress(message = get_data_source_progress_message(active_data_source()), value = 0, {
+      with_data_load_cancel_checker(
+        cancel_checker = function() !identical(cancel_seq$rates, token),
+        lapply(area_specs, function(area_spec) {
+          incProgress(0.9 / length(area_specs))
+          calculate_metric_series(
+            area_spec = area_spec,
+            causes = selected_causes,
+            sexes = selected_sexes,
+            metric_id = selected_metric,
+            years = target_years,
+            token = token,
+            data_source = active_data_source(),
+            pooling_window = pooling_window,
+            reference_areas = reference_areas,
+            ages = ages,
+            loader = loader
+          )
+        })
+      )
+    })
+
+    rows <- dplyr::bind_rows(results)
+    notes <- unique(unlist(lapply(results, attr, "notes"), use.names = FALSE))
+    validate(need(nrow(rows) > 0, if (length(notes) > 0) notes[[1]] else "Não existem dados para a selecção actual."))
+    if (length(notes) > 0) {
+      showNotification(paste(notes, collapse = "\n"), type = "warning", duration = 20, id = "observed-gaps")
+    }
+    if (any(rows$provisional)) {
+      showNotification(
+        paste0(paste(calendar_death_years, collapse = ", "), ": óbitos por idade reconstruídos a partir dos óbitos semanais do INE (provisório)."),
+        type = "message", duration = 10, id = "calendar-year"
+      )
+    }
+
+    list(rows = rows, metric = selected_metric, pooling = pooling_window)
+  }, ignoreNULL = TRUE)
+
+  # Each load resets the result filters to everything it brought.
+  observeEvent(observed_metrics(), {
+    rows <- tryCatch(observed_metrics()$rows, error = function(e) NULL)
+    req(rows)
+    locations <- unique(rows$location)
+    causes <- unique(rows$cause)
+    sexes <- intersect(sex_levels, rows$sex)
+    years <- range(rows$year)
+
+    updateSelectInput(session, "observed_view_location", choices = locations, selected = locations)
+    updateSelectInput(session, "observed_view_cause", choices = causes, selected = causes)
+    updateCheckboxGroupInput(session, "observed_view_sex", choices = sexes, selected = sexes, inline = TRUE)
+    updateSliderInput(session, "observed_view_years", min = years[[1]], max = years[[2]], value = years)
+  })
+
+  # The loaded rows narrowed by the result filters, without loading anything
+  # again. Values the load did not bring are ignored - until the browser has
+  # the new choices the filters still hold the previous load's - and a filter
+  # left with none means no filter, as does a cleared field.
+  observed_view <- reactive({
+    result <- observed_metrics()
+    rows <- result$rows
+    pick <- function(value, column) {
+      value <- intersect(as.character(value), as.character(rows[[column]]))
+      if (length(value) == 0) TRUE else rows[[column]] %in% value
+    }
+
+    keep <- pick(input$observed_view_location, "location") &
+      pick(input$observed_view_cause, "cause") &
+      pick(input$observed_view_sex, "sex")
+    years <- suppressWarnings(as.integer(input$observed_view_years))
+    if (length(years) == 2 && !anyNA(years)) {
+      in_years <- rows$year >= min(years) & rows$year <= max(years)
+      if (any(in_years)) keep <- keep & in_years
+    }
+
+    validate(need(any(keep), "Nenhum valor carregado corresponde aos filtros escolhidos."))
+    result$rows <- rows[keep, , drop = FALSE]
+    result
+  })
+
+  # Roughly how long a load will take, from the snapshot timings: the first
+  # read of a cause's year (age fill and regional rows, cached afterwards)
+  # costs a quarter to half a second - the upper figure, all causes, is used -
+  # and each place adds some 0.07 s a year.
+  # Sexes come from the same files, so they cost almost nothing; an indirect
+  # metric reads its reference too, the proportional share the all-cause
+  # denominator. It assumes nothing is cached yet, so a repeated load is
+  # usually quicker.
+  estimate_observed_load_seconds <- function(n_places, n_causes, n_years, metric_id) {
+    if (metric_id %in% infant_metric_ids) {
+      return(n_places * n_causes * n_years * 0.3)
+    }
+    reads <- 1 + (metric_id %in% indirect_metric_ids) + identical(metric_id, "proportional")
+    n_causes * n_years * (0.5 + n_places * 0.07 * reads)
+  }
+
+  format_load_estimate <- function(seconds) {
+    if (seconds < 10) {
+      "menos de 10 segundos"
+    } else if (seconds < 90) {
+      paste("cerca de", round(seconds / 10) * 10, "segundos")
+    } else {
+      paste("cerca de", max(2, round(seconds / 60)), "minutos")
+    }
+  }
+
+  output$observedLoadEstimate <- renderUI({
+    areas <- unique(as.character(input$area))
+    compare <- unique(as.character(input$observed_compare))
+    req(length(areas) > 0, length(input$cause) > 0, length(input$observed_metric) == 1)
+
+    # Places as get_observed_area_specs() builds them: a comparison already
+    # shown as the selection is not loaded twice.
+    n_places <- if (identical(input$observed_area_mode, "separate")) {
+      length(union(areas, compare))
+    } else {
+      1 + length(setdiff(compare, if (length(areas) == 1) areas else character(0)))
+    }
+    years <- get_years_in_selected_range(input$years_import)
+    n_years <- length(years) + normalize_pooling_window(input$observed_pooling) - 1L
+
+    estimate <- format_load_estimate(
+      estimate_observed_load_seconds(n_places, length(input$cause), n_years, input$observed_metric)
+    )
+    helpText(
+      tags$strong(paste0("Tempo estimado: ", estimate, ".")),
+      if (identical(normalize_data_source(active_data_source()), "snapshot")) {
+        "Depende sobretudo do número de locais, causas e anos; juntar sexos quase não o aumenta."
+      } else {
+        "Com o INE em directo pode demorar bastante mais."
+      },
+      "Depois de carregar, filtre os resultados sem voltar a calcular."
+    )
+  })
+
+  # Places, causes and sexes keep the order they were chosen in, and each series
+  # reads down the years.
+  order_observed_rows <- function(rows) {
+    rows[order(
+      match(rows$cause, unique(rows$cause)),
+      match(rows$location, unique(rows$location)),
+      match(rows$sex, sex_levels),
+      rows$year
+    ), , drop = FALSE]
+  }
+
+  build_observed_metrics_table <- function(result) {
+    rows <- order_observed_rows(with_annual_flags(result$rows))
+    out <- tibble(
+      Ano = as.character(rows$year),
+      `Período` = rows$period,
+      Local = rows$location,
+      `Causa de Morte` = rows$cause,
+      Sexo = rows$sex,
+      # The mark is appended to the formatted value so the caveat follows the
+      # number rather than staying behind in the footnote.
+      `Valor (IC 95%)` = paste0(
+        purrr::pmap_chr(list(rows$metric_id, rows$value, rows$lower, rows$upper), format_annual_metric_interval),
+        rows$flag
+      )
+    )
+    if (result$pooling == 1L) {
+      out$`Período` <- NULL
+    }
+    out
+  }
+
+  # The values as numbers, for a spreadsheet: the table above formats them.
+  build_observed_metrics_csv <- function(result) {
+    rows <- order_observed_rows(with_annual_flags(result$rows))
+    tibble(
+      Ano = rows$year,
+      `Período` = rows$period,
+      `Anos agregados` = rows$n_years,
+      Local = rows$location,
+      `Causa de Morte` = rows$cause,
+      Sexo = rows$sex,
+      `Métrica` = rows$metric,
+      Valor = rows$value,
+      `IC 95% inferior` = rows$lower,
+      `IC 95% superior` = rows$upper,
+      Nota = rows$flag,
+      Fonte = rows$source_detail
+    )
+  }
+
+  build_observed_sources_table <- function(result) {
+    order_observed_rows(result$rows) %>%
+      dplyr::group_by(Local = location, `Causa de Morte` = cause, Sexo = sex, Fonte = source_detail) %>%
+      dplyr::summarise(Anos = make_period_label(min(year), max(year)), .groups = "drop_last") %>%
+      dplyr::ungroup() %>%
+      dplyr::select(Local, `Causa de Morte`, Sexo, Anos, Fonte)
+  }
+
+  # One panel per cause. Over several years each place is a line, each sex a
+  # line style, with its 95% interval shaded; a single year is a bar per place.
+  build_observed_metrics_plot <- function(result, trend = NULL) {
+    rows <- with_annual_flags(result$rows)
+    n_causes <- length(unique(rows$cause))
+    validate(need(
+      n_causes <= OBSERVED_PLOT_MAX_CAUSES,
+      sprintf(
+        "Há %d causas de morte nos resultados; o gráfico mostra no máximo %d. Escolha quais em 'Filtrar resultados' - os valores de todas estão na tabela abaixo e no CSV.",
+        n_causes, OBSERVED_PLOT_MAX_CAUSES
+      )
+    ))
+
+    plot_df <- rows %>%
+      dplyr::mutate(
+        location = factor(location, levels = unique(location)),
+        cause = factor(cause, levels = unique(cause)),
+        sex = factor(sex, levels = intersect(sex_levels, sex))
+      )
+    n_locations <- nlevels(plot_df$location)
+    n_sexes <- nlevels(plot_df$sex)
+    metric_label <- unique(plot_df$metric)[[1]]
+    single_year <- length(unique(plot_df$year)) == 1
+
+    if (single_year) {
+      # Horizontal bars, the selection at the top. Each cause and sex has its own
+      # value axis: on a shared one a rare cause next to all causes is a sliver.
+      plot <- ggplot(plot_df, aes(x = value, y = factor(location, levels = rev(levels(location))), fill = location)) +
+        geom_col(width = 0.65) +
+        geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.2, linewidth = 0.4, orientation = "y", na.rm = TRUE) +
+        facet_wrap(
+          if (n_sexes > 1) ggplot2::vars(cause, sex) else ggplot2::vars(cause),
+          ncol = if (n_sexes > 1) n_sexes else 1,
+          scales = "free_x",
+          labeller = ggplot2::label_wrap_gen(width = 40, multi_line = FALSE)
+        ) +
+        guides(fill = "none") +
+        labs(x = metric_label, y = NULL)
+    } else {
+      plot <- ggplot(plot_df, aes(
+        x = year, y = value,
+        colour = location, fill = location, linetype = sex,
+        group = interaction(location, sex)
+      )) +
+        geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.12, colour = NA, na.rm = TRUE) +
+        geom_line(linewidth = 0.8, na.rm = TRUE) +
+        geom_point(size = 1.4, na.rm = TRUE) +
+        facet_wrap(
+          ggplot2::vars(cause),
+          ncol = if (n_causes > 1) 2 else 1,
+          scales = "free_y",
+          labeller = ggplot2::label_wrap_gen(width = 40)
+        ) +
+        scale_linetype_manual(values = c(HM = "solid", H = "longdash", M = "dotted")) +
+        labs(x = "Ano", y = metric_label, colour = "Local", fill = "Local", linetype = "Sexo")
+      if (n_sexes == 1) {
+        plot <- plot + guides(linetype = "none")
+      }
+      if (!is.null(trend)) {
+        plot <- plot + geom_line(
+          data = trend$fitted, aes(x = year, y = fitted), inherit.aes = FALSE,
+          linetype = "dashed", colour = "#eb6834", linewidth = 0.8
+        )
+      }
+    }
 
     # An SMR is read against its reference, so draw the reference line rather
     # than leaving the reader to judge 100 by eye.
-    if (identical(selected_metric, "smr")) {
-      plot <- plot +
+    if (identical(result$metric, "smr")) {
+      plot <- plot + if (single_year) {
+        geom_vline(xintercept = 100, linetype = "dashed", colour = "#0b2e4f", linewidth = 0.5)
+      } else {
         geom_hline(yintercept = 100, linetype = "dashed", colour = "#0b2e4f", linewidth = 0.5)
+      }
+    }
+
+    # The Brewer palettes have eight colours; past that the default hue scale
+    # takes over.
+    if (n_locations <= 8) {
+      plot <- plot +
+        scale_colour_brewer(palette = "Dark2") +
+        scale_fill_brewer(palette = if (single_year) "Set2" else "Dark2")
+    }
+
+    subtitle <- if (result$pooling > 1L) {
+      basis <- if (result$metric %in% annualised_metric_ids) {
+        "média anual"
+      } else if (identical(result$metric, infant_count_metric_id)) {
+        "total do período"
+      } else {
+        "pessoas-ano"
+      }
+      glue::glue("Agregação de {result$pooling} anos centrada em cada ano ({basis})")
+    } else if (single_year) {
+      as.character(unique(plot_df$year))
     }
 
     # Downloaded as a PNG, the chart leaves the app and loses the footnote under
     # the table, so the caveat is drawn onto it.
-    caption_text <- if (any(nzchar(plot_df$flag))) {
-      paste(strwrap(infant_instability_footnote(), width = 95), collapse = "\n")
-    } else {
-      NULL
-    }
+    caption_text <- c(
+      if (!single_year) "A zona sombreada mostra o intervalo de confiança de 95%.",
+      if (any(nzchar(plot_df$flag))) paste(strwrap(infant_instability_footnote(), width = 95), collapse = "\n")
+    )
 
     plot +
-      coord_flip() +
       labs(
-        title = paste(unique(plot_df$metric), "por causa de morte"),
-        subtitle = period_text,
-        caption = caption_text,
-        x = NULL,
-        y = unique(plot_df$metric)
+        title = metric_label,
+        subtitle = subtitle,
+        caption = if (length(caption_text) > 0) paste(caption_text, collapse = "\n") else NULL
       ) +
-      scale_fill_brewer(palette = "Set2", name = "Local") +
       theme_minimal() +
       theme(
         plot.title = element_text(hjust = 0.5),
@@ -3436,134 +3836,7 @@ server <- function(input, output, session) {
         legend.position = "bottom"
       )
   }
-  
-  # -------------------------
-  # Observed Mortality
-  # -------------------------
-  observed_metric_bundle <- eventReactive(input$go_rates, {
-    token <- isolate(cancel_seq$rates)
-    year_order <- isolate(year_load_state$rates_order)
-    query_spec <- make_query_spec(
-      input$area,
-      input$area_label,
-      input$cause,
-      input$sex,
-      active_data_source()
-    )
 
-    shiny::withProgress(message = get_data_source_progress_message(query_spec$data_source), value = 0, {
-      load_metric_bundle(
-        query_spec,
-        "rates",
-        token,
-        year_range = input$years_import,
-        year_order = year_order
-      )
-    })
-  })
-
-  # Keep the final population/rate filter reactive so the observed tab can reuse
-  # the already-prepared metric bundle without reloading INE data.
-  observed_series_spec <- reactive({
-    req(input$go_rates > 0)
-    make_series_spec(
-      query_spec = observed_metric_bundle()$query_spec,
-      population = input$population,
-      rate_type = input$rate_type,
-      year_range = input$years_import
-    )
-  })
-
-  # `observed_history()` is the final shared series object used by the observed
-  # plot/table. It is rebuilt from the cached metric bundle, not from raw data.
-  observed_history <- reactive({
-    req(input$go_rates > 0)
-    build_historical_series(observed_metric_bundle(), observed_series_spec())
-  })
-
-  observed_summary <- reactive({
-    dat <- observed_history()
-    df <- dat$series
-    req(nrow(df) > 0)
-    first_row <- dplyr::slice(df, 1)
-    last_row <- dplyr::slice(df, nrow(df))
-    source_summary <- dat$metric_bundle$source_summary
-
-    absolute_change <- last_row$value - first_row$value
-    percent_change <- if (isTRUE(all.equal(first_row$value, 0))) {
-      NA_real_
-    } else {
-      (absolute_change / first_row$value) * 100
-    }
-
-    tibble(
-      Métrica = c(
-        "Fonte de dados",
-        "Fonte de população",
-        "Fonte de óbitos",
-        "Último ano",
-        "Última taxa (IC 95%)",
-        "Variação absoluta no período observado",
-        "Variação percentual no período observado"
-      ),
-      Valor = c(
-        get_data_source_label(dat$spec$data_source),
-        source_summary$population_source,
-        source_summary$death_source,
-        as.character(last_row$year),
-        glue::glue("{round(last_row$value, 2)} ({round(last_row$lower, 2)}; {round(last_row$upper, 2)})"),
-        sprintf("%+.2f", absolute_change),
-        if (is.na(percent_change)) "N/D" else sprintf("%+.2f%%", percent_change)
-      )
-    )
-  })
-
-  build_observed_rate_plot <- function(dat) {
-    df <- dat$series
-
-    ggplot(df, aes(x = year, group = 1)) +
-      geom_ribbon(
-        aes(ymin = lower, ymax = upper),
-        fill = "grey80", alpha = 0.4
-      ) +
-      geom_line(aes(y = value), linewidth = 1) +
-      geom_point(aes(y = value), size = 2) +
-      labs(
-        title = paste(dat$area_label, "-", dat$spec$cause, dat$spec$sex, "(", dat$spec$population, ")"),
-        x = "Ano",
-        y = dat$y_label,
-        caption = "A zona sombreada mostra o intervalo de confiança de 95% (a incerteza em torno da taxa)."
-      ) +
-      theme_minimal() +
-      theme(
-        plot.title = element_text(hjust = 0.5),
-        plot.caption = element_text(hjust = 0)
-      )
-  }
-
-  build_observed_rate_table <- function(dat) {
-    dat$series %>%
-      dplyr::transmute(
-        Ano = year,
-        `Taxa (Intervalo de Confiança 95%)` = glue::glue(
-          "{round(value, 2)} ({round(lower, 2)}; {round(upper, 2)})"
-        )
-      )
-  }
-
-  output$rateSummaryTable <- renderTable({
-    observed_summary()
-  }, bordered = TRUE, spacing = "s")
-
-  output$downloadRateSummaryCSV <- downloadHandler(
-    filename = function() {
-      paste0("observed_summary_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      write_csv_utf8(observed_summary(), file)
-    }
-  )
-  
   # Wrap a ggplot as an interactive plotly widget: hovering a point shows the
   # year and value, plus zoom/pan. The ggplot object is unchanged, so the PNG
   # download handlers keep using it directly. Note that plotly ignores
@@ -3575,14 +3848,42 @@ server <- function(input, output, session) {
     plotly::config(gp, displaylogo = FALSE, modeBarButtonsToRemove = list("lasso2d", "select2d"))
   }
 
-  # Annual percentage change over the chosen span of the observed series.
+  # Annual percentage change over the chosen span, one per series (place, cause
+  # and sex). A pooled series is not fitted: neighbouring values share years,
+  # so the regression would treat them as independent and the interval would
+  # come out too narrow.
   observed_trend <- reactive({
-    dat <- observed_history()
-    series <- dat$series[is.finite(dat$series$value), , drop = FALSE]
+    result <- observed_view()
+    validate(need(
+      result$pooling == 1L,
+      "A tendência é estimada sobre anos únicos: escolha 'Ano único' na agregação plurianual."
+    ))
+
     span <- input$observed_trend_span %||% "10"
-    if (!identical(span, "all")) series <- series[series$year > max(series$year) - as.integer(span), , drop = FALSE]
-    trend_apc(series$year, series$value, series$lower, series$upper,
-              max_joinpoints = as.integer(input$observed_trend_joinpoints %||% "0"))
+    max_joinpoints <- as.integer(input$observed_trend_joinpoints %||% "0")
+    rows <- order_observed_rows(result$rows)
+    keys <- unique(rows[, c("location", "cause", "sex")])
+
+    trends <- lapply(seq_len(nrow(keys)), function(i) {
+      series <- rows[rows$location == keys$location[[i]] & rows$cause == keys$cause[[i]] & rows$sex == keys$sex[[i]], , drop = FALSE]
+      series <- series[is.finite(series$value), , drop = FALSE]
+      if (nrow(series) == 0) {
+        return(NULL)
+      }
+      if (!identical(span, "all")) {
+        series <- series[series$year > max(series$year) - as.integer(span), , drop = FALSE]
+      }
+      trend <- tryCatch(
+        trend_apc(series$year, series$value, series$lower, series$upper, max_joinpoints = max_joinpoints),
+        error = function(e) NULL
+      )
+      if (is.null(trend)) {
+        return(NULL)
+      }
+      list(location = keys$location[[i]], cause = keys$cause[[i]], sex = keys$sex[[i]], trend = trend)
+    })
+
+    Filter(Negate(is.null), trends)
   })
 
   build_trend_table <- function(trend) {
@@ -3596,48 +3897,75 @@ server <- function(input, output, session) {
   }
 
   output$rateTrendTable <- renderTable({
-    trend <- observed_trend()
-    validate(need(!is.null(trend), "São precisos pelo menos 5 anos para estimar a tendência."))
-    build_trend_table(trend)
+    trends <- observed_trend()
+    validate(need(length(trends) > 0, "São precisos pelo menos 5 anos com valores positivos para estimar a tendência."))
+    dplyr::bind_rows(lapply(trends, function(t) {
+      tibble::tibble(Local = t$location, `Causa de Morte` = t$cause, Sexo = t$sex, build_trend_table(t$trend))
+    }))
   }, bordered = TRUE, spacing = "s")
 
   output$rateTrendNote <- renderUI({
-    trend <- tryCatch(observed_trend(), error = function(e) NULL)
-    req(trend)
-    note <- trend_break_note(trend$fitted$year, trend$joinpoints)
-    if (is.null(note)) return(NULL)
-    tags$p(class = "text-warning", note)
+    trends <- tryCatch(observed_trend(), error = function(e) NULL)
+    req(length(trends) > 0)
+    notes <- unique(unlist(lapply(trends, function(t) trend_break_note(t$trend$fitted$year, t$trend$joinpoints))))
+    if (length(notes) == 0) return(NULL)
+    tagList(lapply(notes, function(note) tags$p(class = "text-warning", note)))
   })
 
-  output$ratePlot <- plotly::renderPlotly({
-    p <- build_observed_rate_plot(observed_history())
-    trend <- tryCatch(observed_trend(), error = function(e) NULL)
-    if (!is.null(trend)) {
-      p <- p + geom_line(data = trend$fitted, aes(x = year, y = fitted), inherit.aes = FALSE,
-                         linetype = "dashed", colour = "#eb6834", linewidth = 0.8)
-    }
-    to_interactive_plot(p)
+  # The fitted trend is drawn only when there is a single series; over several
+  # it would be one more line among many.
+  observed_plot_trend <- function() {
+    trends <- tryCatch(observed_trend(), error = function(e) NULL)
+    result <- observed_view()
+    single_series <- nrow(unique(result$rows[, c("location", "cause", "sex")])) == 1
+    if (single_series && length(trends) == 1) trends[[1]]$trend else NULL
+  }
+
+  output$observedPlot <- plotly::renderPlotly({
+    to_interactive_plot(build_observed_metrics_plot(observed_view(), observed_plot_trend()))
   })
 
-  output$downloadRatePlot <- downloadHandler(
+  output$downloadObservedPlot <- downloadHandler(
     filename = function() {
-      paste0("observed_plot_", Sys.Date(), ".png")
+      paste0("mortalidade_", observed_view()$metric, "_", Sys.Date(), ".png")
     },
     content = function(file) {
-      save_ggplot_png(file, build_observed_rate_plot(observed_history()))
+      save_ggplot_png(file, build_observed_metrics_plot(observed_view(), observed_plot_trend()))
     }
   )
-  
-  output$rateTable <- renderTable({
-    build_observed_rate_table(observed_history())
-  }, sanitize.text.function = identity)
 
-  output$downloadRateTableCSV <- downloadHandler(
+  output$observedTable <- renderTable({
+    build_observed_metrics_table(observed_view())
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$observedFootnote <- renderUI({
+    result <- observed_view()
+    notes <- annual_metrics_footnotes(result$rows, result$metric)
+    if (length(notes) == 0) {
+      return(NULL)
+    }
+    tagList(lapply(notes, function(note) helpText(note)))
+  })
+
+  output$downloadObservedCSV <- downloadHandler(
     filename = function() {
-      paste0("observed_series_", Sys.Date(), ".csv")
+      paste0("mortalidade_", observed_view()$metric, "_", Sys.Date(), ".csv")
     },
     content = function(file) {
-      write_csv_utf8(build_observed_rate_table(observed_history()), file)
+      write_csv_utf8(build_observed_metrics_csv(observed_view()), file)
+    }
+  )
+
+  output$observedSourcesTable <- renderTable({
+    build_observed_sources_table(observed_view())
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+
+  output$downloadObservedSourcesCSV <- downloadHandler(
+    filename = function() {
+      paste0("mortalidade_fontes_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write_csv_utf8(build_observed_sources_table(observed_view()), file)
     }
   )
   
@@ -3956,214 +4284,6 @@ server <- function(input, output, session) {
   )
 
   # -------------------------
-  # Annual Metrics
-  # -------------------------
-  annual_metrics_long <- eventReactive(input$go_annual_metrics, {
-    token <- isolate(cancel_seq$annual)
-    year <- as.integer(input$annual_year)
-    selected_causes <- input$annual_cause
-    selected_metric <- input$annual_metric
-
-    validate(
-      need(length(selected_causes) > 0, "Seleccione pelo menos uma causa de morte."),
-      need(length(selected_metric) == 1, "Seleccione uma métrica.")
-    )
-
-    pooling_window <- normalize_pooling_window(input$annual_pooling)
-    region_mode <- default_region_mode()
-    reference_areas <- value_or_default(input$annual_smr_reference, "Portugal")
-    pooled_years <- get_pooled_years(year, pooling_window, selected_metric)
-
-    area_specs <- get_annual_area_specs(
-      selected_areas = input$annual_area,
-      custom_label = input$annual_area_label,
-      region_mode = region_mode,
-      available_areas = get_available_areas(active_data_source())
-    )
-    annual_causes_needed <- unique(c(
-      selected_causes,
-      if (selected_metric %in% "proportional") "Todas as causas de morte" else character(0)
-    ))
-    annual_areas_needed <- sort(unique(unlist(
-      c(lapply(area_specs, `[[`, "areas"),
-        if (selected_metric %in% indirect_metric_ids) list(reference_areas) else NULL),
-      use.names = FALSE
-    )))
-
-    # Surface any incomplete municipal rebuild, and the NUTS-2024 break when
-    # the user chose to keep INE's own regional rows.
-    for (message_text in unique(unlist(lapply(area_specs, `[[`, "warnings"), use.names = FALSE))) {
-      showNotification(message_text, type = "warning", duration = 15)
-    }
-    vintage_warning <- region_vintage_warning(
-      areas = unique(c("Norte", as.character(input$annual_area))),
-      years = pooled_years,
-      region_mode = region_mode
-    )
-    if (!is.null(vintage_warning)) {
-      showNotification(vintage_warning, type = "warning", duration = 20)
-    }
-
-    if (!selected_metric %in% infant_metric_ids) {
-      notify_region_source_warnings(
-        selected_areas = unique(c("Norte", as.character(input$annual_area))),
-        expanded_regions = unique(unlist(lapply(area_specs, `[[`, "expanded"), use.names = FALSE)),
-        causes = selected_causes,
-        years = pooled_years
-      )
-    }
-
-    # A pooled window straddling 2020/2021 mixes the two population series.
-    revision_warning <- population_revision_warning(pooled_years, selected_metric)
-    if (!is.null(revision_warning)) {
-      showNotification(revision_warning, type = "warning", duration = 20, id = "population-revision")
-    }
-
-    # The infant metrics are bounded by their own datasets, not by population:
-    # the rate needs published live births (1995-), the count only the under-1
-    # death archive. Years outside those are refused for that metric alone.
-    if (selected_metric %in% infant_metric_ids) {
-      infant_gap <- infant_gap_message(pooled_years, selected_metric)
-      validate(need(
-        length(intersect(pooled_years, infant_metric_years(selected_metric))) > 0,
-        if (is.null(infant_gap)) "Sem dados de mortalidade infantil para o período seleccionado." else infant_gap
-      ))
-      if (!is.null(infant_gap)) {
-        showNotification(infant_gap, type = "warning", duration = 15)
-      }
-
-      # A year published only as an all-cause, both-sexes total cannot answer a
-      # cause- or sex-specific request; say which, rather than reporting zero.
-      detail_cause <- if (length(selected_causes) == 1) selected_causes else "Todas as causas de morte"
-      detail_gap <- infant_detail_message(
-        pooled_years,
-        cause = detail_cause,
-        sex = input$annual_sex
-      )
-      if (!is.null(detail_gap)) {
-        # Refuse outright when no year in the window can answer; warn when only
-        # part of it cannot, since the rest still produces a usable figure.
-        validate(need(
-          length(infant_detail_years(pooled_years, detail_cause, input$annual_sex)) > 0,
-          detail_gap
-        ))
-        showNotification(detail_gap, type = "warning", duration = 20)
-      }
-
-      undercount <- infant_undercount_message(
-        pooled_years,
-        areas = c("Norte", as.character(input$annual_area)),
-        cause = detail_cause,
-        sex = input$annual_sex,
-        municipalities = active_nuts_lookup()$municipality
-      )
-      if (!is.null(undercount)) {
-        showNotification(undercount, type = "warning", duration = 20)
-      }
-    }
-
-    notify_snapshot_request_warnings(
-      years = pooled_years,
-      areas = annual_areas_needed,
-      causes = annual_causes_needed,
-      data_source = active_data_source(),
-      include_population = selected_metric %in% annual_metrics_needing_population,
-      include_deaths = TRUE
-    )
-
-    shiny::withProgress(message = get_data_source_progress_message(active_data_source(), context = "annual"), value = 0, {
-      with_data_load_cancel_checker(
-        cancel_checker = function() !identical(cancel_seq$annual, token),
-        {
-          out <- dplyr::bind_rows(lapply(seq_along(area_specs), function(i) {
-            incProgress(0.2 / length(area_specs))
-            calculate_annual_metric_values(
-              area_spec = area_specs[[i]],
-              causes = selected_causes,
-              metric_id = selected_metric,
-              sex = input$annual_sex,
-              year = year,
-              token = token,
-              data_source = active_data_source(),
-              pooling_window = pooling_window,
-              reference_areas = reference_areas
-            )
-          })) %>%
-            dplyr::mutate(sort_location = area_specs[[3]]$label)
-
-          incProgress(0.8)
-          out
-        }
-      )
-    })
-  }, ignoreNULL = TRUE)
-
-  annual_metrics_table <- reactive({
-    req(input$go_annual_metrics > 0)
-    build_annual_metrics_table(annual_metrics_long(), input$annual_metric)
-  })
-
-  annual_sources_table <- reactive({
-    req(input$go_annual_metrics > 0)
-    build_annual_sources_table(annual_metrics_long(), input$annual_metric)
-  })
-
-  annual_metrics_plot <- reactive({
-    req(input$go_annual_metrics > 0)
-    build_annual_metrics_plot(annual_metrics_long(), input$annual_metric)
-  })
-
-  output$annualMetricsTable <- renderTable({
-    annual_metrics_table()
-  }, striped = TRUE, bordered = TRUE, spacing = "s", digits = 2)
-
-  output$annualMetricsFootnote <- renderUI({
-    req(input$go_annual_metrics > 0)
-    notes <- annual_metrics_footnotes(annual_metrics_long(), input$annual_metric)
-
-    if (length(notes) == 0) {
-      return(NULL)
-    }
-
-    tagList(lapply(notes, function(note) helpText(note)))
-  })
-
-  output$annualSourcesTable <- renderTable({
-    annual_sources_table()
-  }, striped = TRUE, bordered = TRUE, spacing = "s")
-
-  output$annualMetricsPlot <- renderPlot({
-    annual_metrics_plot()
-  })
-
-  output$downloadAnnualMetricsCSV <- downloadHandler(
-    filename = function() {
-      paste0("annual_", input$annual_metric, "_", input$annual_year, "_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      write_csv_utf8(annual_metrics_table(), file)
-    }
-  )
-
-  output$downloadAnnualSourcesCSV <- downloadHandler(
-    filename = function() {
-      paste0("annual_sources_", input$annual_metric, "_", input$annual_year, "_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      write_csv_utf8(annual_sources_table(), file)
-    }
-  )
-
-  output$downloadAnnualMetricsPlot <- downloadHandler(
-    filename = function() {
-      paste0("annual_", input$annual_metric, "_", input$annual_year, "_", Sys.Date(), ".png")
-    },
-    content = function(file) {
-      save_ggplot_png(file, annual_metrics_plot())
-    }
-  )
-
-  # -------------------------
   # Avoidable mortality
   # -------------------------
   # One load serves the whole tab: the two lists, the deliberately unresolved
@@ -4185,9 +4305,9 @@ server <- function(input, output, session) {
       population_gap_message(years, "a mortalidade evitável")
     ))
 
-    # Not get_annual_area_specs(): that one strips Portugal and Norte, because
-    # the annual tab keeps them as fixed comparator columns. Here they are
-    # ordinary selections, and Portugal is the default.
+    # The selection is always summed into one place here, with Portugal as the
+    # default, so get_observed_area_specs() and its comparison places are not
+    # used.
     selected_areas <- sort(unique(as.character(input$avoidable_area)))
 
     mismatch <- vintage_mismatch_message(

@@ -44,16 +44,20 @@ unknown_residence <- sapply(c("2021", "2022", "2023"), function(y) {
 
 testServer(app, {
 
+  # One year of the observed tab, the selection summed and compared with
+  # Portugal and Norte. Rows come in that order: the selection first.
+  smoke$go <- 0L
   run <- function(metric, pooling, year = 2022, area = "Barrancos", ref = "Portugal",
                   vintage = "2024", refuse = FALSE) {
+    smoke$go <- smoke$go + 1L
     session$setInputs(
       nuts_vintage = vintage,
-      annual_year = year, annual_cause = "Todas as causas de morte", annual_sex = "HM",
-      annual_area = area, annual_area_label = "", annual_metric = metric,
-      annual_pooling = pooling, annual_smr_reference = ref,
-      data_source = "snapshot", go_annual_metrics = 1
+      years_import = c(year, year), cause = "Todas as causas de morte", sex = "HM",
+      area = area, area_label = "", observed_area_mode = "sum", observed_compare = c("Portugal", "Norte"),
+      observed_metric = metric, observed_pooling = pooling, observed_smr_reference = ref,
+      population = "Total", data_source = "snapshot", go_rates = smoke$go
     )
-    out <- tryCatch(annual_metrics_long(), error = function(e) e)
+    out <- tryCatch(observed_metrics()$rows, error = function(e) e)
     what <- paste(metric, pooling, year, paste(area, collapse = "+"), vintage)
     if (inherits(out, "error")) {
       if (refuse) {
@@ -101,7 +105,7 @@ testServer(app, {
   i24 <- run("infant", "1", year = 2024)
   if (!is.null(i24)) {
     print(as.data.frame(i24[, c("location","period","value","lower","upper","flag")]))
-    print(build_annual_metrics_table(i24, "infant"))
+    print(build_observed_metrics_table(list(rows = i24, pooling = 1L)))
     cat("   footnote:", annual_metrics_footnotes(i24, "infant"), "\n")
   }
 
@@ -142,10 +146,10 @@ testServer(app, {
 
   cat("\n=== AML (2013) vs Grande Lisboa + Península de Setúbal (2024) ===\n")
   aml <- run("deaths", "1", year = 2021, area = "Área Metropolitana de Lisboa", vintage = "2013")
-  if (!is.null(aml)) cat(sprintf("   AML 2013           = %.0f\n", aml$value[3]))
+  if (!is.null(aml)) cat(sprintf("   AML 2013           = %.0f\n", aml$value[1]))
   split <- run("deaths", "1", year = 2021,
                area = c("Grande Lisboa", "Península de Setúbal"), vintage = "2024")
-  if (!is.null(split)) cat(sprintf("   GL + PS 2024       = %.0f\n", split$value[3]))
+  if (!is.null(split)) cat(sprintf("   GL + PS 2024       = %.0f\n", split$value[1]))
 
   cat("\n=== A 2024-only region selected under NUTS 2013 (must be refused) ===\n")
   invisible(run("deaths", "1", year = 2021, area = "Oeste e Vale do Tejo", vintage = "2013", refuse = TRUE))
@@ -158,11 +162,12 @@ testServer(app, {
     co <- run("deaths", "1", year = y, area = "Continente")
     ac <- run("deaths", "1", year = y, area = "Região Autónoma dos Açores")
     ma <- run("deaths", "1", year = y, area = "Região Autónoma da Madeira")
-    total <- co$value[3] + ac$value[3] + ma$value[3]
+    total <- co$value[1] + ac$value[1] + ma$value[1]
+    portugal <- co$value[co$location == "Portugal"]
     unknown <- unknown_residence[[as.character(y)]]
     cat(sprintf("   %d  %.0f + %.0f + %.0f = %.0f vs Portugal %.0f, unknown residence %.0f  %s\n",
-                y, co$value[3], ac$value[3], ma$value[3], total, co$value[1], unknown,
-                verdict(abs(co$value[1] - total - unknown) < 0.5, "EXACT")))
+                y, co$value[1], ac$value[1], ma$value[1], total, portugal, unknown,
+                verdict(abs(portugal - total - unknown) < 0.5, "EXACT")))
   }
 
   # The planning tab, built around one location. Its figures must agree with
@@ -333,23 +338,87 @@ testServer(app, {
   # whole regions only. Norte reaches it; a municipality stops a year before.
   cat("\n=== Latest year in the observed tab ===\n")
   for (area in c("Norte", "Lisboa")) {
-    session$setInputs(area = area, area_label = "", cause = "Todas as causas de morte", sex = "HM", population = "Total",
-                      rate_type = "dsr", years_import = c(2023, 2025), data_source = "snapshot",
-                      go_rates = match(area, c("Norte", "Lisboa")))
-    h <- tryCatch(observed_history(), error = function(e) e)
+    smoke$go <- smoke$go + 1L
+    session$setInputs(area = area, area_label = "", observed_area_mode = "sum", observed_compare = character(0),
+                      cause = "Todas as causas de morte", sex = "HM", population = "Total", observed_metric = "dsr",
+                      observed_pooling = "1", years_import = c(2023, 2025), data_source = "snapshot", go_rates = smoke$go)
+    h <- tryCatch(observed_metrics()$rows, error = function(e) e)
     if (!failed(h)) {
-      has <- 2025 %in% h$series$year
-      cat(sprintf("   %s: years %s - 2025 %s %s\n", area, paste(h$series$year, collapse = ", "),
+      years <- h$year[h$location == area]
+      has <- 2025 %in% years
+      cat(sprintf("   %s: years %s - 2025 %s %s\n", area, paste(years, collapse = ", "),
                   if (has) "included" else "left out", verdict(has == identical(area, "Norte"), "OK", paste("latest year,", area))))
     }
   }
 
   cat("\n=== Trend in the observed tab (Lisboa, the last area loaded, 1995-2025, up to 2 joinpoints) ===\n")
-  session$setInputs(observed_trend_span = "all", observed_trend_joinpoints = "2", years_import = c(1995, 2025), go_rates = 3)
-  trend <- tryCatch(observed_trend(), error = function(e) e)
-  if (!failed(trend)) cat(sprintf("   AAPC %+.1f%% (%+.1f; %+.1f), %d segment(s) %s\n", trend$aapc$apc, trend$aapc$lower,
-                                  trend$aapc$upper, nrow(trend$segments),
-                                  verdict(trend$aapc$upper < 0, "OK", "observed trend")))
+  smoke$go <- smoke$go + 1L
+  session$setInputs(observed_trend_span = "all", observed_trend_joinpoints = "2", years_import = c(1995, 2025), go_rates = smoke$go)
+  trends <- tryCatch(observed_trend(), error = function(e) e)
+  if (!failed(trends)) {
+    trend <- trends[[1]]$trend
+    cat(sprintf("   AAPC %+.1f%% (%+.1f; %+.1f), %d segment(s) %s\n", trend$aapc$apc, trend$aapc$lower,
+                trend$aapc$upper, nrow(trend$segments),
+                verdict(trend$aapc$upper < 0, "OK", "observed trend")))
+  }
+
+  # A year of a series must be the value that year gives on its own: each one
+  # is cut from data loaded once for the whole range.
+  cat("\n=== Observed series agrees with single years (Barrancos SMR, 3-year pooling) ===\n")
+  smoke$go <- smoke$go + 1L
+  session$setInputs(area = "Barrancos", observed_compare = c("Portugal", "Norte"), observed_metric = "smr",
+                    observed_pooling = "3", observed_smr_reference = "Portugal", years_import = c(2015, 2022), go_rates = smoke$go)
+  series <- tryCatch(observed_metrics()$rows, error = function(e) e)
+  if (!failed(series)) {
+    for (y in c(2015, 2022)) {
+      single <- run("smr", "3", year = y)
+      in_series <- series[series$year == y, c("location", "value")]
+      same <- !is.null(single) && isTRUE(all.equal(in_series$value[match(single$location, in_series$location)], single$value))
+      cat(sprintf("   %d: %d places %s\n", y, nrow(in_series), verdict(same, "SAME", paste("series vs single year", y))))
+    }
+  }
+
+  # Several places apart, two sexes, under 75: one row per place, sex and year.
+  cat("\n=== Places apart, two sexes, under 75 ===\n")
+  smoke$go <- smoke$go + 1L
+  session$setInputs(area = c("Porto", "Matosinhos"), observed_area_mode = "separate", observed_compare = "Norte",
+                    cause = "Todas as causas de morte", sex = c("H", "M"), observed_metric = "dsr", population = "Menos de 75 anos",
+                    observed_pooling = "1", years_import = c(2020, 2022), go_rates = smoke$go)
+  apart <- tryCatch(observed_metrics()$rows, error = function(e) e)
+  if (!failed(apart)) {
+    cat(sprintf("   %d rows, places %s, metric '%s' %s\n", nrow(apart), paste(unique(apart$location), collapse = ", "),
+                unique(apart$metric), verdict(nrow(apart) == 3 * 2 * 3 && grepl("menos de 75", unique(apart$metric)), "OK", "places apart")))
+    plot <- tryCatch(build_observed_metrics_plot(observed_metrics()), error = function(e) e)
+    cat("   plot:", if (failed(plot)) conditionMessage(plot) else "OK", "\n")
+
+    # The result filters narrow the loaded rows; nothing is loaded again.
+    session$setInputs(observed_view_location = "Porto", observed_view_sex = "M", observed_view_years = c(2021, 2022))
+    view <- tryCatch(observed_view()$rows, error = function(e) e)
+    if (!failed(view)) {
+      same_load <- identical(observed_metrics()$rows, apart)
+      cat(sprintf("   filtered to Porto, M, 2021-2022: %d rows %s\n", nrow(view),
+                  verdict(nrow(view) == 2 && all(view$location == "Porto" & view$sex == "M") && same_load, "OK", "result filters")))
+    }
+    session$setInputs(observed_view_location = character(0), observed_view_sex = character(0), observed_view_years = NULL)
+  }
+  session$setInputs(population = "Total")
+
+  # Past four causes the chart gives way to the table.
+  cat("\n=== Five causes: table, no chart ===\n")
+  five <- utils::head(setdiff(get("diseases", envir = environment(build_observed_metrics_table)), "Todas as causas de morte"), 5)
+  smoke$go <- smoke$go + 1L
+  session$setInputs(area = "Norte", observed_area_mode = "sum", observed_compare = character(0), cause = five, sex = "HM",
+                    observed_metric = "deaths", years_import = c(2022, 2022), go_rates = smoke$go)
+  many <- tryCatch(observed_metrics(), error = function(e) e)
+  if (!failed(many)) {
+    table <- build_observed_metrics_table(many)
+    plot <- tryCatch(build_observed_metrics_plot(many), error = function(e) e)
+    cat(sprintf("   table rows %d, chart refused: %s\n", nrow(table), expect_refusal(plot, "chart with five causes")))
+    session$setInputs(observed_view_cause = five[1:3])
+    plot <- tryCatch(build_observed_metrics_plot(observed_view()), error = function(e) e)
+    cat("   three of them picked in the filter, chart:", if (failed(plot)) conditionMessage(plot) else "OK", "\n")
+    session$setInputs(observed_view_cause = character(0))
+  }
 
   # Several areas compared, each with the mean of six models (the default).
   cat("\n=== Guided forecast, several areas, mean of six models ===\n")

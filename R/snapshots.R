@@ -837,7 +837,10 @@ collapse_population_snapshot_chunks <- function(paths, source_indicator = "RDS p
   dplyr::bind_rows(rows)
 }
 
-collapse_death_snapshot_chunks <- function(selected) {
+# `areas`, when given, keeps only those areas. Each chunk holds every area, and
+# the caller keeps only the ones it asked for; area is part of the key below,
+# so dropping the others first changes nothing but the work.
+collapse_death_snapshot_chunks <- function(selected, areas = NULL) {
   rows <- purrr::pmap(
     list(
       path = selected$path,
@@ -846,19 +849,28 @@ collapse_death_snapshot_chunks <- function(selected) {
     ),
     function(path, source_priority, indicator) {
       chunk <- read_snapshot_object(path)
+      if (!is.null(areas)) {
+        chunk <- chunk[as.character(chunk$area) %in% as.character(areas), , drop = FALSE]
+      }
       if (!"source_priority" %in% names(chunk)) {
-        chunk$source_priority <- source_priority
+        chunk$source_priority <- rep(source_priority, nrow(chunk))
       }
       ensure_source_indicator_column(chunk, indicator)
     }
   )
 
-  dplyr::bind_rows(rows) %>%
-    dplyr::group_by(.data$year, .data$area, .data$sex, .data$cause, .data$age_band) %>%
-    dplyr::arrange(dplyr::desc(.data$source_priority), .by_group = TRUE) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-source_priority)
+  # The highest-priority row of each key. Sorted and deduplicated rather than
+  # grouped and sliced: the result is the same, rows in key order, but a
+  # grouped slice over every (year, area, sex, cause, band) took some 20 s for
+  # thirty years of a region. Radix ordering is C-locale and stable, as dplyr's
+  # arrange is, so ties keep the order the chunks were read in. vctrs finds the
+  # duplicates; base duplicated() on a data frame pastes every row together.
+  out <- dplyr::bind_rows(rows)
+  keys <- c("year", "area", "sex", "cause", "age_band")
+  out <- out[do.call(order, c(unname(as.list(out[keys])), list(-out$source_priority, method = "radix"))), , drop = FALSE]
+  out <- out[vctrs::vec_duplicate_id(out[keys]) == seq_len(nrow(out)), , drop = FALSE]
+  out$source_priority <- NULL
+  dplyr::as_tibble(out)
 }
 
 read_chunked_death_snapshot <- function(years, causes, areas = NULL) {
@@ -902,7 +914,7 @@ read_chunked_death_snapshot <- function(years, causes, areas = NULL) {
           path = snapshot_inventory_full_path(.data$path)
         )
 
-      return(collapse_death_snapshot_chunks(selected))
+      return(collapse_death_snapshot_chunks(selected, areas))
     }
   }
 
@@ -939,7 +951,7 @@ read_chunked_death_snapshot <- function(years, causes, areas = NULL) {
   selected <- grid %>%
     dplyr::filter(.data$exists)
 
-  collapse_death_snapshot_chunks(selected)
+  collapse_death_snapshot_chunks(selected, areas)
 }
 
 validate_snapshot_combinations <- function(data, required, by, label) {
