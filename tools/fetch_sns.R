@@ -69,6 +69,9 @@ for (dataset in names(SNS_DATASETS)) {
     )
   })) %>%
     dplyr::filter(!is.na(.data$period), nzchar(.data$unit)) %>%
+    # The portal repeats some records (ULS São José, October 2025 to January
+    # 2026, in two datasets); summed, they double counts and proportions.
+    dplyr::distinct() %>%
     dplyr::mutate(dataset = dataset) %>%
     dplyr::arrange(.data$period, .data$unit, .data$field)
   message(sprintf("%s: %d rows, %s to %s, %d units", dataset, nrow(raw), min(tidy$period), max(tidy$period), dplyr::n_distinct(tidy$unit)))

@@ -2,6 +2,7 @@
 # Build the map boundaries the planning tab draws, into data/boundaries/.
 #
 #   Rscript tools/build_boundaries.R
+#   Rscript tools/build_boundaries.R levels=aces       # only some levels
 #
 # The boundaries come from the geopt package (CRAN, version 0.1.0 of 2026-10-21;
 # github.com/c-matos/geopt, MIT): install.packages("geopt"). It
@@ -17,10 +18,13 @@
 #   frames    group, x, y - the boxes around the island insets;
 #   meta      source, geopt version, CAOP attribution, build date.
 #
-# Levels: municipio (308), nuts2 and nuts3 for both NUTS vintages, and uls (the
+# Levels: municipio (308), nuts2 and nuts3 for both NUTS vintages, uls (the
 # 39 ULS of the mainland, drawn from their parishes, so the ULS that share
 # Lisboa, Loures and Porto are exact; the islands' health units have no ULS
-# in the app and are kept without an id).
+# in the app and are kept without an id), and aces (the 55 mainland primary
+# care units before the ULS of 2024 - 48 ACES and the 7 ULS that already
+# existed - for the SNS portal's data of 2015-2023; ids are geopt's names,
+# which data/sns_aces_crosswalk.csv maps the portal's labels onto).
 #
 # Checked on 2026-10-15 against the app's lookups: NUTS 2013 and 2024 agree
 # for every municipality, the parish split of Lisboa, Loures and Porto for all
@@ -31,6 +35,10 @@ suppressMessages({
   library(sf)
   library(geopt)
 })
+
+levels_arg <- sub("^levels=", "", grep("^levels=", commandArgs(trailingOnly = TRUE), value = TRUE))
+wanted <- if (length(levels_arg) == 0) c("municipio", "nuts", "uls", "aces") else strsplit(levels_arg, ",")[[1]]
+want <- function(level) level %in% wanted
 
 script_dir <- normalizePath(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]])))
 setwd(normalizePath(file.path(script_dir, "..")))
@@ -50,7 +58,10 @@ polygon_table <- function(map, ids, names) {
     geometry <- sf::st_cast(sf::st_geometry(map)[i], "MULTIPOLYGON")
     coords <- sf::st_coordinates(geometry)
     if (nrow(coords) == 0) return(NULL)
-    piece <- paste(i, coords[, "L3"], sep = ".")
+    # One piece per polygon (L2) and one hole id per ring (L1). L3 is the
+    # feature, always 1 here: with it every polygon of an area with several
+    # (the Azores, Montijo's two parts) became one ring, drawn as a blob.
+    piece <- paste(i, coords[, "L2"], sep = ".")
     data.frame(id = ids[[i]], name = names[[i]], piece = piece,
                hole = paste(piece, coords[, "L1"], sep = "."),
                x = round(coords[, "X"], 5), y = round(coords[, "Y"], 5), stringsAsFactors = FALSE)
@@ -85,15 +96,17 @@ write_level <- function(level, map, ids, names) {
 }
 
 # Municipalities: the app names them as its NUTS lookup does, keyed by DICO.
+if (want("municipio")) {
 lookup <- readRDS("data/nuts_lookup_2024.rds")
 lookup$dtmn <- substr(lookup$municipality_code, nchar(lookup$municipality_code) - 3L, nchar(lookup$municipality_code))
 m <- get_map("municipio")
 ids <- lookup$municipality[match(m$dtmn, lookup$dtmn)]
 stopifnot(sum(!is.na(ids[m$geopt_type == "boundary"])) == 308)
 write_level("municipio", m, ids, ifelse(is.na(ids), m$municipio, ids))
+}
 
 # NUTS II and III, per vintage, named as in the app's lookups.
-for (vintage in c("2013", "2024")) {
+if (want("nuts")) for (vintage in c("2013", "2024")) {
   lk <- readRDS(sprintf("data/nuts_lookup_%s.rds", vintage))
   for (level in c("nuts2", "nuts3")) {
     map <- get_map(level, nuts_vintage = vintage)
@@ -107,6 +120,7 @@ for (vintage in c("2013", "2024")) {
 
 # ULS: geopt's names, matched to the app's after normalising punctuation and
 # the one name that differs ("ULS Dão-Lafões" is the app's "ULS Viseu Dão-Lafões").
+if (want("uls")) {
 uls_lookup <- readRDS("data/uls_lookup.rds")
 app_uls <- unique(uls_lookup$unit[uls_lookup$kind %in% c("ULS", "ULS (partilhada)")])
 aliases <- c("uls dao lafoes" = "uls viseu dao lafoes")
@@ -117,3 +131,14 @@ ids <- app_uls[match(key, normalize(app_uls))]
 missing <- setdiff(app_uls, ids)
 if (length(missing) > 0) stop("ULS without a boundary: ", paste(missing, collapse = ", "))
 write_level("uls", u, ids, ifelse(is.na(ids), u$uls, ids))
+}
+
+# ACES: the mainland units only; the islands' health units are kept without an
+# id, as for the ULS.
+if (want("aces")) {
+  a <- get_map("aces")
+  mainland <- a$reg_saude %in% c("Norte", "Centro", "LVT", "Alentejo", "Algarve")
+  ids <- ifelse(mainland, a$aces, NA_character_)
+  stopifnot(sum(!is.na(ids[a$geopt_type == "boundary"])) == 55)
+  write_level("aces", a, ids, a$aces)
+}

@@ -686,15 +686,40 @@ maps_tab_ui <- function() {
           "SMR: óbitos observados a dividir pelos esperados com as taxas por idade de Portugal (100 = Portugal). ",
           "É a métrica indicada para comparar municípios. A taxa padronizada usa a População Padrão Europeia de 2013."
         ),
-        selectInput("map_end_year", "Triénio:", choices = NULL),
+        radioButtons(
+          "map_view", "Mostrar:",
+          choices = c("Um triénio" = "period", "Tendência ao longo dos triénios" = "trend", "Variação entre dois triénios" = "change",
+                      "Projecção (NUTS III, ULS, NUTS II)" = "projection"),
+          selected = "period"
+        ),
+        conditionalPanel("input.map_view != 'projection'", selectInput("map_end_year", "Triénio:", choices = NULL)),
+        conditionalPanel(
+          "input.map_view == 'trend'",
+          selectInput("map_trend_n", "Número de triénios:", choices = c("4 (12 anos)" = "4", "5 (15 anos)" = "5", "6 (18 anos)" = "6"), selected = "5"),
+          helpText("Triénios seguidos, sem anos em comum, a terminar no triénio escolhido.")
+        ),
+        conditionalPanel(
+          "input.map_view == 'change'",
+          selectInput("map_base_year", "Comparar com o triénio:", choices = NULL)
+        ),
+        conditionalPanel(
+          "input.map_view == 'projection'",
+          selectInput("map_target_year", "Projectar até:", choices = as.character(2026:2035), selected = "2030"),
+          helpText("Taxa padronizada anual (todas as idades, ou menos de 75 anos com essa métrica), com o método da Previsão Guiada. ",
+                   "Da primeira vez demora cerca de um minuto; depois fica guardada.")
+        ),
         radioButtons("map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio"),
         radioButtons(
           "map_scale", "Cores:",
-          choices = c("Face a Portugal (= 100): vermelho acima, azul abaixo" = "index", "Quintis" = "quintile"),
+          choices = c("Escala contínua" = "index", "Significância (\u25b2 = \u25bc)" = "significance", "Quintis" = "quintile"),
           selected = "index"
         ),
+        helpText(
+          "Escala contínua: face a Portugal (= 100) num triénio, em % por ano na tendência, face ao triénio anterior (= 100) na variação. ",
+          "Significância: só três cores, conforme o intervalo de 95% exclui ou não Portugal, a ausência de tendência ou de mudança."
+        ),
         conditionalPanel(
-          "input.map_metric == 'smr'",
+          "input.map_metric == 'smr' && input.map_view == 'period'",
           checkboxInput("map_smoothed", "Suavizar a SMR das áreas pequenas (Bayes empírico)", value = FALSE)
         ),
         actionButton("go_map", "Desenhar mapa")
@@ -1160,7 +1185,9 @@ planning_tab_ui <- function() {
               column(3, radioButtons("planning_map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio")),
               column(3, radioButtons(
                 "planning_map_scale", "Cores:",
-                choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index", "Quintis de cada indicador" = "quintile"),
+                choices = c("Face a Portugal (= 100): vermelho pior, azul melhor" = "index",
+                            "Significância face a Portugal (\u25b2 = \u25bc)" = "significance",
+                            "Quintis de cada indicador" = "quintile"),
                 selected = "index"
               ))
             ),
@@ -1228,7 +1255,18 @@ planning_tab_ui <- function() {
             plotly::plotlyOutput("planningSnsPlot", height = "420px"),
             div(style = "overflow-x:auto;", tableOutput("planningSnsTable")),
             h5("Todas as ULS no último período completo"),
-            plotly::plotlyOutput("planningSnsRanking", height = "820px")
+            plotly::plotlyOutput("planningSnsRanking", height = "820px"),
+            h5("Mapa: ACES até 2023, ULS desde 2024"),
+            fluidRow(
+              column(4, selectInput("planning_sns_map_year", "Ano:", choices = NULL)),
+              column(8, radioButtons(
+                "planning_sns_map_scale", "Cores:",
+                choices = c("Face ao Continente (= 100)" = "index", "Significância (\u25b2 = \u25bc)" = "significance", "Quintis" = "quintile"),
+                selected = "index", inline = TRUE
+              ))
+            ),
+            uiOutput("planningSnsMapNote"),
+            plotly::plotlyOutput("planningSnsMap", height = "680px")
           ),
           tabPanel(
             "Mortalidade semanal",

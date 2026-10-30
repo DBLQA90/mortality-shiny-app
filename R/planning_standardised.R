@@ -456,13 +456,14 @@ planning_standardised_years <- function() life_expectancy_years()
 # missing.
 planning_standardised_pool <- function(areas, end_year, sex, lookup, mode = PLANNING_DEFAULT_SPLIT_MODE,
                                        vintage = planning_lookup_vintage(lookup), basis = default_population_basis(),
-                                       extra = character(0)) {
+                                       extra = character(0), span = 3L) {
   end_of_year <- identical(normalize_population_basis(basis), "end")
   # 0/1 here: planning_band_product() applies the parish weights per age band.
   membership <- planning_membership_matrix(areas, lookup)
   areas <- rownames(membership)
   municipalities <- colnames(membership)
-  window <- seq.int(end_year - 2L, end_year)
+  # A triennium, or `span` years (1 for the annual series of the maps' projections).
+  window <- seq.int(end_year - as.integer(span) + 1L, end_year)
   blocks <- lapply(window, planning_cause_age_block, municipalities = municipalities, extra = extra)
   if (any(vapply(blocks, is.null, logical(1)))) return(NULL)
   previous <- lapply(window - 1L, planning_cause_age_block, municipalities = municipalities)
@@ -634,7 +635,7 @@ planning_cause_measure <- function(cause) {
 # (cause names) replaces the groups with those causes, for the maps.
 planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_lookup(), benchmark = "Portugal", sex = "HM",
                                         mode = PLANNING_DEFAULT_SPLIT_MODE, vintage = planning_lookup_vintage(lookup),
-                                        basis = default_population_basis(), causes = NULL) {
+                                        basis = default_population_basis(), causes = NULL, span = 3L) {
   areas <- unique(as.character(areas))
   standard <- planning_standardised_measures()
   if (is.null(causes)) {
@@ -647,7 +648,7 @@ planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_looku
     labels <- stats::setNames(causes, codes)
     extra <- codes[!codes %in% names(standard)]
   }
-  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis, extra)
+  pool <- planning_standardised_pool(unique(c(areas, benchmark)), as.integer(end_year), sex, lookup, mode, vintage, basis, extra, span)
   if (is.null(pool)) return(tibble::tibble())
   upper <- planning_band_upper(age_levels)
   py <- pool$person_years
@@ -669,11 +670,13 @@ planning_cause_standardised <- function(areas, end_year, lookup = get_nuts_looku
     smr_lower <- ifelse(expected > 0, ci$lower / expected * 100, NA_real_)[idx]
     smr_upper <- ifelse(expected > 0, ci$upper / expected * 100, NA_real_)[idx]
     out <- tibble::tibble(
-      area = areas, code = m, group = unname(labels[[m]]), period = paste0(end_year - 2L, "-", end_year), end_year = as.integer(end_year),
+      area = areas, code = m, group = unname(labels[[m]]),
+      period = if (span > 1) paste0(end_year - as.integer(span) + 1L, "-", end_year) else as.character(end_year), end_year = as.integer(end_year),
       observed = unname(observed[idx]), expected = unname(expected[idx]),
       smr = unname(smr), smr_lower = unname(smr_lower), smr_upper = unname(smr_upper),
       dsr = all_ages$value[idx], dsr_lower = all_ages$lower[idx], dsr_upper = all_ages$upper[idx],
       dsr75 = under75$value[idx], dsr75_lower = under75$lower[idx], dsr75_upper = under75$upper[idx],
+      observed75 = unname(under75$observed[idx]),
       flag = ifelse(spread_share[idx] > PLANNING_SPREAD_FLAG & !withheld, "‡", "")
     )
     out[withheld, setdiff(names(out), c("area", "code", "group", "period", "end_year", "flag"))] <- NA_real_

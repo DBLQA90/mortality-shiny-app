@@ -138,7 +138,10 @@ planning_map_values <- function(ids, level, lookup, max_year, benchmark = "Portu
       digits = spec$digits,
       benchmark_value = reference,
       index = ifelse(is.finite(rows$value) & is.finite(reference) & reference > 0, rows$value / reference * 100, NA_real_),
-      quintile = quintile
+      quintile = quintile,
+      # Of the observed value's interval, smoothed or not.
+      significance = if (all(c("lower", "upper") %in% names(rows))) planning_significance(rows$lower, rows$upper, rep(reference, nrow(rows))) else NA_character_,
+      class = map_significance_class(significance)
     )
   }))
 }
@@ -146,20 +149,50 @@ planning_map_values <- function(ids, level, lookup, max_year, benchmark = "Portu
 # One map per indicator, each with its own legend, as a list that
 # planning_map_draw() lays out two per row. `scale`: "index" (against the
 # benchmark, coloured by meaning) or "quintile" (each indicator's own fifths).
-planning_map_chart <- function(values, boundaries, scale = "index", highlight = character(0), benchmark = "Portugal") {
+#
+# For the Mapas tab and the significance colours, `scale` may also be "classes"
+# (column `class`, coloured by `classes`, named colours lowest first) or
+# "linear" (column `z` on `limits`, labelled `ticks`/`tick_labels`), with
+# `legend_title`. "significance" draws each panel's significance classes in the
+# colours of its direction (map_class_colours()).
+planning_map_chart <- function(values, boundaries, scale = "index", highlight = character(0), benchmark = "Portugal",
+                               classes = NULL, limits = NULL, ticks = NULL, tick_labels = NULL, legend_title = NULL) {
   polygons <- boundaries$polygons
   frames <- boundaries$frames
   panels <- unique(values$panel)
   plots <- lapply(panels, function(p) {
     v <- values[values$panel == p, , drop = FALSE]
-    drawn <- dplyr::left_join(polygons, v[, c("area", "index", "quintile")], by = c("id" = "area"))
+    keep <- intersect(c("area", "index", "quintile", "class", "z"), names(v))
+    drawn <- dplyr::left_join(polygons, v[, keep], by = c("id" = "area"))
     direction <- v$direction[[1]]
     base <- function(data) ggplot2::ggplot(data, ggplot2::aes(x = .data$x, y = .data$y, group = .data$piece, subgroup = .data$hole))
-    if (identical(scale, "quintile")) {
+    if (identical(scale, "significance") && all(is.na(v$significance))) {
+      scale <- "index"
+      legend_title <- paste0(benchmark, " = 100 (sem intervalo)\n", switch(direction, neutral = "sem melhor nem pior", "vermelho: pior"))
+    }
+    if (identical(scale, "significance")) {
+      scale <- "classes"
+      classes <- map_class_colours(unname(MAP_SIGNIFICANCE_LABELS), direction)
+      legend_title <- paste0("Face a ", benchmark)
+    }
+    if (identical(scale, "classes")) {
+      drawn$class <- factor(drawn$class, levels = names(classes))
+      plot <- base(drawn) +
+        ggplot2::geom_polygon(ggplot2::aes(fill = .data$class), colour = "#ffffff", linewidth = 0.08) +
+        ggplot2::scale_fill_manual(values = classes, na.value = MAP_NA_COLOUR, drop = FALSE, breaks = names(classes),
+                                   name = legend_title %||% "")
+    } else if (identical(scale, "linear")) {
+      plot <- base(drawn) +
+        ggplot2::geom_polygon(ggplot2::aes(fill = pmin(pmax(.data$z, limits[1]), limits[2])), colour = "#ffffff", linewidth = 0.08) +
+        ggplot2::scale_fill_gradient2(low = PLANNING_MAP_DIVERGING[["low"]], mid = PLANNING_MAP_DIVERGING[["mid"]],
+                                      high = PLANNING_MAP_DIVERGING[["high"]], midpoint = 0, limits = limits,
+                                      breaks = ticks, labels = tick_labels %||% ticks, na.value = MAP_NA_COLOUR,
+                                      name = legend_title %||% "")
+    } else if (identical(scale, "quintile")) {
       drawn$quintile <- factor(drawn$quintile, levels = 1:5)
       plot <- base(drawn) +
         ggplot2::geom_polygon(ggplot2::aes(fill = .data$quintile), colour = "#ffffff", linewidth = 0.08) +
-        ggplot2::scale_fill_manual(values = stats::setNames(PLANNING_MAP_QUINTILES, 1:5), na.value = "#d9d8d3", drop = FALSE,
+        ggplot2::scale_fill_manual(values = stats::setNames(PLANNING_MAP_QUINTILES, 1:5), na.value = MAP_NA_COLOUR, drop = FALSE,
                                    breaks = as.character(1:5), labels = c("1 (mais baixo)", "2", "3", "4", "5 (mais alto)"),
                                    name = "Quintil")
     } else {
@@ -175,7 +208,7 @@ planning_map_chart <- function(values, boundaries, scale = "index", highlight = 
         ggplot2::scale_fill_gradient2(
           low = colours[["low"]], mid = colours[["mid"]], high = colours[["high"]],
           midpoint = 0, limits = log(PLANNING_MAP_INDEX_LIMITS), breaks = log(breaks / 100), labels = breaks,
-          na.value = "#d9d8d3", name = paste0(benchmark, " = 100\n", meaning)
+          na.value = MAP_NA_COLOUR, name = legend_title %||% paste0(benchmark, " = 100\n", meaning)
         )
     }
     if (length(highlight) > 0) {

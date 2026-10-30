@@ -73,21 +73,38 @@ planning_sns_available <- function() {
   all(file.exists(file.path(planning_sns_dir(), paste0(unique(SNS_INDICATORS$dataset), ".rds"))))
 }
 
-# Numerators and denominators per app unit and month, for every indicator.
-planning_sns_components <- function() {
-  key <- paste(infant_snapshot_root(), "sns", sep = "|")
+# The portal's units before the ULS of 2024 - ACES, and the 18 it already
+# labels by the ULS that succeeded them ("Área dos CSP da ULS ...") - as the
+# 55 mainland units of the ACES boundaries (geopt's names): 95 labels, each
+# unit one label per dataset and month (checked in tests).
+planning_sns_aces_crosswalk <- function() {
+  path <- file.path(app_dir_or_wd(), "data", "sns_aces_crosswalk.csv")
+  if (!file.exists(path)) return(data.frame(portal_label = character(0), aces = character(0)))
+  utils::read.csv(path, encoding = "UTF-8", stringsAsFactors = FALSE)
+}
+
+# Numerators and denominators per app unit and month, for every indicator:
+# the ULS from 2024 (`kind` "uls"), or the ACES of 2015-2023 ("aces").
+planning_sns_components <- function(kind = "uls") {
+  key <- paste(infant_snapshot_root(), "sns", kind, sep = "|")
   if (exists(key, envir = planning_cache, inherits = FALSE)) return(get(key, envir = planning_cache, inherits = FALSE))
-  units <- planning_uls_units("units")
+  crosswalk <- if (identical(kind, "aces")) planning_sns_aces_crosswalk() else NULL
+  units <- if (identical(kind, "aces")) unique(crosswalk$aces) else planning_uls_units("units")
   out <- list()
   for (dataset in unique(SNS_INDICATORS$dataset)) {
     path <- file.path(planning_sns_dir(), paste0(dataset, ".rds"))
     if (!file.exists(path)) next
     raw <- readRDS(path)
-    raw <- raw[raw$period >= SNS_FIRST_PERIOD, , drop = FALSE]
-    wide <- tidyr::pivot_wider(raw[, c("period", "unit", "field", "value")], names_from = field, values_from = value, values_fn = sum)
-    wide$app_unit <- planning_sns_unit(wide$unit)
-    unmatched <- setdiff(unique(wide$app_unit), units)
-    if (length(unmatched) > 0) warning("SNS units without an app ULS: ", paste(unmatched, collapse = "; "), call. = FALSE)
+    raw <- if (identical(kind, "aces")) raw[raw$period < SNS_FIRST_PERIOD, , drop = FALSE] else raw[raw$period >= SNS_FIRST_PERIOD, , drop = FALSE]
+    if (nrow(raw) == 0) next
+    # Repeated records (the portal has some: ULS São José, October 2025 to
+    # January 2026) count once; summed they doubled counts and proportions, so
+    # the HbA1c of São José read 124.6%.
+    raw <- dplyr::distinct(raw[, c("period", "unit", "field", "value")])
+    wide <- tidyr::pivot_wider(raw, names_from = field, values_from = value, values_fn = sum)
+    wide$app_unit <- if (identical(kind, "aces")) crosswalk$aces[match(wide$unit, crosswalk$portal_label)] else planning_sns_unit(wide$unit)
+    unmatched <- setdiff(unique(if (identical(kind, "aces")) wide$unit[is.na(wide$app_unit)] else wide$app_unit), units)
+    if (length(unmatched) > 0) warning("SNS units without an app ", toupper(kind), ": ", paste(unmatched, collapse = "; "), call. = FALSE)
     wide <- wide[wide$app_unit %in% units, , drop = FALSE]
     for (i in which(SNS_INDICATORS$dataset == dataset)) {
       spec <- SNS_INDICATORS[i, ]
@@ -204,4 +221,52 @@ planning_sns_sets <- function(areas, lookup = get_nuts_lookup()) {
   }
   levels[[names(sets)[[1]]]] <- "Local"
   list(sets = sets, levels = levels, notes = unique(notes))
+}
+
+
+# ---------------------------------------------------------
+# The map of an indicator: ACES to 2023, ULS from 2024
+# ---------------------------------------------------------
+SNS_WORSE_IDS <- "sns_no_gp"
+planning_sns_significance_labels <- function() sub("de Portugal", "do Continente", unname(MAP_SIGNIFICANCE_LABELS))
+planning_sns_direction <- function(id) if (id %in% SNS_WORSE_IDS) "worse" else "better"
+planning_sns_map_years <- function() 2015:as.integer(substr(max(planning_sns_components("uls")$period), 1, 4))
+
+# Every unit's value in `year`, at the last end of the indicator's cycle in that
+# year (December, or June for a semester indicator not yet in December, or the
+# last month for a monthly one), against the Continente (the sum of the units).
+planning_sns_map_values <- function(id, year) {
+  kind <- if (as.integer(year) >= as.integer(substr(SNS_FIRST_PERIOD, 1, 4))) "uls" else "aces"
+  comp <- planning_sns_components(kind)
+  if (nrow(comp) == 0) return(NULL)
+  comp <- comp[comp$indicator == id & substr(comp$period, 1, 4) == as.character(year), , drop = FALSE]
+  if (nrow(comp) == 0) return(NULL)
+  cycle <- SNS_INDICATORS$cycle[SNS_INDICATORS$id == id]
+  month <- as.integer(substr(comp$period, 6, 7))
+  ends <- switch(cycle, year = month == 12L, semester = month %in% c(6L, 12L), rep(TRUE, length(month)))
+  if (!any(ends)) return(NULL)
+  period <- max(comp$period[ends])
+  rows <- comp[comp$period == period, , drop = FALSE]
+  ci <- planning_binomial_ci(round(rows$numerator), round(rows$denominator))
+  reference <- sum(rows$numerator) / sum(rows$denominator) * 100
+  value <- ifelse(rows$denominator > 0, rows$numerator / rows$denominator * 100, NA_real_)
+  significance <- planning_significance(ci$lower, ci$upper, rep(reference, nrow(rows)))
+  values <- tibble::tibble(
+    area = rows$unit, value = value, lower = ci$lower, upper = ci$upper, numerator = rows$numerator, denominator = rows$denominator,
+    benchmark_value = reference, index = value / reference * 100, significance = significance,
+    class = map_significance_class(significance), quintile = map_quintile(value)
+  )
+  values$class <- sub("de Portugal", "do Continente", values$class)
+  list(values = values, period = period, kind = kind, direction = planning_sns_direction(id), units = nrow(rows))
+}
+
+planning_sns_map_hover <- function(values, period) {
+  sig <- ifelse(is.na(values$class), "", paste0("<br>", values$class))
+  paste0("<b>", values$area, "</b>",
+         ifelse(is.finite(values$value),
+                paste0("<br>", planning_format_value(values$value, 1), "% (IC 95% ", planning_format_value(values$lower, 1), " a ",
+                       planning_format_value(values$upper, 1), ")", sig,
+                       "<br>Continente: ", planning_format_value(values$benchmark_value, 1), "%",
+                       "<br>", planning_format_value(values$numerator, 0), " de ", planning_format_value(values$denominator, 0), " (", period, ")"),
+                "<br>Sem dados neste mês"))
 }

@@ -92,7 +92,7 @@ ui <- navbarPage(
 # =========================================================
 
 server <- function(input, output, session) {
-  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L, avoidable = 0L)
+  cancel_seq <- reactiveValues(rates = 0L, beginner = 0L, forecast = 0L, annual = 0L, avoidable = 0L, maps = 0L)
 
   # -------------------------
   # NUTS vintage
@@ -4885,9 +4885,19 @@ server <- function(input, output, session) {
                         better = c(low = PLANNING_MAP_DIVERGING[["high"]], mid = PLANNING_MAP_DIVERGING[["mid"]], high = PLANNING_MAP_DIVERGING[["low"]]),
                         PLANNING_MAP_NEUTRAL)
       meaning <- switch(direction, worse = "vermelho: pior", better = "vermelho: pior", "sem melhor nem pior")
-      interactive_choropleth(v, view$boundaries, scale = input$planning_map_scale %||% "index", colours = colours,
-                             title = gsub("\n", "<br>", panels[[k]]), legend_title = paste0(view$benchmark, " = 100<br>", meaning),
-                             source = "planning_map", highlight = planning_map_highlight())
+      scale <- input$planning_map_scale %||% "index"
+      # An indicator without an interval has no classes: it keeps the colours
+      # against the benchmark, and its legend says so.
+      without_interval <- identical(scale, "significance") && all(is.na(v$significance))
+      if (without_interval) scale <- "index"
+      significance <- identical(scale, "significance")
+      interactive_choropleth(v, view$boundaries, scale = if (significance) "classes" else scale, colours = colours,
+                             classes = map_class_colours(unname(MAP_SIGNIFICANCE_LABELS), direction),
+                             title = gsub("\n", "<br>", panels[[k]]),
+                             legend_title = if (significance) paste0("Face a ", view$benchmark) else
+                               paste0(view$benchmark, " = 100", if (without_interval) " (sem intervalo)" else "", "<br>", meaning),
+                             source = "planning_map", highlight = planning_map_highlight(),
+                             legend = if (length(panels) > 1) "bottom" else "right")
     })
   })
 
@@ -4907,7 +4917,8 @@ server <- function(input, output, session) {
       v <- planning_map_view()$values
       write_csv_utf8(tibble::tibble(
         indicador = gsub("\n", " ", v$panel), area = v$area, valor = v$value, valor_observado = v$observed,
-        marca = v$flag, referencia = v$benchmark_value, indice_referencia_100 = round(v$index, 1), quintil = v$quintile
+        marca = v$flag, referencia = v$benchmark_value, indice_referencia_100 = round(v$index, 1),
+        face_a_referencia = v$significance, quintil = v$quintile
       ), file)
     }
   )
@@ -4922,6 +4933,9 @@ server <- function(input, output, session) {
                "- uma mortalidade alta e uma esperança de vida baixa ficam ambas a vermelho. Os indicadores sem melhor nem pior ",
                "(estrutura etária, natalidade, sectores de emprego, taxa bruta de mortalidade, que depende sobretudo da idade da população) ",
                "ficam a violeta abaixo e amarelo acima. Assim, indicadores em unidades diferentes lêem-se juntos. ")
+      } else if (identical(scale, "significance")) {
+        paste0("Três cores por indicador: \u25b2 acima e \u25bc abaixo de ", view$benchmark, " quando o intervalo de 95% o exclui, com as cores do que ",
+               "a diferença significa (vermelho pior, azul melhor; violeta e amarelo sem melhor nem pior). Só os indicadores com intervalo têm classes. ")
       } else {
         "Cada indicador dividido em cinco grupos com o mesmo número de áreas: mostra a ordenação dentro do indicador, não a distância a Portugal nem se é melhor ou pior. "
       },
@@ -4960,30 +4974,50 @@ server <- function(input, output, session) {
   # for - by its button or from another tab - rather than read from the inputs,
   # which a tab switch updates only after this round.
   map_settings <- reactiveVal(NULL)
+  # The areas chosen in the tab the map was opened from, outlined on the map.
+  map_focus <- reactiveVal(character(0))
 
   map_end_year_choices <- function(cause) {
     years <- rev(cause_map_end_years(cause))
     stats::setNames(as.character(years), paste0(years - 2L, "-", years))
+  }
+  # Earlier triennia with no year in common with the chosen one; by default the
+  # one ten years before, or the oldest.
+  map_base_year_choices <- function(cause, end_year) {
+    choices <- map_end_year_choices(cause)
+    choices[as.integer(choices) <= as.integer(end_year) - 3L]
   }
   observeEvent(input$map_cause, {
     choices <- map_end_year_choices(input$map_cause)
     keep <- if (isTRUE(input$map_end_year %in% choices)) input$map_end_year else utils::head(choices, 1)
     updateSelectInput(session, "map_end_year", choices = choices, selected = keep)
   })
+  observeEvent(list(input$map_cause, input$map_end_year), {
+    req(input$map_end_year)
+    choices <- map_base_year_choices(input$map_cause, input$map_end_year)
+    target <- as.character(as.integer(input$map_end_year) - 9L)
+    keep <- if (isTRUE(input$map_base_year %in% choices)) input$map_base_year else if (target %in% choices) target else utils::tail(choices, 1)
+    updateSelectInput(session, "map_base_year", choices = choices, selected = keep)
+  })
 
   request_map <- function(cause = input$map_cause, sex = input$map_sex, end_year = input$map_end_year) {
     clear_tab_notes("maps")
+    view <- input$map_view %||% "period"
     map_settings(list(
       cause = as.character(cause)[1], sex = sex %||% "HM", metric = input$map_metric %||% "smr",
       end_year = suppressWarnings(as.integer(end_year)), level = input$map_level %||% "municipio",
-      scale = input$map_scale %||% "index", smoothed = isTRUE(input$map_smoothed) && identical(input$map_metric, "smr")
+      scale = input$map_scale %||% "index", view = view,
+      trend_n = suppressWarnings(as.integer(input$map_trend_n %||% "5")),
+      base_year = suppressWarnings(as.integer(input$map_base_year)),
+      target = suppressWarnings(as.integer(input$map_target_year %||% "2030")),
+      smoothed = isTRUE(input$map_smoothed) && identical(input$map_metric, "smr") && identical(view, "period")
     ))
   }
   observeEvent(input$go_map, request_map())
 
-  # "Ver esta causa no mapa" in the mortality tabs: the tab's cause and sex,
-  # the latest triennium, the map's other settings as they are.
-  open_map_for <- function(cause, sex) {
+  # "Ver esta causa no mapa" in the mortality tabs: the tab's cause, sex and
+  # areas (outlined), the latest triennium, the map's other settings as they are.
+  open_map_for <- function(cause, sex, areas = character(0)) {
     cause <- as.character(cause %||% "")[1]
     if (!nzchar(cause)) cause <- "Todas as causas de morte"
     choices <- map_end_year_choices(cause)
@@ -4991,58 +5025,288 @@ server <- function(input, output, session) {
     updateRadioButtons(session, "map_sex", selected = sex %||% "HM")
     updateSelectInput(session, "map_end_year", choices = choices, selected = utils::head(choices, 1))
     updateNavbarPage(session, "main_nav", selected = "Mapas")
+    map_focus(as.character(areas))
     request_map(cause, sex, utils::head(choices, 1))
   }
-  observeEvent(input$map_from_observed, open_map_for(input$cause, input$sex))
-  observeEvent(input$map_from_beginner, open_map_for(input$beginner_cause, input$beginner_sex))
-  observeEvent(input$map_from_annual, open_map_for(utils::head(input$annual_cause, 1), input$annual_sex))
+  observeEvent(input$map_from_observed, open_map_for(input$cause, input$sex, input$area))
+  observeEvent(input$map_from_beginner, open_map_for(input$beginner_cause, input$beginner_sex, input$beginner_area))
+  observeEvent(input$map_from_annual, open_map_for(utils::head(input$annual_cause, 1), input$annual_sex, input$annual_area))
+
+  # The outline: the focus areas at this level, or, on the municipal map, the
+  # municipalities of a focus region.
+  map_highlight <- function(level, lookup) {
+    focus <- setdiff(map_focus(), c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente"))
+    if (length(focus) == 0) return(character(0))
+    units <- planning_map_units(level, lookup)
+    direct <- intersect(focus, units)
+    if (identical(level, "municipio")) {
+      direct <- union(direct, intersect(unlist(lapply(setdiff(focus, units), planning_area_members, lookup = lookup)), units))
+    }
+    direct
+  }
+
+  map_period_label <- function(end_year) paste0(end_year - 2L, "-", end_year)
 
   cause_map <- reactive({
     settings <- map_settings()
     validate(need(!is.null(settings), "Escolha a causa, o sexo e a métrica e carregue em «Desenhar mapa»."))
+    lookup <- active_nuts_lookup()
     boundaries <- planning_map_boundaries(settings$level, active_nuts_vintage())
     validate(need(!is.null(boundaries), "Faltam os limites dos mapas (data/boundaries): corra tools/build_boundaries.R."))
     years <- cause_map_end_years(settings$cause)
     validate(need(length(years) > 0, "Esta causa não tem três anos seguidos com óbitos por causa."))
     end_year <- if (isTRUE(settings$end_year %in% years)) settings$end_year else max(years)
-    values <- shiny::withProgress(message = "A calcular a causa em todas as áreas...", value = 0.3, {
-      cause_map_values(settings$cause, settings$sex, end_year, settings$metric, settings$level, active_nuts_lookup(),
-                       basis = active_population_basis(), smoothed = settings$smoothed)
-    })
-    validate(need(nrow(values) > 0 && any(is.finite(values$value)), "Sem valores para esta causa neste triénio."))
-    missing <- sum(!is.finite(values$value))
-    if (missing > 0) {
-      notify_data(paste0(
-        missing, " de ", nrow(values), " áreas sem valor (a cinzento): sem óbitos por idade publicados nesses anos, ",
-        "ou mais de 25% dos óbitos sem idade (o INE oculta as idades em células pequenas)."
+    basis <- active_population_basis()
+    out <- list(boundaries = boundaries, settings = settings, end_year = end_year,
+                highlight = map_highlight(settings$level, lookup))
+
+    if (identical(settings$view, "projection")) {
+      validate(need(settings$level %in% PROJECTION_LEVELS,
+                    "As projecções fazem-se por NUTS III, ULS ou NUTS II: por município as séries são curtas e instáveis demais."))
+      units <- planning_map_units(settings$level, lookup)
+      values <- shiny::withProgress(message = paste0("A projectar ", length(units), " áreas até ", settings$target, "..."), value = 0, {
+        projection_map_values(settings$cause, settings$sex, identical(settings$metric, "dsr75"), settings$target, settings$level, lookup)
+      })
+      validate(need(nrow(values) > 0 && any(is.finite(values$value)), "Nenhuma área pôde ser projectada para esta causa."))
+      values$hover <- cause_map_projection_hover(values, settings$target)
+      # The change to the target year in %: a few points either way, which the
+      # 67-150 index scale would leave nearly white.
+      values$z <- values$index - 100
+      out$target <- settings$target
+      missing <- sum(!is.finite(values$value))
+      if (missing > 0) notify_data(paste0(
+        missing, " de ", nrow(values), " áreas sem projecção (a cinzento): menos de ", PROJECTION_MIN_YEARS,
+        " anos seguidos com taxa no fim da série, ou nenhum dos modelos se ajustou."
       ), type = "message", id = "map-missing")
+      if (identical(settings$metric, "smr")) notify_data(
+        "A projecção usa a taxa padronizada (a da Previsão Guiada); a SMR não se projecta.", type = "message", id = "map-projection-metric")
+    } else if (identical(settings$view, "trend")) {
+      n <- settings$trend_n %||% 5L
+      validate(need(length(cause_map_triennia(settings$cause, end_year, n)) >= 4,
+                    "A tendência precisa de pelo menos 4 triénios com óbitos por causa: escolha um triénio mais recente ou outra causa."))
+      values <- shiny::withProgress(message = "A calcular a causa em cada triénio...", value = 0, {
+        cause_map_trend(settings$cause, settings$sex, end_year, n, settings$metric, settings$level, lookup, basis = basis,
+                        progress = function(i, total) shiny::setProgress(i / total))
+      })
+      validate(need(nrow(values) > 0 && any(is.finite(values$z)), "Sem tendência para esta causa nestes triénios."))
+      values$hover <- cause_map_trend_hover(values, settings$metric)
+      out$periods <- attr(values, "periods")
+      missing <- sum(!is.finite(values$z))
+      if (missing > 0) notify_data(paste0(missing, " de ", nrow(values), " áreas sem tendência (a cinzento): menos de 4 triénios com valor."),
+                                   type = "message", id = "map-missing")
+    } else if (identical(settings$view, "change")) {
+      base <- settings$base_year
+      validate(need(isTRUE(base %in% years) && base <= end_year - 3L, "Escolha um triénio de comparação anterior, sem anos em comum."))
+      values <- shiny::withProgress(message = "A calcular a causa nos dois triénios...", value = 0.3, {
+        cause_map_change(settings$cause, settings$sex, end_year, base, settings$metric, settings$level, lookup, basis = basis)
+      })
+      validate(need(nrow(values) > 0 && any(is.finite(values$index)), "Sem valores para comparar estes triénios."))
+      values$hover <- cause_map_change_hover(values, settings$metric, map_period_label(base), map_period_label(end_year))
+      out$base_year <- base
+      missing <- sum(!is.finite(values$index))
+      if (missing > 0) notify_data(paste0(missing, " de ", nrow(values), " áreas sem valor num dos triénios (a cinzento)."),
+                                   type = "message", id = "map-missing")
+    } else {
+      values <- shiny::withProgress(message = "A calcular a causa em todas as áreas...", value = 0.3, {
+        cause_map_values(settings$cause, settings$sex, end_year, settings$metric, settings$level, lookup,
+                         basis = basis, smoothed = settings$smoothed)
+      })
+      validate(need(nrow(values) > 0 && any(is.finite(values$value)), "Sem valores para esta causa neste triénio."))
+      missing <- sum(!is.finite(values$value))
+      if (missing > 0) {
+        notify_data(paste0(
+          missing, " de ", nrow(values), " áreas sem valor (a cinzento): sem óbitos por idade publicados nesses anos, ",
+          "ou mais de 25% dos óbitos sem idade (o INE oculta as idades em células pequenas)."
+        ), type = "message", id = "map-missing")
+      }
+      values$hover <- cause_map_hover(values, settings$metric)
     }
-    values$hover <- cause_map_hover(values, settings$metric)
-    list(values = values, boundaries = boundaries, settings = settings, end_year = end_year)
+    out$values <- values
+    out
   })
+
+  # Projections by area: the guided forecast's default projection, the mean of
+  # its six models, fitted to each area's annual standardised rate. The annual
+  # series of every area come at once from the maps' engine with one-year
+  # windows (planning_cause_standardised(span = 1)): the guided tab's own
+  # series, built area by area, took 15-20 s per ULS, and the two agree to
+  # 0.00% in the ULS and NUTS II tested (to 3% in a year of a NUTS III built
+  # from INE's rows and municipalities). As in the guided tab, a year with
+  # fewer than 10 deaths has no rate. The validation is left out: it does not
+  # change the mean of six, only the error shown beside it. A series with
+  # years without a rate keeps its most recent run of consecutive years with
+  # one, at least PROJECTION_MIN_YEARS long, as decided for the 82_MRT
+  # projections; shorter series are not projected.
+  PROJECTION_MIN_YEARS <- 8L
+  PROJECTION_MIN_DEATHS <- 10
+  PROJECTION_LEVELS <- c("nuts3", "uls", "nuts2")
+  projection_cache <- new.env(parent = emptyenv())
+
+  projection_state_key <- function(...) paste(..., active_nuts_vintage(), active_data_mode(), active_population_basis(),
+                                              active_region_source(), sep = "|")
+
+  # Annual standardised rates of Portugal and every unit of `level`.
+  projection_series <- function(cause, sex, under75, level, lookup) {
+    key <- projection_state_key("series", cause, sex, under75, level)
+    if (exists(key, envir = projection_cache, inherits = FALSE)) return(get(key, envir = projection_cache))
+    units <- planning_map_units(level, lookup)
+    mode <- if (identical(level, "uls")) "parish" else PLANNING_DEFAULT_SPLIT_MODE
+    years <- seq.int(min(rate_years), max(rate_years))
+    rows <- lapply(seq_along(years), function(i) {
+      shiny::setProgress(0.7 * i / length(years), detail = paste("série anual,", years[[i]]))
+      tab <- planning_cause_standardised(c(units, "Portugal"), years[[i]], lookup = lookup, sex = sex, mode = mode,
+                                         basis = active_population_basis(), causes = cause, span = 1L)
+      if (nrow(tab) == 0) return(NULL)
+      value <- if (under75) tab$dsr75 else tab$dsr
+      deaths <- if (under75) tab$observed75 else tab$observed
+      tibble::tibble(area = tab$area, year = years[[i]],
+                     value = ifelse(is.finite(deaths) & deaths >= PROJECTION_MIN_DEATHS, value, NA_real_),
+                     lower = if (under75) tab$dsr75_lower else tab$dsr_lower,
+                     upper = if (under75) tab$dsr75_upper else tab$dsr_upper)
+    })
+    out <- dplyr::bind_rows(rows)
+    assign(key, out, envir = projection_cache)
+    out
+  }
+
+  projection_one <- function(series, target, token) {
+    # The rebuilt latest year serves only whole regions, all causes and both
+    # sexes: elsewhere it is empty, and the series ends with INE's last year of
+    # causes of death, as in the guided tab.
+    series <- series[is.finite(series$value) | series$year <= max(planning_cause_years()), , drop = FALSE]
+    series <- series[order(series$year), , drop = FALSE]
+    ok <- is.finite(series$value) & series$value > 0
+    if (length(ok) == 0 || !ok[[length(ok)]]) return(NULL)
+    last <- max(series$year)
+    start <- last
+    while ((start - 1L) %in% series$year[ok]) start <- start - 1L
+    if (last - start + 1L < PROJECTION_MIN_YEARS || target <= last) return(NULL)
+    history <- list(series = series[series$year >= start, c("year", "value", "lower", "upper"), drop = FALSE])
+    result <- run_forecast_models(history, FORECAST_MEAN_MEMBERS, horizon = target - last, kind = "maps", token = token)
+    members <- intersect(FORECAST_MEAN_MEMBERS, get_successful_model_ids(result))
+    if (length(members) < FORECAST_MEAN_MIN_MEMBERS) return(NULL)
+    setup <- get_transformation_setup(result$obs$value, result$transform_method)
+    fc <- combine_model_forecasts(result$fc, members, setup$forward, setup$inverse, result$conf_level, id = FORECAST_MEAN_ID)
+    row <- fc[fc$year == target, , drop = FALSE]
+    if (nrow(row) != 1) return(NULL)
+    tibble::tibble(last_year = last, last_value = series$value[series$year == last], fit_from = start,
+                   value = row$mean, lower = row$lower, upper = row$upper, members = length(members))
+  }
+
+  projection_map_values <- function(cause, sex, under75, target, level, lookup) {
+    key <- projection_state_key("projection", cause, sex, under75, target, level)
+    if (exists(key, envir = projection_cache, inherits = FALSE)) return(get(key, envir = projection_cache))
+    series <- projection_series(cause, sex, under75, level, lookup)
+    if (nrow(series) == 0) return(tibble::tibble())
+    token <- isolate(cancel_seq$maps)
+    areas <- c("Portugal", planning_map_units(level, lookup))
+    rows <- lapply(seq_along(areas), function(i) {
+      shiny::setProgress(0.7 + 0.3 * i / length(areas), detail = areas[[i]])
+      one <- tryCatch(projection_one(series[series$area == areas[[i]], , drop = FALSE], target, token), error = function(e) NULL)
+      if (is.null(one)) NULL else dplyr::mutate(one, area = areas[[i]], .before = 1)
+    })
+    projected <- dplyr::bind_rows(rows)
+    if (nrow(projected) == 0) return(tibble::tibble())
+    reference <- projected$value[projected$area == "Portugal"][1]
+    out <- dplyr::left_join(tibble::tibble(area = areas[-1]), projected, by = "area")
+    out$benchmark_value <- if (length(reference) == 1) reference else NA_real_
+    out$index <- ifelse(is.finite(out$value) & is.finite(out$last_value) & out$last_value > 0, out$value / out$last_value * 100, NA_real_)
+    out$class <- ifelse(!is.finite(out$index), NA_character_,
+                        ifelse(out$lower > out$last_value, MAP_CHANGE_LABELS[[3]],
+                               ifelse(out$upper < out$last_value, MAP_CHANGE_LABELS[[1]], MAP_CHANGE_LABELS[[2]])))
+    out$quintile <- map_quintile(out$index)
+    assign(key, out, envir = projection_cache)
+    out
+  }
+
+  # Title, colours and legend of the map on screen.
+  cause_map_drawing <- function(m) {
+    s <- m$settings
+    sex_label <- c(HM = "ambos os sexos", H = "homens", M = "mulheres")[[s$sex]]
+    metric <- cause_map_metric_label(s$metric)
+    if (identical(s$view, "projection")) {
+      metric <- if (identical(s$metric, "dsr75")) cause_map_metric_label("dsr75") else cause_map_metric_label("dsr")
+      list(title = paste0(s$cause, " · ", sex_label, " · projecção para ", m$target,
+                          "<br><sup>", metric, ", média de 6 modelos, face ao último ano observado</sup>"),
+           scale = switch(s$scale, significance = "classes", quintile = "quintile", "linear"),
+           classes = map_class_colours(MAP_CHANGE_LABELS),
+           legend = if (identical(s$scale, "significance")) "Projecção" else "% face ao último ano<br>vermelho: sobe",
+           limits = c(-MAP_PROJECTION_LIMIT, MAP_PROJECTION_LIMIT), ticks = c(-20, -10, 0, 10, 20),
+           tick_labels = c("-20", "-10", "0", "+10", "+20"))
+    } else if (identical(s$view, "trend")) {
+      first <- min(m$periods) - 2L
+      list(title = paste0(s$cause, " · ", sex_label, " · ", first, "-", m$end_year,
+                          "<br><sup>Variação anual: ", metric, ", ", length(m$periods), " triénios</sup>"),
+           scale = switch(s$scale, significance = "classes", quintile = "quintile", "linear"),
+           classes = map_class_colours(MAP_TREND_LABELS), legend = if (identical(s$scale, "significance")) "Tendência" else "% por ano<br>vermelho: a subir",
+           limits = c(-MAP_TREND_LIMIT, MAP_TREND_LIMIT), ticks = c(-5, -2.5, 0, 2.5, 5), tick_labels = c("-5", "-2,5", "0", "+2,5", "+5"))
+    } else if (identical(s$view, "change")) {
+      list(title = paste0(s$cause, " · ", sex_label, "<br><sup>", metric, ": ", map_period_label(m$base_year), " → ",
+                          map_period_label(m$end_year), "</sup>"),
+           scale = switch(s$scale, significance = "classes", quintile = "quintile", "index"),
+           classes = map_class_colours(MAP_CHANGE_LABELS),
+           legend = if (identical(s$scale, "significance")) "Variação" else paste0(map_period_label(m$base_year), " = 100<br>vermelho: subiu"))
+    } else {
+      list(title = cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed),
+           scale = switch(s$scale, significance = "classes", quintile = "quintile", "index"),
+           classes = map_class_colours(unname(MAP_SIGNIFICANCE_LABELS)),
+           legend = if (identical(s$scale, "significance")) "Face a Portugal" else "Portugal = 100<br>vermelho: acima")
+    }
+  }
 
   output$causeMap <- plotly::renderPlotly({
     m <- cause_map()
-    s <- m$settings
-    interactive_choropleth(m$values, m$boundaries, scale = s$scale,
-                           title = cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed),
-                           legend_title = "Portugal = 100<br>vermelho: acima", source = "cause_map")
+    d <- cause_map_drawing(m)
+    interactive_choropleth(m$values, m$boundaries, scale = d$scale, title = d$title, legend_title = d$legend,
+                           source = "cause_map", highlight = m$highlight, classes = d$classes,
+                           limits = d$limits, ticks = d$ticks, tick_labels = d$tick_labels)
   })
 
   output$causeMapNote <- renderUI({
     m <- cause_map()
     s <- m$settings
+    smr <- identical(s$metric, "smr")
     helpText(paste0(
-      if (identical(s$scale, "index")) {
-        paste0("Cada área face a Portugal (= 100), de 67 a 150 (os valores fora ficam na cor do extremo): vermelho acima de Portugal, ",
-               "azul abaixo. ", if (identical(s$metric, "smr")) "A SMR já é esse índice. " else "O índice é a taxa da área a dividir pela de Portugal. ")
-      } else {
-        "Cinco grupos com o mesmo número de áreas: mostra a ordenação, não a distância a Portugal. "
-      },
-      "Óbitos e pessoas-ano somados nos três anos do triénio. ",
-      if (isTRUE(s$smoothed)) "A SMR suavizada aproxima as áreas pequenas da média; o rato mostra também a observada. " else
-        "Em municípios pequenos uma diferença grande pode ser só acaso: o rato diz se o intervalo de 95% exclui Portugal (▲ ▼). ",
+      switch(
+        s$view,
+        projection = paste0(
+          "A projecção de cada área para ", m$target, " com o método da Previsão Guiada: a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e ",
+          "Holt amortecido) ajustados à taxa padronizada anual, face ao último ano observado. ",
+          if (identical(s$scale, "significance")) "\u25b2 e \u25bc quando todo o intervalo de previsão de 95% fica acima ou abaixo do último valor. " else
+            paste0("Escala de -", MAP_PROJECTION_LIMIT, "% a +", MAP_PROJECTION_LIMIT, "%: vermelho sobe, azul desce. "),
+          "Uma projecção não é uma meta: diz para onde a série vai se o passado se repetir. O rato mostra o intervalo de previsão. "
+        ),
+        trend = paste0(
+          "A variação percentual anual de cada área, numa recta log-linear sobre os ", length(m$periods), " triénios, cada um pesado pela ",
+          "sua precisão (como a tendência dos Indicadores de Planeamento). ",
+          if (identical(s$scale, "significance")) "▲ a subir e ▼ a descer quando o intervalo de 95% exclui 0. " else
+            paste0("Escala de -", MAP_TREND_LIMIT, "% a +", MAP_TREND_LIMIT, "% por ano: vermelho a subir, azul a descer. "),
+          if (smr) "Com a SMR, a tendência é face a Portugal: 0% quer dizer que a área acompanha Portugal. " else "",
+          "Os triénios de 2020-2022 incluem a COVID-19 e, a partir de 2021, a população revista do INE. "
+        ),
+        change = paste0(
+          "O valor no triénio mais recente face ao do triénio de comparação (= 100), com um intervalo dos dois intervalos. ",
+          if (identical(s$scale, "significance")) "▲ subiu e ▼ desceu quando o intervalo de 95% exclui 100. " else
+            "Escala de 67 a 150: vermelho subiu, azul desceu. ",
+          if (smr) "Com a SMR, a variação é da posição face a Portugal, não da mortalidade em si. " else ""
+        ),
+        paste0(
+          if (identical(s$scale, "index")) {
+            paste0("Cada área face a Portugal (= 100), de 67 a 150 (os valores fora ficam na cor do extremo): vermelho acima de Portugal, ",
+                   "azul abaixo. ", if (smr) "A SMR já é esse índice. " else "O índice é a taxa da área a dividir pela de Portugal. ")
+          } else if (identical(s$scale, "significance")) {
+            "Três cores: ▲ acima e ▼ abaixo de Portugal quando o intervalo de 95% o exclui; as outras áreas são semelhantes. "
+          } else {
+            "Cinco grupos com o mesmo número de áreas: mostra a ordenação, não a distância a Portugal. "
+          },
+          "Óbitos e pessoas-ano somados nos três anos do triénio. ",
+          if (isTRUE(s$smoothed)) "A SMR suavizada aproxima as áreas pequenas da média; o rato mostra também a observada. " else
+            "Em municípios pequenos uma diferença grande pode ser só acaso: o rato diz se o intervalo de 95% exclui Portugal (▲ ▼). "
+        )
+      ),
+      if (identical(s$scale, "quintile")) "Quintis: cinco grupos com o mesmo número de áreas. " else "",
       if (identical(s$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias. As ilhas não têm ULS. " else "",
+      if (length(m$highlight) > 0) "Contorno escuro: o local escolhido no separador de onde veio. " else "",
       "Passe o rato para ver os valores, use a roda do rato para aproximar e clique numa área para abrir a sua série."
     ))
   })
@@ -5061,16 +5325,42 @@ server <- function(input, output, session) {
     row <- m$values[m$values$area == area, , drop = FALSE]
     req(nrow(row) == 1)
     digits <- if (identical(m$settings$metric, "smr")) 0 else 1
-    table <- tibble::tibble(
-      `Métrica` = cause_map_metric_label(m$settings$metric),
-      Valor = paste0(planning_format_value(row$value, digits), row$flag),
-      `IC 95%` = paste0(planning_format_value(row$lower, digits), " a ", planning_format_value(row$upper, digits)),
-      `Óbitos` = planning_format_value(row$observed, 0),
-      Esperados = planning_format_value(row$expected, 1),
-      Portugal = planning_format_value(row$benchmark_value, digits),
-      `Face a Portugal` = if (is.na(row$significance)) "—" else paste0(
-        trimws(planning_significance_mark(row$significance)), " ",
-        c(Superior = "acima", Inferior = "abaixo", Semelhante = "semelhante")[[row$significance]]
+    pct <- function(x, d = 1) formatC(x, format = "f", digits = d, decimal.mark = ",", flag = "+")
+    table <- switch(
+      m$settings$view,
+      projection = tibble::tibble(
+        `Último ano` = if (is.finite(row$last_year)) paste0(planning_format_value(row$last_value, digits), " (", row$last_year, ")") else "—",
+        !!paste0("Projecção ", m$target) := planning_format_value(row$value, 1),
+        `Intervalo de previsão 95%` = paste0(planning_format_value(row$lower, 1), " a ", planning_format_value(row$upper, 1)),
+        `Variação` = if (is.finite(row$index)) paste0(pct(row$index - 100, 0), "%") else "—",
+        `Portugal ` = planning_format_value(row$benchmark_value, 1),
+        `Ajuste` = if (is.finite(row$fit_from)) paste0(row$fit_from, "-", row$last_year) else "—"
+      ),
+      trend = tibble::tibble(
+        `Métrica` = cause_map_metric_label(m$settings$metric),
+        `Variação anual` = if (is.finite(row$z)) paste0(pct(row$z), "%") else "—",
+        `IC 95%` = if (is.finite(row$z)) paste0(pct(row$apc_lower), "% a ", pct(row$apc_upper), "%") else "—",
+        `Leitura` = if (is.na(row$class)) "—" else row$class,
+        `Primeiro triénio` = planning_format_value(row$first, digits),
+        `Último triénio` = planning_format_value(row$last, digits),
+        `Triénios` = as.character(row$n)
+      ),
+      change = tibble::tibble(
+        `Métrica` = cause_map_metric_label(m$settings$metric),
+        !!map_period_label(m$base_year) := planning_format_value(row$value_base, digits),
+        !!map_period_label(m$end_year) := planning_format_value(row$value, digits),
+        `Variação` = if (is.finite(row$index)) paste0(pct(row$index - 100, 0), "%") else "—",
+        `IC 95%` = if (is.finite(row$change_lower)) paste0(pct(row$change_lower - 100, 0), "% a ", pct(row$change_upper - 100, 0), "%") else "—",
+        `Leitura` = if (is.na(row$class)) "—" else row$class
+      ),
+      tibble::tibble(
+        `Métrica` = cause_map_metric_label(m$settings$metric),
+        Valor = paste0(planning_format_value(row$value, digits), row$flag),
+        `IC 95%` = paste0(planning_format_value(row$lower, digits), " a ", planning_format_value(row$upper, digits)),
+        `Óbitos` = planning_format_value(row$observed, 0),
+        Esperados = planning_format_value(row$expected, 1),
+        Portugal = planning_format_value(row$benchmark_value, digits),
+        `Face a Portugal` = if (is.na(row$significance)) "—" else row$class
       )
     )
     openable <- area %in% area_choices_for(active_nuts_vintage(), active_nuts_lookup())
@@ -5105,31 +5395,49 @@ server <- function(input, output, session) {
 
   cause_map_file <- function(extension) {
     s <- map_settings()
-    paste0("mapa_", planning_cause_file_token(s$cause), "_", s$sex, "_", s$metric, "_", s$level, "_", Sys.Date(), extension)
+    paste0("mapa_", planning_cause_file_token(s$cause), "_", s$sex, "_", s$metric, "_", s$view, "_", s$level, "_", Sys.Date(), extension)
   }
   output$downloadCauseMapCSV <- downloadHandler(
     filename = function() cause_map_file(".csv"),
     content = function(file) {
       m <- cause_map()
       v <- m$values
-      write_csv_utf8(tibble::tibble(
-        causa = m$settings$cause, sexo = m$settings$sex, triennio = paste0(m$end_year - 2L, "-", m$end_year),
-        metrica = cause_map_metric_label(m$settings$metric), area = v$area, valor = v$value, valor_observado = v$observed_value,
-        ic95_inferior = v$lower, ic95_superior = v$upper, obitos = v$observed, esperados = v$expected, marca = v$flag,
-        portugal = v$benchmark_value, indice_portugal_100 = round(v$index, 1), face_a_portugal = v$significance, quintil = v$quintile
-      ), file)
+      s <- m$settings
+      head <- tibble::tibble(causa = s$cause, sexo = s$sex, metrica = cause_map_metric_label(s$metric), area = v$area)
+      table <- switch(
+        s$view,
+        projection = dplyr::bind_cols(head, tibble::tibble(
+          ano_projectado = m$target, ultimo_ano = v$last_year, valor_ultimo_ano = v$last_value, projeccao = v$value,
+          ip95_inferior = v$lower, ip95_superior = v$upper, indice_ultimo_ano_100 = round(v$index, 1), leitura = v$class,
+          ajuste_desde = v$fit_from, modelos = v$members, portugal_projeccao = v$benchmark_value, quintil = v$quintile)),
+        trend = dplyr::bind_cols(head, tibble::tibble(
+          periodo = paste0(min(m$periods) - 2L, "-", m$end_year), triennios = v$n, variacao_anual_pct = v$z,
+          ic95_inferior = v$apc_lower, ic95_superior = v$apc_upper, leitura = v$class,
+          primeiro_triennio = v$first, ultimo_triennio = v$last, quintil = v$quintile)),
+        change = dplyr::bind_cols(head, tibble::tibble(
+          triennio_base = map_period_label(m$base_year), triennio = map_period_label(m$end_year),
+          valor_base = v$value_base, valor = v$value, indice_base_100 = round(v$index, 1),
+          ic95_inferior = v$change_lower, ic95_superior = v$change_upper, leitura = v$class, quintil = v$quintile)),
+        dplyr::bind_cols(head, tibble::tibble(
+          triennio = map_period_label(m$end_year), valor = v$value, valor_observado = v$observed_value,
+          ic95_inferior = v$lower, ic95_superior = v$upper, obitos = v$observed, esperados = v$expected, marca = v$flag,
+          portugal = v$benchmark_value, indice_portugal_100 = round(v$index, 1), face_a_portugal = v$significance, quintil = v$quintile))
+      )
+      write_csv_utf8(table, file)
     }
   )
   output$downloadCauseMapPNG <- downloadHandler(
     filename = function() cause_map_file(".png"),
     content = function(file) {
       m <- cause_map()
-      s <- m$settings
-      title <- gsub("<br><sup>|</sup>", "\n", cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed))
-      values <- dplyr::mutate(m$values, panel = trimws(title), direction = "worse")
+      d <- cause_map_drawing(m)
+      title <- trimws(gsub("<br><sup>|</sup>", "\n", d$title))
+      values <- dplyr::mutate(m$values, panel = title, direction = "worse")
       grDevices::png(file, width = 8, height = 9, units = "in", res = 150, bg = "white")
       on.exit(grDevices::dev.off(), add = TRUE)
-      planning_map_draw(planning_map_chart(values, m$boundaries, s$scale))
+      planning_map_draw(planning_map_chart(values, m$boundaries, d$scale, highlight = m$highlight,
+                                           classes = d$classes, limits = d$limits, ticks = d$ticks, tick_labels = d$tick_labels,
+                                           legend_title = gsub("<br>", "\n", d$legend)))
     }
   )
 
@@ -5371,6 +5679,58 @@ server <- function(input, output, session) {
   output$planningSnsRanking <- plotly::renderPlotly({
     view <- planning_sns_view()
     planning_sns_ranking_chart(view$ranking, view$spec, highlight = names(view$levels)[view$levels %in% c("Local", "ULS")])
+  })
+
+  # The indicator on a map: the ACES of 2015-2023 (data/sns_aces_crosswalk.csv)
+  # or the ULS from 2024, at the last end of its cycle in the year chosen.
+  observe({
+    req(planning_sns_available())
+    years <- rev(planning_sns_map_years())
+    keep <- if (isTRUE(input$planning_sns_map_year %in% years)) input$planning_sns_map_year else years[[1]]
+    updateSelectInput(session, "planning_sns_map_year", choices = years, selected = keep)
+  })
+
+  planning_sns_map <- reactive({
+    validate(need(planning_sns_available(), "Sem dados do Portal da Transparência do SNS. Corra tools/fetch_sns.R."))
+    id <- input$planning_sns_indicator %||% sns_ids[[1]]
+    year <- suppressWarnings(as.integer(input$planning_sns_map_year))
+    req(is.finite(year))
+    map <- planning_sns_map_values(id, year)
+    validate(need(!is.null(map), "Sem valores deste indicador nesse ano."))
+    boundaries <- planning_map_boundaries(map$kind, active_nuts_vintage())
+    validate(need(!is.null(boundaries), "Faltam os limites dos ACES (data/boundaries/aces.rds): corra tools/build_boundaries.R levels=aces."))
+    map$values$hover <- planning_sns_map_hover(map$values, map$period)
+    map$boundaries <- boundaries
+    map$spec <- SNS_INDICATORS[SNS_INDICATORS$id == id, ]
+    map
+  })
+
+  output$planningSnsMap <- plotly::renderPlotly({
+    map <- planning_sns_map()
+    scale <- input$planning_sns_map_scale %||% "index"
+    colours <- if (identical(map$direction, "worse")) PLANNING_MAP_DIVERGING else
+      c(low = PLANNING_MAP_DIVERGING[["high"]], mid = PLANNING_MAP_DIVERGING[["mid"]], high = PLANNING_MAP_DIVERGING[["low"]])
+    interactive_choropleth(
+      map$values, map$boundaries, scale = if (identical(scale, "significance")) "classes" else scale, colours = colours,
+      classes = map_class_colours(planning_sns_significance_labels(), map$direction),
+      title = paste0(map$spec$label, "<br><sup>", if (identical(map$kind, "aces")) "ACES" else "ULS", ", ", map$period, "</sup>"),
+      legend_title = if (identical(scale, "significance")) "Face ao Continente" else "Continente = 100<br>vermelho: pior",
+      source = "planning_sns_map"
+    )
+  })
+
+  output$planningSnsMapNote <- renderUI({
+    map <- planning_sns_map()
+    helpText(paste0(
+      if (identical(map$kind, "aces")) {
+        paste0("Até 2023 o portal publica os dados por ACES (e pelas sete ULS que já existiam). ", map$units, " de 55 unidades reportaram em ",
+               map$period, ". Os ACES não coincidem com as ULS de 2024: uma ULS pode juntar vários ACES. ")
+      } else {
+        paste0("Desde 2024, as 39 ULS do Continente (", map$units, " reportaram em ", map$period, "). ")
+      },
+      "O valor é o do fim do ciclo do indicador nesse ano (", SNS_CYCLE_LABELS[[map$spec$cycle]], "), com a base de inscritos, não de residentes. ",
+      "Vermelho onde a unidade está pior do que o Continente, azul onde está melhor. As ilhas não têm dados no portal."
+    ))
   })
 
   # Weekly deaths, the location's smallest NUTS region.

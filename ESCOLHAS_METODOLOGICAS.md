@@ -256,6 +256,31 @@ Tudo o que a aplicação faz nesta secção pode ser desligado com o controlo `D
 
 **O que significa para si.** Compare cada área com Portugal (100), não com a área vizinha. Antes de tirar conclusões sobre uma área a vermelho, veja se a diferença é significativa, ou ligue a suavização. As áreas a cinzento não têm valor: preferimos não mostrar um valor a mostrar um que depende sobretudo das idades que o INE não publicou.
 
+### Mapas de tendência, de variação e de projecção
+
+**O que fazemos.**
+
+- A tendência usa triénios sem anos em comum, com a mesma regressão da tendência dos Indicadores de Planeamento.
+- A variação compara dois triénios sem anos em comum.
+- A projecção usa o método da Previsão Guiada (a média de 6 modelos) e só se faz por NUTS III, ULS e NUTS II.
+- Todas têm também a versão de três cores (▲ = ▼).
+
+**Porquê.**
+
+- Triénios que partilham anos contariam os mesmos óbitos duas vezes, e a tendência pareceria mais certa do que é.
+- Por município, a maior parte das séries de uma causa tem anos com menos de 10 óbitos, e uma projecção dessas séries diz pouco.
+- A projecção do mapa é a mesma que a Previsão Guiada dá para essa área, para que os dois não se contradigam.
+
+**O que significa para si.** Num mapa de tendência ou de variação, a cor diz para onde a área foi; as três cores dizem onde isso não é acaso. Uma projecção é para onde a série vai se o passado se repetir, com um intervalo largo: muitas áreas ficam «sem mudança significativa» (em todas as causas, as 39 ULS até 2030), e essa é a resposta honesta.
+
+### Cuidados de saúde primários antes de 2024: por ACES
+
+**O que fazemos.** O mapa dos indicadores do SNS usa os ACES de 2015 a 2023 e as ULS a partir de 2024, como o portal os publica.
+
+**Porquê.** Antes de 2024 não há dados por ULS. Os ACES não se convertem em ULS sem supor como se repartem os utentes.
+
+**O que significa para si.** Compare áreas dentro do mesmo período. Uma ULS de 2024 não se compara com «o seu» ACES de 2023: pode juntar vários.
+
 ---
 
 ## 6. Tendências e projecções

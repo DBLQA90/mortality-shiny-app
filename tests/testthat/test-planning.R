@@ -1108,6 +1108,19 @@ test_that("a map's cause is an extra measure, equal to its group and missing whe
   })
 })
 
+test_that("a pool of one year holds that year only, for the maps' annual series", {
+  with_cause_age_fixture(function(lookup) {
+    one <- planning_standardised_pool("Alfa", 2022L, "HM", lookup, span = 1L)
+    three <- planning_standardised_pool("Alfa", 2022L, "HM", lookup)
+    # Alfa: 40 deaths a year, the same every year.
+    expect_equal(sum(one$deaths["Alfa", , "all"]), 40)
+    expect_equal(sum(three$deaths["Alfa", , "all"]), 120)
+    tab <- planning_cause_standardised("Alfa", 2022L, lookup = lookup, causes = "Todas as causas de morte", span = 1L)
+    expect_equal(tab$period, "2022")
+    expect_equal(tab$observed, 40)
+  })
+})
+
 test_that("a published row present at only one year-end does not halve the person-years", {
   with_cause_age_fixture(function(lookup) {
     # As in INE's files: Continente first appears in the 2021 estimates.

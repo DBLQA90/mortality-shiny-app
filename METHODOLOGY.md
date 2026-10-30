@@ -1218,6 +1218,34 @@ over ages are withheld, as everywhere in the planning tab. Smoothing, for the
 SMR only, is the funnel's empirical Bayes estimator with the expected deaths as
 denominator (Poisson-gamma, method of moments).
 
+#### Trend, change and projection maps
+
+- **Trend:** `cause_map_trend()` computes the map's metric for 4-6
+  non-overlapping triennia ending at the chosen one and, per area,
+  `trend_apc()` (log-linear, each triennium weighted by its precision, no
+  joinpoint) on the triennia's middle years: the annual percentage change with
+  its interval. An area needs 4 triennia with a positive value.
+- **Change:** `cause_map_change()` divides the metric in one triennium by the
+  same in an earlier one with no year in common; the interval combines the two
+  intervals on the log scale (`se = (log upper - log lower) / 3.92`, added in
+  quadrature), an approximation that ignores any correlation between the two.
+- **Projection:** the guided forecast's default, the mean of its six models,
+  fitted to each area's annual standardised rate, for NUTS III, ULS and NUTS
+  II. The annual series of every area come at once from the same module with
+  one-year windows (`planning_standardised_pool(span = 1)`): the guided tab
+  builds its series area by area, about 15-20 s per ULS, ten minutes for the 39.
+  The two series agree to 0.00% in the ULS and NUTS II compared, and within 1%
+  in nearly every year of a NUTS III assembled from INE's rows and
+  municipalities (2.9% in 2014, the year of the worst municipal age detail);
+  the projection for ULS Matosinhos, 2030, is the guided tab's to the last
+  digit (740.0, 583.7 to 981.1). As in the guided tab a year with fewer than 10
+  deaths has no rate, and the rebuilt latest year is used only where it exists
+  (whole regions, all causes, both sexes). A series whose last years lack a
+  rate keeps its most recent run of at least 8 consecutive years, as decided
+  for the 82_MRT projections. The validation is not run: it does not change the
+  mean of six. Results are cached per cause, sex, metric, level, year and the
+  header settings.
+
 ### Standardised, premature and avoidable mortality
 
 `R/planning_standardised.R` adds, per triennium and area: the SMR against the
@@ -1293,6 +1321,24 @@ only ends of cycle are compared; the chart breaks the line at each reset. A
 field the portal renames leaves its indicator out with a warning. An area is
 shown only when it is a union of whole ULS (or a municipality, which shows its
 ULS; Portugal shows the Continente).
+
+Records the portal repeats are read once (`dplyr::distinct()` in the reader and
+in `tools/fetch_sns.R`): ULS São José's records of October 2025 to January 2026
+appear twice in the diabetes and mother-and-child datasets, and summed they
+doubled the count and the proportion alike, so its HbA1c control read 124.6%
+in December 2025 and the Continente's 74.3% instead of 72.5%.
+
+**The map** reads the ULS from 2024 and, for 2015-2023, the portal's units
+before the ULS (`planning_sns_components("aces")`): 55 a month on the
+mainland, the 48 ACES and the 7 ULS that existed before 2024, under 95 labels
+that vary by dataset and year (renamings such as "Grande Porto I - Santo Tirso
+/ Trofa" and "Santo Tirso / Trofa"; 18 already labelled by the ULS that
+succeeded them, "Área dos CSP da ULS ..."). `data/sns_aces_crosswalk.csv` maps
+each label onto geopt's ACES names, the ids of `data/boundaries/aces.rds`; a
+test checks that every label maps and that no unit gets two labels in a dataset
+and month. Registered users never move more than 5% from one month to the next
+under the crosswalk. The value is the one at the last end of the indicator's
+cycle in the year, against the Continente as the sum of the units.
 
 ### Weekly deaths and excess mortality
 

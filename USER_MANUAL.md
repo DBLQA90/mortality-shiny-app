@@ -1010,8 +1010,31 @@ mortalidade por essa causa é mais alta ou mais baixa do que em Portugal.
   nos três anos.
 - **Unidades:** municípios, NUTS III, ULS ou NUTS II, na definição NUTS do topo da
   página.
-- **Cores:** face a Portugal, de 67 a 150 (vermelho acima, azul abaixo), ou
-  quintis (a ordenação).
+- **Mostrar:**
+  - **Um triénio**, a predefinição.
+  - **Tendência ao longo dos triénios:** a variação percentual anual de 4 a 6
+    triénios seguidos, sem anos em comum (por exemplo 2010-2012 a 2022-2024),
+    numa recta log-linear em que cada triénio pesa pela sua precisão, como a
+    tendência dos Indicadores de Planeamento. Com a SMR, a tendência é face a
+    Portugal: 0% quer dizer que a área acompanha Portugal.
+  - **Variação entre dois triénios:** o valor no triénio escolhido face a um
+    triénio anterior sem anos em comum (= 100), com intervalo.
+  - **Projecção:** a taxa padronizada de cada NUTS III, ULS ou NUTS II no ano
+    escolhido (2026 a 2035), com o método da Previsão Guiada (a média de 6
+    modelos, ajustados à taxa anual), face ao último ano observado. Coincide com a
+    Previsão Guiada da mesma área (testado na ULS Matosinhos: 740 em 2030 nos
+    dois). As séries com anos de menos de 10 óbitos usam os anos seguidos mais
+    recentes, no mínimo 8; com menos, a área fica sem projecção. Por município
+    não há projecções: as séries são curtas e instáveis. Da primeira vez demora
+    cerca de um minuto.
+- **Cores:**
+  - **Escala contínua:** face a Portugal, de 67 a 150 (vermelho acima, azul
+    abaixo); na tendência, de -5% a +5% por ano; na variação, face ao triénio
+    anterior; na projecção, de -20% a +20% face ao último ano.
+  - **Significância (▲ = ▼):** três cores, conforme o intervalo de 95% fica
+    acima, abaixo ou inclui Portugal (ou 0 na tendência, ou o valor anterior).
+    É a forma de ver só as diferenças que não são acaso.
+  - **Quintis:** a ordenação.
 - **Suavizar a SMR:** aproxima as áreas pequenas da média (Bayes empírico). O rato
   continua a mostrar a SMR observada.
 
@@ -1023,7 +1046,8 @@ carrega a série da taxa padronizada.
 
 Os separadores Mortalidade Observada, Previsão Guiada e Métricas Anuais têm o
 botão **Ver esta causa no mapa**, que abre este separador com a causa e o sexo
-escolhidos e o último triénio.
+escolhidos e o último triénio, e contorna a escuro os locais escolhidos nesse
+separador (num mapa de municípios, os municípios de uma região escolhida).
 
 **Áreas a cinzento** não têm valor: o triénio não tem óbitos por idade para essa
 causa, ou mais de 25% dos óbitos não têm idade publicada (o INE oculta as idades
@@ -1257,6 +1281,10 @@ mapa de uma causa de morte em particular, use o separador **Mapas** (secção
   ficam a violeta abaixo e amarelo acima. Cada mapa tem a sua legenda.
 - **Quintis**: cada indicador em cinco grupos com o mesmo número de áreas; mostra
   a ordenação, não a distância a Portugal.
+- **Significância face a Portugal (▲ = ▼)**: três cores por indicador, conforme
+  o intervalo de 95% exclui ou não Portugal, nas cores do que a diferença
+  significa. Os indicadores sem intervalo (estrutura etária, poder de compra)
+  mantêm as cores face a Portugal, e a legenda diz «sem intervalo».
 - **Suavizar**: as taxas de áreas pequenas aproximadas da média (Bayes empírico,
   como no funil), só nos indicadores com modelo de contagem.
 
@@ -1369,6 +1397,18 @@ Três cuidados na leitura:
   para as regiões autónomas, e o último mês é provisório. As cinco ULS de Lisboa
   e do Porto somam-se nos dois agrupamentos exactos da aplicação. Uma NUTS III
   que não coincide com um conjunto de ULS não tem valores.
+
+**O mapa**, no fim do subseparador, mostra o indicador em todas as unidades num
+ano: **por ACES de 2015 a 2023** (os 48 ACES e as 7 ULS que já existiam) e **por
+ULS desde 2024**. O valor é o do fim do ciclo do indicador nesse ano (Dezembro,
+ou Junho para um indicador semestral ainda sem Dezembro, ou o último mês dos
+mensais), face ao Continente (= 100), com significância ou quintis como nos
+outros mapas. Vermelho é pior: menos rastreios, menos diabéticos controlados,
+mais utentes sem médico de família. Os ACES não coincidem com as ULS de 2024
+(uma ULS pode juntar vários ACES), por isso os anos antes e depois de 2024 não
+se comparam área a área. O portal dá nomes diferentes à mesma área conforme o
+conjunto de dados e o ano; `data/sns_aces_crosswalk.csv` diz que nome
+corresponde a que ACES.
 
 ### Mortalidade semanal e excesso de mortalidade
 

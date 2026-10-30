@@ -353,6 +353,42 @@ testServer(app, {
   cmap <- tryCatch(cause_map(), error = function(e) e)
   if (!failed(cmap)) cat("   cause map (ULS, under 75):", verdict(sum(is.finite(cmap$values$value)) >= 38, "OK", "ULS cause map"), "\n")
 
+  # Mapas II and III: trend over triennia, change between two, projection.
+  session$setInputs(map_cause = "Todas as causas de morte", map_sex = "HM", map_metric = "dsr", map_level = "nuts3",
+                    map_scale = "index", map_end_year = "2024", map_view = "trend", map_trend_n = "5", go_map = 5)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap)) cat("   trend map (NUTS III, 5 triennia):", sum(is.finite(cmap$values$z)), "areas, median",
+                         round(stats::median(cmap$values$z, na.rm = TRUE), 2), "%/year",
+                         verdict(sum(is.finite(cmap$values$z)) >= 24 && stats::median(cmap$values$z, na.rm = TRUE) < 0, "OK", "trend map"), "\n")
+  session$setInputs(map_view = "change", map_base_year = "2015", map_scale = "significance", go_map = 6)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap)) cat("   change map (2013-2015 to 2022-2024):", paste(names(table(cmap$values$class)), table(cmap$values$class), collapse = "; "),
+                         verdict(sum(!is.na(cmap$values$class)) >= 24, "OK", "change map"), "\n")
+  widget <- tryCatch(output$causeMap, error = function(e) e)
+  cat("   change map plot:", if (failed(widget)) conditionMessage(widget) else verdict(grepl("choropleth", widget), "OK", "change map plot"), "\n")
+  session$setInputs(map_view = "projection", map_level = "nuts2", map_target_year = "2030", map_scale = "index", go_map = 7)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap)) cat("   projection map (NUTS II, 2030):", sum(is.finite(cmap$values$value)), "of", nrow(cmap$values),
+                         verdict(all(is.finite(cmap$values$value)) && all(cmap$values$members == 6), "OK", "projection map"), "\n")
+  session$setInputs(map_level = "municipio", go_map = 8)
+  refused <- tryCatch(cause_map(), error = function(e) e)
+  cat("   projection by municipality refuses:", verdict(inherits(refused, "error"), "OK", "projection refusal"), "\n")
+  session$setInputs(map_view = "period")
+
+  # Planning maps with significance colours; the SNS map by ACES and by ULS.
+  session$setInputs(planning_map_level = "municipio", planning_map_indicators = c("smr_all", "ageing_index"), planning_map_scale = "significance")
+  plot <- tryCatch(output$planningMap1, error = function(e) e)
+  cat("   planning map, significance:", if (failed(plot)) conditionMessage(plot) else verdict(grepl("choropleth", plot), "OK", "planning significance"), "\n")
+  session$setInputs(planning_sns_indicator = "sns_diabetes_hba1c", planning_sns_map_year = "2019", planning_sns_map_scale = "index")
+  sns <- tryCatch(planning_sns_map(), error = function(e) e)
+  if (!failed(sns)) cat("   SNS map 2019:", sns$kind, nrow(sns$values), "units", verdict(identical(sns$kind, "aces") && nrow(sns$values) == 55, "OK", "SNS ACES map"), "\n")
+  session$setInputs(planning_sns_map_year = "2025")
+  sns <- tryCatch(planning_sns_map(), error = function(e) e)
+  if (!failed(sns)) cat("   SNS map 2025:", sns$kind, nrow(sns$values), "units, max", round(max(sns$values$value, na.rm = TRUE), 1), "%",
+                        verdict(identical(sns$kind, "uls") && nrow(sns$values) == 39 && max(sns$values$value, na.rm = TRUE) <= 100, "OK", "SNS ULS map"), "\n")
+  widget <- tryCatch(output$planningSnsMap, error = function(e) e)
+  cat("   SNS map plot:", if (failed(widget)) conditionMessage(widget) else verdict(grepl("choropleth", widget), "OK", "SNS map plot"), "\n")
+
   # Trend of the planning indicator, non-overlapping triennia.
   session$setInputs(planning_indicator = "dsr_premature", planning_years = c(2005, 2024))
   trend <- tryCatch(planning_trend(), error = function(e) e)
