@@ -218,7 +218,7 @@ O controlo `Dados`, no topo de qualquer página, escolhe se a aplicação aplica
 - **Corrigidos (recomendado)**, a predefinição. A aplicação:
     - corrige erros de publicação do INE (por agora, os óbitos de 2011 de cinco municípios do Alto Alentejo);
     - distribui pelas idades os óbitos que o INE publica sem idade;
-    - reconstrói os totais que o INE deixa confidenciais a partir das idades;
+    - reconstrói os totais que o INE deixa confidenciais: a repartição por sexo, a partir do total de ambos os sexos e da sua NUTS II, e nunca abaixo da soma das idades;
     - recupera o emprego e os ganhos ocultados (`≈`);
     - reconstrói o último ano ainda sem causas de morte (`p`).
 - **Originais do INE**: os dados tal como o INE os publica, sem nada disto. Os valores ocultados ficam em falta, e o último ano só aparece onde o INE o publica.

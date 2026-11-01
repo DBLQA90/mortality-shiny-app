@@ -157,6 +157,8 @@ Tudo o que a aplicação faz nesta secção pode ser desligado com o controlo `D
 
 **O que fazemos.** Quando o INE marca um valor como confidencial, ele fica guardado como em falta. Se o total de um município for confidencial mas as idades forem públicas, usa-se a soma por idade.
 
+Nos óbitos por causa, o INE oculta sobretudo a repartição por sexo: publica o total de ambos os sexos e deixa em branco homens e mulheres. Esses totais recuperam-se do total de ambos os sexos e da linha da NUTS II, que é completa, nunca abaixo da soma por idade (desde 1 de novembro de 2026; ver [DADOS_INE_LIMITACOES.md](DADOS_INE_LIMITACOES.md), Óbitos, ponto 3). Sem isto, as contagens municipais por sexo ficavam em 95–98% do país, e em cerca de 65% em 2014.
+
 **Porquê.** Um valor confidencial não é zero. Em Outubro de 2026 encontrámos ficheiros de totais antigos que guardavam os confidenciais como 0, por um erro nosso na extracção (o pacote usado para ler o INE devolvia-os bem). O script de extracção já tinha sido corrigido, e os ficheiros foram descarregados de novo. Os valores validados não mudaram, porque a aplicação já substituía esses zeros pela soma por idade.
 
 ### Emprego e ganhos ocultados

@@ -1529,6 +1529,26 @@ audit of 2026-09-21 found four kinds, each now handled explicitly:
   came from a `coalesce(deaths, 0)` in the first version of the fetcher. The
   regression check was unchanged after the refetch: the repair above had
   already replaced every zero that mattered.
+- **Totals by sex INE withholds (recovered since 2026-11-01).** INE blanks a
+  municipality's all-ages total of a cause by sex where it is small while
+  publishing both sexes: 1,200-1,700 municipality x cause cells a year, about
+  6,800 in 2014, when it also blanked about 4,300 totals of both sexes. A blank
+  total gave `planning_complete_by_age()` and `fill_death_ages()` nothing to
+  complete, so the counts by sex stayed at what the age bands hold: municipal
+  sums 95-98% of Portugal for the common causes, about 65% in 2014, with no ‡.
+  `tools/build_source_corrections.R` now recovers them into
+  `data/source_corrections.rds`, applied on reading with the corrections on:
+  one sex blank -> the difference from both sexes (always 0 in practice);
+  both sexes blank -> the NUTS II residual, shared by expected deaths not yet
+  recorded; men and women blank -> the municipal total split by IPF against the
+  NUTS II residual by sex. Whole deaths, never below the age bands. The NUTS II
+  rows equal the sum of their municipalities where none is blank, and together
+  equal Portugal to 0.02%, so the residual holds no deaths of unknown residence.
+  Validated in 2013 by blanking both sexes of 30% of municipalities and their
+  bands by sex: 4.5% error in cells above 100 deaths. `fill_death_ages()` with
+  `check_recorded` now leaves an area unfilled in every sex when any sex differs
+  from the snapshot (before, per sex: a recovered total filled men and women of
+  an area whose both-sexes row had been revised).
 - **A defect in INE's own municipal rows: 2011, Alto Alentejo.** In `0008206`
   for 2011 the all-cause, both-sexes rows of five municipalities are wrong as
   INE publishes them (checked against the live API, last updated 2025-10-11):

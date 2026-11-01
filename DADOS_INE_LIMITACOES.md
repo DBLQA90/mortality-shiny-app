@@ -17,7 +17,7 @@ São 32 pontos: 26 definitivos, 4 temporários e 2 que são escolhas de método 
 - **A idade dos óbitos nos municípios é incompleta,** sobretudo em 2014 (faltam 31% das idades no cancro do pulmão). Os óbitos em falta são distribuídos pelas idades, e as regiões usam as linhas do INE, que são completas.
 - **A população tem duas quebras de série,** em 2013/2014 (mudança de indicador) e em 2020/2021 (revisão, +1,7% a +5,3%). Não se podem remover: ficam onde fazem menos estragos, e a aplicação avisa.
 - **O INE publica errados os óbitos de 2011 de cinco municípios do Alto Alentejo** (139 em vez de 424). Usa-se o total por freguesia.
-- **O INE oculta valores** para proteger empregadores ou pessoas: totais de óbitos, trabalhadores e ganhos. Recuperam-se quando os totais o permitem (`≈`); quando não, a área fica sem valor.
+- **O INE oculta valores** para proteger empregadores ou pessoas: totais de óbitos, trabalhadores e ganhos. Nos óbitos por causa oculta sobretudo a repartição por sexo dos municípios, o que deixava as contagens por sexo em 95–98% do país, e em cerca de 65% em 2014. Recuperam-se quando os totais o permitem (`≈` nos indicadores socioeconómicos); quando não, a área fica sem valor.
 
 A validação também encontrou erros nossos, todos corrigidos:
 
@@ -73,10 +73,17 @@ Os óbitos têm os problemas com mais peso: a repartição por idade incompleta 
 
 ### 3. Totais confidenciais
 
-- **O que é.** O INE deixa em branco («Dado confidencial») o total de todas as idades de alguns municípios, embora publique as idades.
-- **Tipo e dimensão: definitivo.** Em 1991–2024: 8 totais de todas as causas (por exemplo Vimioso 2024, Miranda do Douro e Alfândega da Fé 2015) e 2 787 totais por causa.
-- **Abordagens:** tratar como 0 (errado), tratar como em falta, ou usar a soma das idades.
-- **Por omissão: soma das idades,** porque um total nunca pode ser menor do que as suas partes. Até 22 de outubro de 2026, os nossos ficheiros guardavam estes brancos como 0, por um erro da nossa extração (o pacote de leitura do INE devolvia-os bem). Os ficheiros foram descarregados de novo; os resultados não mudaram, porque a aplicação já substituía esses zeros.
+- **O que é.** O INE deixa em branco («Dado confidencial») totais de todas as idades de alguns municípios, embora publique as idades. Acontece sobretudo **por sexo**: publica o total de uma causa para ambos os sexos e oculta a repartição entre homens e mulheres quando é pequena.
+- **Tipo e dimensão: definitivo.** Em 1991–2024: 8 totais de todas as causas (por exemplo Vimioso 2024, Miranda do Douro e Alfândega da Fé 2015). Por causa, todos os anos ficam sem repartição por sexo 1 200 a 1 700 células município × causa, e **6 800 em 2014**, ano em que o INE ocultou também 4 300 totais de ambos os sexos. Sem correção, as contagens municipais por sexo ficavam pelo que as idades registam: nas causas mais comuns, 95–98% do país num ano normal e **cerca de 65% em 2014** (por exemplo, 0 óbitos por tumor do cólon nos homens de Beja e de Castelo Branco). As taxas por sexo dos municípios e das ULS saíam subestimadas, sem aviso. As regiões e Portugal usam as linhas do INE e não eram afetados.
+- **Abordagens:** tratar como 0 (errado), tratar como em falta, usar a soma das idades, ou recuperar o valor a partir dos totais que o INE publica.
+- **Por omissão: recuperar, nunca abaixo da soma das idades.** As linhas das NUTS II são completas e iguais à soma dos seus municípios onde nenhum está oculto (não incluem óbitos de residência desconhecida: juntas, dão Portugal a 0,02%). Por isso:
+  - um sexo oculto e o outro publicado: a diferença para o total de ambos os sexos (dá sempre 0: é assim que o INE escreve um zero);
+  - total de ambos os sexos oculto: o que falta à NUTS II, repartido pelos municípios ocultos segundo os óbitos esperados (a sua população às taxas de Portugal por idade) que as idades ainda não registam;
+  - homens e mulheres ocultos: o total do município repartido entre os dois de modo a acertar com o que falta à NUTS II em cada sexo (ajustamento proporcional iterativo).
+
+  Os valores são óbitos inteiros. Com a correção, os municípios por sexo somam Portugal (0,99–1,01). Validação: em 2013, ocultando os dois sexos de 30% dos municípios e apagando também as suas idades por sexo, o erro foi de 4,5% nas células com mais de 100 óbitos e de menos de meio óbito nas de 1–2. Os óbitos recuperados entram na distribuição pelas idades como os outros, e por isso valem as marcas habituais (`‡` acima de 2% de óbitos distribuídos, valor retido acima de 25%). A correção é aplicada à leitura a partir de `data/source_corrections.rds` (`tools/build_source_corrections.R`, reconstruído a cada atualização dos dados); os ficheiros guardam o INE tal como publicado.
+
+  Até 22 de outubro de 2026, os nossos ficheiros guardavam estes brancos como 0, por um erro da nossa extração (o pacote de leitura do INE devolvia-os bem). Os ficheiros foram descarregados de novo. A recuperação por sexo foi acrescentada a 1 de novembro de 2026; antes, um total por sexo em branco era substituído pela soma das idades.
 
 ### 4. Erro do INE em 2011: cinco municípios do Alto Alentejo
 
@@ -313,7 +320,7 @@ No cabeçalho, ao lado de «Definição das regiões» e de «Óbitos das regiõ
 |---|---|---|
 | Erros do INE (2011, Alto Alentejo) | Total por freguesia | Valores publicados |
 | Óbitos sem idade | Distribuídos pelas idades | Só os óbitos com idade; os totais e as taxas brutas continuam completos |
-| Totais confidenciais | Soma das idades | Em falta |
+| Totais confidenciais (sobretudo a repartição por sexo) | Recuperados dos totais de ambos os sexos e das NUTS II, nunca abaixo da soma das idades | Em falta |
 | Linhas regionais sem os óbitos sem idade | Completadas até ao total dos municípios | Como publicadas |
 | Emprego e ganhos ocultados | Recuperados dos totais (`≈`) | Em falta |
 | Setores de emprego ocultados | Estimados pela NUTS III (`≈`) | Em falta |

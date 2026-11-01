@@ -156,7 +156,13 @@ table_lines(gaps)
 say("\n[9] Source corrections in force")
 if (file.exists("data/source_corrections.rds")) {
   corr <- readRDS("data/source_corrections.rds")
-  table_lines(corr$totals %>% filter(sex == "HM") %>% select(indicator, year, area, cause, published, corrected = deaths))
+  fixed <- if ("method" %in% names(corr$totals)) corr$totals %>% filter(method == "freguesias") else corr$totals
+  table_lines(fixed %>% filter(sex == "HM") %>% select(indicator, year, area, cause, published, corrected = deaths))
+  if ("method" %in% names(corr$totals)) {
+    say("    Totals INE withholds, recovered (by indicator and method):")
+    table_lines(corr$totals %>% filter(method != "freguesias") %>% group_by(indicator, method) %>%
+      summarise(cells = n(), years = paste(range(year), collapse = "-"), deaths = sum(deaths), .groups = "drop"))
+  }
 } else say("    none")
 
 if (length(report_file) == 1) writeLines(out, report_file)

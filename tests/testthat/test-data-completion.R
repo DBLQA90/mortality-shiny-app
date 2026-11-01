@@ -25,6 +25,23 @@ test_that("deaths without a published age are filled to the municipality's total
   expect_equal(total(filled, "Lisboa"), 6570, tolerance = 1e-6)
 }))
 
+test_that("totals by sex INE withholds are recovered, only with the corrections on", with_snapshots({
+  path <- file.path(death_totals_dir(), "0008206", "year_2014.rds")
+  colon <- "Tumor (neoplasma) maligno do cólon"
+  pick <- function(frame, area) stats::setNames(frame$deaths[frame$area == area & frame$cause == colon], frame$sex[frame$area == area & frame$cause == colon])
+  # Beja 2014: INE publishes 12 deaths of both sexes and blanks the split.
+  original <- withr::with_options(list(mortality.data_mode = "original"), read_death_file(path))
+  expect_true(all(is.na(pick(original, "Beja")[c("H", "M")])))
+  corrected <- read_death_file(path)
+  beja <- pick(corrected, "Beja")
+  expect_equal(unname(beja["HM"]), 12)
+  expect_equal(unname(beja["H"] + beja["M"]), 12)
+  # The municipalities by sex add up to Portugal (before: 682 of 1,526 men).
+  municipal <- corrected[corrected$area %in% lookup$municipality & corrected$cause == colon & corrected$sex == "H", ]
+  expect_false(anyNA(municipal$deaths))
+  expect_equal(sum(municipal$deaths), corrected$deaths[corrected$area == "Portugal" & corrected$cause == colon & corrected$sex == "H"], tolerance = 0.02)
+}))
+
 test_that("employees INE suppressed come back from the published totals", with_snapshots({
   t <- planning_indicator_table(c("Norte", "São João da Madeira", "Vale de Cambra", "Região Autónoma dos Açores"),
                                 c(2013L, 2015L), ids = "employees", lookup = lookup)

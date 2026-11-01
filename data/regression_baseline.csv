@@ -1,6 +1,6 @@
 # Valores de referência de tools/regression_check.R.
 # Gerado com --update; cada linha é uma medida e a tolerância com que é comparada.
-# Gerado em 2026-10-29 | método 2.0 | última importação 2026-10-29T14:38:46+0000
+# Gerado em 2026-11-01 | método 2.0 | última importação 2026-11-01T16:55:54+0000
 # Anos fixados: indicadores 2024, triénio 2024, censo 2021
 "key","kind","value","tol","note"
 "amplitude.fertility_index.max","valor",3.16770186335404,0.01,""
@@ -121,4 +121,4 @@
 "tabela.negativos","valor",749,0,"variação da população censitária"
 "tabela.negativos_esperados","invariante",1,0,"census_population_change"
 "tabela.percentagens_ate_100","invariante",1,0,""
-"tabela.valores","valor",475859,0,"valores não vazios"
+"tabela.valores","valor",473812,0,"valores não vazios"

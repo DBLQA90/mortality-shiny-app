@@ -9,6 +9,8 @@
 #   population     resident population by age and sex (0012918)
 #   deathtotals    municipal death totals by cause, all ages
 #   regional       INE's regional death rows (NUTS I/II/III)
+#   corrections    corrections applied on reading, incl. totals by sex INE withholds
+#                  (also after deathtotals, regional, deaths and current)
 #   infant         live births, under-1 deaths by cause, complete under-1 counts
 #   planning       socio-economic, birth and neonatal components of the planning tab
 #   weekly         INE weekly deaths by NUTS III and age (0012100, 0010112)
@@ -251,6 +253,14 @@ task_death_totals <- function() {
   task_simple("fetch_death_totals.R", "death totals")
 }
 
+# The corrections applied on reading (tools/build_source_corrections.R) are
+# rebuilt from the totals, the age bands and the regional rows, so they follow
+# any change to those: totals by sex INE withholds are recovered from them.
+task_corrections <- function() {
+  say("== Task: corrections applied on reading ==")
+  invisible(run_builder("build_source_corrections.R", label = "source corrections"))
+}
+
 task_regional <- function() {
   say("== Task: regional death rows ==")
   task_simple("fetch_regional_deaths.R", "regional deaths")
@@ -428,6 +438,7 @@ if (task %in% c("all", "current", "deaths2024", "deaths")) if (have_time(10)) ta
 if (task %in% c("all", "current", "population")) if (have_time(5)) task_population()
 if (task %in% c("all", "current", "deathtotals")) if (have_time(10)) task_death_totals()
 if (task %in% c("all", "regional")) if (have_time(5)) task_regional()
+if (task %in% c("all", "current", "deathtotals", "regional", "deaths2024", "deaths", "corrections")) if (have_time(5)) task_corrections()
 if (task %in% c("all", "current", "infant")) if (have_time(10)) task_infant()
 if (task %in% c("all", "planning")) if (have_time(10)) task_planning()
 if (task %in% c("all", "validation")) if (have_time(5)) task_validation()

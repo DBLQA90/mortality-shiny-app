@@ -161,18 +161,29 @@ fill_death_ages <- function(df_death, check_recorded = FALSE) {
       NULL
     })
     if (is.null(fill)) next
-    for (sex in intersect(names(fill), unique(df_death$sex))) {
+    sexes <- intersect(names(fill), unique(df_death$sex))
+    rows_of <- lapply(stats::setNames(sexes, sexes), function(sex) {
       part <- fill[[sex]]
-      if (is.null(part)) next
-      rows <- which(df_death$year == keys$year[[i]] & df_death$cause == keys$cause[[i]] & df_death$sex == sex &
-                      df_death$area %in% rownames(part$added) & as.character(df_death$age_band) %in% colnames(part$added))
-      if (check_recorded && length(rows) > 0) {
+      if (is.null(part)) return(integer(0))
+      which(df_death$year == keys$year[[i]] & df_death$cause == keys$cause[[i]] & df_death$sex == sex &
+              df_death$area %in% rownames(part$added) & as.character(df_death$age_band) %in% colnames(part$added))
+    })
+    # An area differing in any sex is left as published in all of them.
+    differs <- character(0)
+    if (check_recorded) {
+      for (sex in sexes) {
+        rows <- rows_of[[sex]]
+        if (length(rows) == 0) next
         loaded <- tapply(df_death$deaths[rows], df_death$area[rows], sum)
-        differs <- names(loaded)[abs(loaded - part$recorded[names(loaded)]) > 0.5]
-        unfilled <- c(unfilled, differs)
-        rows <- rows[!df_death$area[rows] %in% differs]
+        differs <- c(differs, names(loaded)[abs(loaded - fill[[sex]]$recorded[names(loaded)]) > 0.5])
       }
-      df_death$deaths_filled[rows] <- part$added[cbind(df_death$area[rows], as.character(df_death$age_band[rows]))]
+      unfilled <- c(unfilled, differs)
+    }
+    for (sex in sexes) {
+      rows <- rows_of[[sex]]
+      rows <- rows[!df_death$area[rows] %in% differs]
+      if (length(rows) == 0) next
+      df_death$deaths_filled[rows] <- fill[[sex]]$added[cbind(df_death$area[rows], as.character(df_death$age_band[rows]))]
     }
   }
   if (length(unfilled) > 0) {
