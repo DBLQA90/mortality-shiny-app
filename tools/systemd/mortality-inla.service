@@ -1,0 +1,10 @@
+[Unit]
+Description=Mortality app: rebuild the INLA small-area forecasts when their data change
+
+[Service]
+Type=oneshot
+ExecStart=%h/Desktop/DGS/Mortality/scripts/mortality-app-smr/tools/scheduled_inla.sh
+# A rebuild takes about 1.5 hours; it may first wait up to 4 hours for the
+# data refresh to end.
+TimeoutStartSec=8h
+Nice=10

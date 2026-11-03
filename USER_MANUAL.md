@@ -685,7 +685,9 @@ Nas ULS e NUTS o modelo espacial erra menos e quase sem viés. Em Portugal, que
 tem óbitos de sobra, a média de 6 erra um pouco menos; o modelo espacial é usado
 na mesma para que Portugal seja a soma das suas regiões. Os intervalos de 95% do
 modelo, alargados, contiveram 95% dos valores observados em cada nível, 1 a 4
-anos à frente; para lá de 4 anos não há anos suficientes para o testar.
+anos à frente; para lá de 4 anos não há anos suficientes para o testar, e
+os intervalos são provavelmente estreitos de mais. O resumo, o separador
+`Quebras e Estrutura` e o título do mapa avisam quando a projecção vai além.
 
 Para usar a média de 6 nestes casos, escolha `Média de 6 modelos` em
 `Mostrar opções avançadas` → `Projecção apresentada`. A tabela de validação

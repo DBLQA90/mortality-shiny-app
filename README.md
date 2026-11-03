@@ -498,6 +498,22 @@ systemd-run --user --wait --setenv=REFRESH_TASK=sns tools/scheduled_refresh.sh  
 The driver is resumable: each run makes what progress fits in its time budget
 and the next run continues.
 
+The INLA small-area forecasts (`tools/precompute_inla.R`) are rebuilt by a
+second timer (`tools/systemd/mortality-inla.timer`, daily and 20 minutes after
+boot; the refresh also starts it when it ends): `tools/scheduled_inla.sh`
+fingerprints their inputs (`tools/inla_inputs_fingerprint.R`) and, when they
+changed - a new year of causes of death, or a revision - rebuilds the 96
+forecasts in `data/inla_forecasts.build/` and swaps them in once complete.
+Until then the app falls back to the mean of six where the old ones no longer
+start from the last year. Status in
+`~/.local/state/mortality-refresh/inla-status.txt`. A rebuild cut short by a
+shutdown continues after the next boot.
+
+```sh
+ln -sf "$PWD/tools/systemd/mortality-inla."{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now mortality-inla.timer
+```
+
 ```sh
 Rscript tools/refresh_snapshots.R task=all minutes=300 recent=2 note="INE 2026 release"
 ```

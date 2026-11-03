@@ -86,3 +86,12 @@ test_that("the map takes INLA's areas, measured against the level it estimates f
     expect_match(hover[1], "2024 \\(nível estimado\\)")
   })
 })
+
+test_that("a forecast past the tested years says its intervals are untested there", {
+  with_inla_dir({
+    expect_equal(inla_horizon_note(2028), "")
+    expect_match(inla_horizon_note(2029), "testados até 4 anos à frente \\(2028\\)")
+    expect_equal(inla_horizon_note(-Inf), "")
+    expect_equal(inla_horizon_note(2035, origin = NA_integer_), "")
+  })
+})

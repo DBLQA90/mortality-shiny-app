@@ -14,3 +14,6 @@ tests/testthat/_problems/
 
 # Precomputed INLA forecasts (tools/precompute_inla.R): rebuilt from the snapshots.
 data/inla_forecasts/
+data/inla_forecasts.build/
+data/inla_forecasts.previous/
+data/inla_backtests/

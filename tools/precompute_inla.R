@@ -7,9 +7,13 @@
 # cause and sex, too slow to run while someone waits.
 #
 #   Rscript tools/precompute_inla.R [causes=a;b] [combos=B1C1,B0C1,...] [horizon=11] [extract_only=1]
+#                                   [origin=YYYY] [step2021=1]
 #
 # causes= replaces the 8 backtested causes (INLA_CAUSES) by others, separated
 # by ";"; extract_only=1 builds the data only (no INLA, little memory).
+# For a backtest (tools/backtest_inla.R), into another MORTALITY_INLA_DIR:
+# origin= fits on the years up to it only, and keeps the later observed years
+# to compare; step2021=1 keeps the 2021 step even with the COVID years.
 #
 # INLA is needed here only, not by the app: install it from its own repository,
 #   install.packages("INLA", repos = c(getOption("repos"), INLA = "https://inla.r-inla-download.org/R/stable"), dep = TRUE)
@@ -64,6 +68,7 @@ combos <- strsplit(arg_of("combos", paste(INLA_COMBOS, collapse = ",")), ",", fi
 stopifnot(all(combos %in% INLA_COMBOS))
 HORIZON <- as.integer(arg_of("horizon", "11"))
 extract_only <- identical(arg_of("extract_only", "0"), "1")
+force_step2021 <- identical(arg_of("step2021", "0"), "1")
 N_SAMPLES <- 300L
 THREADS <- Sys.getenv("INLA_THREADS", "16:1")
 QUANTILES <- c(0.025, 0.05, 0.1, 0.5, 0.9, 0.95, 0.975)
@@ -74,6 +79,8 @@ areas <- sort(unique(as.character(lookup$municipality)))
 stopifnot(length(areas) == 308)
 last_year <- max(planning_cause_years())
 years <- INLA_FIRST_YEAR:last_year
+origin <- as.integer(arg_of("origin", last_year))
+stopifnot(origin <= last_year)
 weights <- esp2013_df$stdpop[match(age_levels, as.character(esp2013_df$age_band))]
 weights <- weights / sum(weights); names(weights) <- age_levels
 
@@ -158,17 +165,17 @@ fit_one <- function(cause, sex, combo) {
   t0 <- Sys.time()
   steps <- grepl("B1", combo, fixed = TRUE); covid <- grepl("C1", combo, fixed = TRUE)
   all <- extract(cause, sex)
-  totals <- all %>% group_by(band) %>% summarise(deaths = sum(deaths), .groups = "drop")
+  totals <- all %>% filter(year <= origin) %>% group_by(band) %>% summarise(deaths = sum(deaths), .groups = "drop")
   kept <- intersect(age_levels, as.character(totals$band[totals$deaths >= 20]))
-  origin <- last_year
-  future <- all %>% filter(year == origin) %>% select(area, band, py) %>%
-    tidyr::crossing(year = origin + seq_len(HORIZON)) %>% mutate(deaths = NA_real_)
+  future <- all %>% filter(year == last_year) %>% select(area, band, py) %>%
+    tidyr::crossing(year = setdiff(origin + seq_len(HORIZON), years)) %>% mutate(deaths = NA_real_)
   d <- bind_rows(all, future) %>% filter(band %in% kept, py > 0) %>%
     mutate(band = factor(band, levels = kept), y = ifelse(year <= origin, round(deaths), NA_real_),
            area_id = match(area, areas), slope_id = area_id, year_id = year - INLA_FIRST_YEAR + 1L,
            year_c = year - origin, recent_c = pmax(year - (origin - 6L), 0L), st_id = (area_id - 1L) * 100L + year_id,
            step2014 = as.numeric(year >= 2014L), step2021 = as.numeric(year >= 2021L),
-           covid2020 = as.numeric(year == 2020L), covid2021 = as.numeric(year == 2021L), covid2022 = as.numeric(year == 2022L))
+           covid2020 = as.numeric(year == 2020L & year <= origin), covid2021 = as.numeric(year == 2021L & year <= origin),
+           covid2022 = as.numeric(year == 2022L & year <= origin))
   formula <- y ~ band + year_c + recent_c +
     f(area_id, model = "bym2", graph = setup$adj, scale.model = TRUE, constr = TRUE, hyper = h_bym) +
     f(year_id, model = "ar1", constr = TRUE, hyper = h1) +
@@ -177,7 +184,8 @@ fit_one <- function(cause, sex, combo) {
   # only 2023 onwards would set it apart, and it took the rebound after
   # COVID as a jump of the population (pneumonia: +59%, the projection
   # falling by half). It is left out then, as in the backtests.
-  extra <- c(if (steps) "step2014", if (steps && !covid) "step2021", if (covid) paste0("covid", 2020:2022))
+  extra <- c(if (steps && origin >= 2014L) "step2014", if (steps && (!covid || force_step2021) && origin >= 2021L) "step2021",
+             if (covid) paste0("covid", intersect(2020:2022, seq_len(origin)), recycle0 = TRUE))
   if (length(extra)) formula <- update(formula, stats::as.formula(paste(". ~ . +", paste(extra, collapse = " + "))))
   set.seed(2026)
   fit <- inla(formula, family = "poisson", data = d, offset = log(d$py), control.compute = list(config = TRUE),
@@ -212,7 +220,7 @@ for (cause in causes) for (sex in c("HM", "H", "M")) {
   }
 }
 if (extract_only) quit(save = "no")
-saveRDS(list(origin = last_year, first_year = INLA_FIRST_YEAR, horizon = HORIZON, data_mode = "corrected",
+saveRDS(list(origin = origin, last_observed = last_year, step2021 = force_step2021, first_year = INLA_FIRST_YEAR, horizon = HORIZON, data_mode = "corrected",
              population_basis = default_population_basis(), standard = "ESP 2013", created = Sys.time()),
         file.path(out_dir, "manifest.rds"))
 cat("done:", length(list.files(out_dir, pattern = "__B[01]C[01]\\.rds$")), "forecasts in", out_dir, "\n")

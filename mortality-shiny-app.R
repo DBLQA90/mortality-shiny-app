@@ -2799,7 +2799,8 @@ server <- function(input, output, session) {
       "Projecção do modelo espacial (INLA), pré-calculado com os dados até ", inla_origin_year(), ": todos os municípios ",
       "estimados em conjunto, cada um apoiado nos vizinhos e na tendência nacional; uma ULS ou NUTS é a soma dos seus municípios.",
       if (length(terms) > 0) paste0(" O modelo separa da tendência ", paste(terms, collapse = " e "), ".") else "",
-      " ", INLA_BACKTEST_TEXT
+      " ", INLA_BACKTEST_TEXT,
+      " ", inla_horizon_note(max(dat$fc$year[dat$fc$model == INLA_MODEL_ID], -Inf))
     )
   }
 
@@ -3946,11 +3947,12 @@ server <- function(input, output, session) {
 
   # Where no classical model can run - a small area whose years with fewer
   # than 10 deaths have no rate - the spatial model still projects it.
-  inla_only_result <- function(history, fc, horizon) {
+  # The INLA forecast itself joins with add_inla_candidate().
+  inla_only_result <- function(history, horizon, conf_level = 95) {
     list(
       history = history,
       obs = history$series[is.finite(history$series$value), , drop = FALSE],
-      fc = fc,
+      fc = NULL,
       fits = list(),
       fitted_models = character(0),
       selected_model_ids = character(0),
@@ -3958,7 +3960,7 @@ server <- function(input, output, session) {
       accuracy = tibble::tibble(),
       recommended_model = NULL,
       horizon = horizon,
-      conf_level = 95,
+      conf_level = conf_level,
       transform_method = "none",
       bias_adjust = FALSE,
       transform_label = "Sem transformação",
@@ -3989,7 +3991,7 @@ server <- function(input, output, session) {
       }
     )
     if (is.null(guided_result)) {
-      guided_result <- add_inla_candidate(inla_only_result(training_history, inla$fc, input$beginner_horizon), inla)
+      guided_result <- add_inla_candidate(inla_only_result(training_history, input$beginner_horizon), inla)
       validation <- NULL
     } else {
       validation <- evaluate_model_selection(
@@ -5348,8 +5350,11 @@ server <- function(input, output, session) {
       } else {
         "média de 6 modelos, face ao último ano observado"
       }
+      untested <- if (INLA_MODEL_ID %in% methods && nzchar(inla_horizon_note(m$target))) {
+        paste0("<br><sup>INLA: intervalos testados até ", inla_origin_year() + INLA_TESTED_HORIZON, ", provavelmente estreitos de mais depois</sup>")
+      } else ""
       list(title = paste0(s$cause, " · ", sex_label, " · projecção para ", m$target,
-                          "<br><sup>", metric, ", ", how, "</sup>"),
+                          "<br><sup>", metric, ", ", how, "</sup>", untested),
            scale = switch(s$scale, significance = "classes", quintile = "quintile", "linear"),
            classes = map_class_colours(MAP_CHANGE_LABELS),
            legend = if (identical(s$scale, "significance")) "Projecção" else "% face ao último ano<br>vermelho: sobe",
@@ -6018,16 +6023,28 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
 
   forecast_sel <- eventReactive(input$go_forecast, {
-    run_forecast_models(
-      history = forecast_history(),
-      model_ids = input$models,
-      horizon = input$horizon,
-      kind = "forecast",
-      token = isolate(cancel_seq$forecast),
-      conf_level = input$conf_level2,
-      transform_method = input$transform2,
-      bias_adjust = value_or_default(input$bias_adjust2, TRUE),
-      model_specs = build_advanced_model_specs()
+    history <- forecast_history()
+    tryCatch(
+      run_forecast_models(
+        history = history,
+        model_ids = input$models,
+        horizon = input$horizon,
+        kind = "forecast",
+        token = isolate(cancel_seq$forecast),
+        conf_level = input$conf_level2,
+        transform_method = input$transform2,
+        bias_adjust = value_or_default(input$bias_adjust2, TRUE),
+        model_specs = build_advanced_model_specs()
+      ),
+      # A series the classical models cannot take (a small area whose years
+      # with fewer than 10 deaths have no rate): the spatial model alone, as
+      # in the guided forecast; advanced_forecast_result() adds it.
+      error = function(e) {
+        inla_ok <- isTRUE(value_or_default(input$advanced_inla, TRUE)) &&
+          !is.null(inla_for_history(history, input$horizon, input$conf_level2)$fc)
+        if (inherits(e, "validation") && inla_ok) return(inla_only_result(history, input$horizon, input$conf_level2))
+        stop(e)
+      }
     )
   }, ignoreNULL = TRUE)
 
@@ -6603,7 +6620,10 @@ server <- function(input, output, session) {
     }
     inla <- advanced_inla()
     if (!is.null(inla$reason)) return(p(paste0("Sem projecção espacial para esta selecção: ", inla$reason, ".")))
-    p(paste0("Projecção espacial em uso (", inla$combo, "). Efeitos estimados, como razões de taxas:"))
+    tagList(
+      p(paste0("Projecção espacial em uso (", inla$combo, "). ", inla_horizon_note(max(inla$fc$year)))),
+      p("Efeitos estimados, como razões de taxas:")
+    )
   })
 
   output$inlaEffectsTable <- renderTable({

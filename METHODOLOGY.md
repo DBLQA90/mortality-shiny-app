@@ -1891,7 +1891,11 @@ step is untested. With C on it is left out: at origin 2024 only 2023-2024
 follow it, it cannot be told from the 2021-2022 COVID effects, and it took the
 rebound after COVID as a population jump (pneumonia: step 1.59, COVID 2021
 0.59, Portugal's 2035 projection 8.8 against 20.1 without B; women's lung
-cancer 45.7 against 19.7). So with C, B is the 2014 step alone, as backtested. C changes only the
+cancer 45.7 against 19.7). So with C, B is the 2014 step alone, as backtested. When the forecasts first start
+from 2025 or later, `tools/scheduled_inla.sh` backtests the 2021 step once from
+two years before (C alone, B and C, B and C with the 2021 step; `origin=` and
+`step2021=1` of `tools/precompute_inla.R`, compared by `tools/backtest_inla.R`),
+and the report says whether it can join B. C changes only the
 origins after COVID: bias at 2021 -7.7% to -0.2%, at 2022 -5.3% to -2.5%,
 coverage 0.86 to 0.94 and 0.88 to 0.95, median absolute error 2.33 to 3.00 and
 2.52 to 3.24; C is on by default, since the published origin, 2024, is the
@@ -1910,7 +1914,9 @@ cover the observed rate, never below 1:
 
 Coverage still falls with the horizon (Portugal, widened: 0.97 one year ahead,
 0.93 four years ahead); the app projects to 11 years, beyond what the backtests
-can test, so the intervals past year 4 are likely too narrow.
+can test, so the intervals past year 4 are likely too narrow. The guided summary,
+the `Quebras e Estrutura` status and the map's title say so when a forecast
+goes past it (`inla_horizon_note()`).
 
 ### Combining Models and Comparing Areas
 

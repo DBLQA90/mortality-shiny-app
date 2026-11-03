@@ -1,0 +1,10 @@
+[Unit]
+Description=Mortality app: check the INLA forecasts daily and after boot (resumes a rebuild cut short)
+
+[Timer]
+OnCalendar=*-*-* 12:00:00
+OnBootSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

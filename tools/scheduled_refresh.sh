@@ -27,6 +27,7 @@
 # REFRESH_TASK overrides the task (e.g. sns for a quick test).
 # REGRESSION=0 skips the check; REGRESSION_ARGS passes it options (--quick).
 # SWEEP=0 skips the sweep; SWEEP_ARGS passes it options (--planning).
+# INLA=0 does not start the INLA check (tools/scheduled_inla.sh) at the end.
 #
 # The data files are left changed in the working tree. Set AUTO_COMMIT=1 (in
 # ~/.config/mortality-refresh.env) to commit them, and AUTO_PUSH=1 to push that
@@ -74,6 +75,11 @@ cd "$repo" || exit 1
     git add -- data
     git commit -q -m "Data: scheduled refresh $(date +%F)" -- data && echo "committed data changes"
     if [ "${AUTO_PUSH:-0}" = "1" ]; then git push -q && echo "pushed"; fi
+  fi
+  # New data may move the INLA forecasts: tools/scheduled_inla.sh rebuilds
+  # them if their inputs changed (it waits for this unit to end).
+  if [ "${INLA:-1}" = "1" ]; then
+    systemctl --user start --no-block mortality-inla.service && echo "INLA check started"
   fi
   [ "$status" -eq 0 ] && status="$regression"
   [ "$status" -eq 0 ] && status="$sweep"

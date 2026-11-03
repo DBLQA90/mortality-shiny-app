@@ -47,6 +47,17 @@ INLA_BACKTEST_TEXT <- paste0(
   "o viés nas ULS e NUTS ficou entre +0,5% e +2%, contra cerca de +10% da média de 6 modelos, com erro também menor; ",
   "os intervalos estão alargados para conter 95% dos valores observados."
 )
+# The backtests reach 4 years ahead: the widening is measured there, and the
+# coverage still fell with the horizon (Portugal: 97% one year ahead, 93% four).
+INLA_TESTED_HORIZON <- 4L
+
+# The warning for a forecast that reaches past the tested years, or "".
+inla_horizon_note <- function(last_year, origin = inla_origin_year()) {
+  if (!is.finite(origin) || !is.finite(last_year) || last_year <= origin + INLA_TESTED_HORIZON) return("")
+  paste0("Os intervalos foram testados até ", INLA_TESTED_HORIZON, " anos à frente (", origin + INLA_TESTED_HORIZON,
+         "); para lá disso não há anos com que os testar, e são provavelmente estreitos de mais.")
+}
+
 # Why B is off and C on by default, for the 'Quebras e Estrutura' tab.
 INLA_SWITCHES_TEXT <- paste0(
   "Por omissão, B desligado e C ligado, pelos testes com dados passados (9 anos de partida, 2008-2022). ",

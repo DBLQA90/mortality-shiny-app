@@ -509,6 +509,7 @@ testServer(app, {
       f <- tryCatch(beginner_forecast(), error = function(e) e)
       if (!failed(f, paste("INLA guided", area))) {
         last <- utils::tail(f$fc[f$fc$model == f$recommended_model, ], 1)
+        if (anyDuplicated(f$fc[c("model", "year")])) fail(paste("INLA guided duplicates", area))
         cat(sprintf("   %s: %s%s, %d = %.1f (%.1f; %.1f) %s\n", area, f$recommended_model, if (isTRUE(f$inla_only)) " (only)" else "",
                     last$year, last$mean, last$lower, last$upper,
                     verdict(identical(f$recommended_model, "inla") && last$lower <= last$mean && last$mean <= last$upper,
@@ -531,6 +532,30 @@ testServer(app, {
                   verdict(identical(a$recommended_model, "inla") && !is.null(other) && nrow(other) == 1 && other$mean != one$mean,
                           "OK", "INLA advanced switches")))
       session$setInputs(inla_steps = inla$INLA_DEFAULT_STEPS)
+    }
+    # A series the classical models refuse (Beja: years without a pneumonia
+    # rate): INLA alone, and every output of the advanced tabs still renders.
+    session$setInputs(area2 = "Beja", go_forecast = 21)
+    a <- tryCatch(advanced_forecast_result(), error = function(e) e)
+    if (!failed(a, "INLA-only advanced")) {
+      broken <- character(0)
+      for (id in c("forecastPlot", "forecastTable", "forecastSummaryTable", "forecastSpecTable", "forecastWarnings",
+                   "forecastOutputModelSelector", "accuracyTable", "comparisonPlot", "comparisonRankingTable",
+                   "comparisonValidationInfo", "comparisonWarnings", "comparisonHoldoutControl", "diagnosticModelSelector",
+                   "diagnosticModelSummary", "diagnosticResidualPlot", "diagnosticAcfPlot", "diagnosticPacfPlot",
+                   "diagnosticLjungBoxTable", "breakInterpretation", "breakPlot", "breakTable", "inlaStatus", "inlaEffectsTable")) {
+        res <- tryCatch({ output[[id]]; NULL }, error = function(e) e)
+        if (inherits(res, "error") && !inherits(res, c("shiny.silent.error", "validation"))) {
+          broken <- c(broken, paste0(id, ": ", conditionMessage(res)))
+        }
+      }
+      n <- sum(a$fc$model == "inla")
+      cat(sprintf("   advanced Beja pneumonia: INLA only %s, %d years (no duplicates: %s); outputs failing: %s %s\n",
+                  isTRUE(a$inla_only), n, !anyDuplicated(a$fc$year[a$fc$model == "inla"]),
+                  if (length(broken)) paste(broken, collapse = "; ") else "none",
+                  verdict(isTRUE(a$inla_only) && identical(a$recommended_model, "inla") && n == 5 &&
+                            !anyDuplicated(a$fc$year[a$fc$model == "inla"]) && length(broken) == 0,
+                          "OK", "INLA-only advanced")))
     }
     session$setInputs(map_cause = "Diabetes mellitus", map_sex = "HM", map_metric = "dsr", map_level = "municipio",
                       map_scale = "index", map_view = "projection", map_target_year = "2030", go_map = 20)
