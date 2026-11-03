@@ -24,7 +24,11 @@
 # in the app and are kept without an id), and aces (the 55 mainland primary
 # care units before the ULS of 2024 - 48 ACES and the 7 ULS that already
 # existed - for the SNS portal's data of 2015-2023; ids are geopt's names,
-# which data/sns_aces_crosswalk.csv maps the portal's labels onto).
+# which data/sns_aces_crosswalk.csv maps the portal's labels onto), and
+# freguesia (the 3,092 parishes of the 2013 map, those of the 2021 census and
+# of INE's parish deaths to 2024; ids are the DICOFRE codes, names "parish
+# (municipality)". geopt downloads that map from DGT - CAOP 2024 - the first
+# time, which needs the rmapshaper package and a network connection).
 #
 # Checked on 2026-10-15 against the app's lookups: NUTS 2013 and 2024 agree
 # for every municipality, the parish split of Lisboa, Loures and Porto for all
@@ -37,7 +41,7 @@ suppressMessages({
 })
 
 levels_arg <- sub("^levels=", "", grep("^levels=", commandArgs(trailingOnly = TRUE), value = TRUE))
-wanted <- if (length(levels_arg) == 0) c("municipio", "nuts", "uls", "aces") else strsplit(levels_arg, ",")[[1]]
+wanted <- if (length(levels_arg) == 0) c("municipio", "nuts", "uls", "aces", "freguesia") else strsplit(levels_arg, ",")[[1]]
 want <- function(level) level %in% wanted
 
 script_dir <- normalizePath(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]])))
@@ -141,4 +145,16 @@ if (want("aces")) {
   ids <- ifelse(mainland, a$aces, NA_character_)
   stopifnot(sum(!is.na(ids[a$geopt_type == "boundary"])) == 55)
   write_level("aces", a, ids, a$aces)
+}
+
+# Parishes of the 2013 map, keyed by DICOFRE as the census and INE's parish
+# deaths; every census parish must have one.
+if (want("freguesia")) {
+  f <- get_map("freguesia", admin_vintage = "2013")
+  census <- readRDS("data/snapshots/census_parish/year_2021.rds")
+  boundary <- f$geopt_type == "boundary"
+  missing <- setdiff(unique(census$code), f$dtmnfr[boundary])
+  if (length(missing) > 0) stop("parishes without a boundary: ", paste(missing, collapse = ", "))
+  ids <- ifelse(boundary, f$dtmnfr, NA_character_)
+  write_level("freguesia", f, ids, paste0(f$freguesia, " (", f$municipio, ")"))
 }

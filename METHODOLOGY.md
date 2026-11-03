@@ -1218,6 +1218,24 @@ over ages are withheld, as everywhere in the planning tab. Smoothing, for the
 SMR only, is the funnel's empirical Bayes estimator with the expected deaths as
 denominator (Poisson-gamma, method of moments).
 
+#### Parish maps
+
+`Unidades: Freguesias` maps the SMR of the 3,092 parishes of the 2013 map
+(`R/parish_maps.R`). INE's parish deaths (`0008235` for 2014-2020, `0012542`
+from 2021; all causes, both sexes, no age) are summed over the triennium; the
+expected deaths are indirect: each census age group's national deaths in the
+triennium (the planning pool's, ages filled), scaled to the parishes' total
+(the deaths of no known parish left out; in 2022-2024 the two totals already
+agree, 361,060), and shared out by the parish's share of the group in the 2021
+census (`0012364`, 14 groups). So the expected deaths add up to the observed,
+and Portugal is 100. The census shares stand for the population in the
+triennium, so only triennia ending 2020-2024 are offered. `0012542` gives
+2021-2024 on the 2013 map (the restored parishes are zero) and 2025 on the 2025
+map, so 2025 is left out. Interval: Poisson on the observed deaths; smoothing,
+on by default here, the same empirical Bayes estimator as the municipal maps.
+Boundaries: geopt's 2013 map (CAOP 2024, `tools/build_boundaries.R
+levels=freguesia`, needs rmapshaper), keyed by DICOFRE.
+
 #### Trend, change and projection maps
 
 - **Trend:** `cause_map_trend()` computes the map's metric for 4-6

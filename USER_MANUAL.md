@@ -1093,7 +1093,7 @@ mortalidade por essa causa é mais alta ou mais baixa do que em Portugal.
 - **Triénio:** os três anos somados. Só se oferecem triénios com óbitos por causa
   nos três anos.
 - **Unidades:** municípios, NUTS III, ULS ou NUTS II, na definição NUTS do topo da
-  página.
+  página, ou **freguesias** (ver abaixo).
 - **Mostrar:**
   - **Um triénio**, a predefinição.
   - **Tendência ao longo dos triénios:** a variação percentual anual de 4 a 6
@@ -1148,6 +1148,36 @@ geografia de 2024.
 
 A descarga em CSV tem todas as áreas, com o valor observado e o suavizado, o
 intervalo, os óbitos e a significância; a de PNG é o mapa fixo.
+
+### Freguesias
+
+Com `Unidades: Freguesias`, o mapa mostra a **SMR de cada uma das 3092 freguesias**
+num triénio. Por freguesia o INE publica só os óbitos de residentes de todas as
+causas, ambos os sexos juntos, sem idade, e a população por idade só no Censos
+2021. Por isso:
+
+- só para **todas as causas, ambos os sexos e a SMR**, num triénio (sem tendência,
+  variação ou projecção);
+- só triénios **de 2018-2020 a 2022-2024**, perto do Censos: a SMR supõe que a
+  população de cada freguesia por idade é a do Censos durante o triénio;
+- as **freguesias de 2013**: os números do INE de 2025 já usam o mapa com as
+  freguesias restauradas, que o Censos não tem.
+
+Os óbitos esperados são os que a freguesia teria se cada grupo de idade morresse
+como em Portugal: os óbitos de Portugal de cada grupo no triénio, repartidos pela
+parte que a freguesia tem desse grupo no Censos. Somados, dão os observados
+(Portugal = 100).
+
+Metade das freguesias espera menos de 46 óbitos num triénio, e 112 menos de dez:
+com tão poucos, a SMR observada é em boa parte acaso. A suavização (Bayes empírico)
+liga-se por isso ao escolher as freguesias; pode desligá-la. O rato mostra a SMR
+observada, o intervalo e os óbitos.
+
+Os óbitos contam na freguesia de residência, e quem vive num lar é residente do
+lar: uma freguesia com um lar grande pode ficar acima de Portugal pela
+fragilidade de quem lá vive, que a idade não mede. Um clique numa freguesia
+mostra o seu quadro e abre a série do município na Mortalidade Observada (não há
+séries por freguesia nesse separador).
 
 ## 10-C. Separador Indicadores de Planeamento
 

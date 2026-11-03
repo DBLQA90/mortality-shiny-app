@@ -719,7 +719,12 @@ maps_tab_ui <- function() {
           helpText("Taxa padronizada anual (todas as idades, ou menos de 75 anos com essa métrica), com o método da Previsão Guiada. ",
                    "Da primeira vez demora cerca de um minuto; depois fica guardada.")
         ),
-        radioButtons("map_level", "Unidades:", choices = PLANNING_MAP_LEVELS, selected = "municipio"),
+        radioButtons("map_level", "Unidades:", choices = CAUSE_MAP_LEVELS, selected = "municipio"),
+        conditionalPanel(
+          "input.map_level == 'freguesia'",
+          helpText("Por freguesia o INE publica só os óbitos de todas as causas, sem sexo nem idade, e a população por idade só no Censos 2021: ",
+                   "a SMR de um triénio entre 2018-2020 e 2022-2024, suavizada por omissão.")
+        ),
         radioButtons(
           "map_scale", "Cores:",
           choices = c("Escala contínua" = "index", "Significância (\u25b2 = \u25bc)" = "significance", "Quintis" = "quintile"),

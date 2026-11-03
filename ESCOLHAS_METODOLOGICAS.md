@@ -258,6 +258,18 @@ Nos óbitos por causa, o INE oculta sobretudo a repartição por sexo: publica o
 
 **O que significa para si.** Compare cada área com Portugal (100), não com a área vizinha. Antes de tirar conclusões sobre uma área a vermelho, veja se a diferença é significativa, ou ligue a suavização. As áreas a cinzento não têm valor: preferimos não mostrar um valor a mostrar um que depende sobretudo das idades que o INE não publicou.
 
+### Mapas por freguesia: só a SMR de todas as causas, perto de 2021
+
+**O que fazemos.** O separador Mapas mostra a SMR de cada freguesia, para todas as causas e ambos os sexos, em triénios de 2018-2020 a 2022-2024, suavizada por omissão.
+
+**Porquê.**
+
+- Por freguesia o INE só publica o total de óbitos por ano, sem causa, sexo ou idade, e a população por idade só no Censos 2021. A SMR só precisa do total de óbitos: os esperados vêm das taxas de Portugal por idade aplicadas à população do Censos.
+- Longe de 2021 a população de cada freguesia já não é a do Censos, por isso ficam só os triénios próximos.
+- Uma freguesia espera poucos óbitos num triénio. Sem suavização, o mapa mostraria sobretudo acaso.
+
+**O que significa para si.** Use o mapa para ver padrões entre freguesias, não para classificar uma freguesia isolada. Uma freguesia com um lar grande pode estar acima de Portugal porque quem lá vive é mais frágil, não por um problema da freguesia. As freguesias são as de 2013: as restauradas em 2025 estão dentro das antigas uniões.
+
 ### Mapas de tendência, de variação e de projecção
 
 **O que fazemos.**

@@ -14,6 +14,9 @@
 # planning tab's maps use it too; their PNG stays the ggplot drawing
 # (planning_map_draw()).
 
+# The Mapas tab's levels: the planning maps' and the parishes (R/parish_maps.R).
+CAUSE_MAP_LEVELS <- c(PLANNING_MAP_LEVELS, "Freguesias (todas as causas, SMR)" = "freguesia")
+
 CAUSE_MAP_METRICS <- c(
   "SMR face a Portugal (= 100)" = "smr",
   "Taxa padronizada (por 100 000)" = "dsr",
@@ -361,8 +364,9 @@ cause_map_hover <- function(values, metric, benchmark = "Portugal") {
   digits <- if (identical(metric, "smr")) 0 else 1
   fmt <- function(x) planning_format_value(x, digits)
   sig <- c(Superior = paste("acima de", benchmark), Inferior = paste("abaixo de", benchmark), Semelhante = paste("semelhante a", benchmark))
+  label <- if (is.null(values$label)) values$area else values$label
   paste0(
-    "<b>", values$area, "</b>",
+    "<b>", label, "</b>",
     ifelse(is.finite(values$value),
            paste0("<br>", ifelse(values$method == "suavizado", "Suavizado: ", ""), fmt(values$value), values$flag,
                   ifelse(values$method == "suavizado", paste0(" (observado ", fmt(values$observed_value), ")"), ""),

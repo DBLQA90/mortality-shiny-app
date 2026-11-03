@@ -54,6 +54,7 @@ for (app_file in c(
   "R/planning_profile.R",
   "R/planning_maps.R",
   "R/cause_maps.R",
+  "R/parish_maps.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
   "R/inla_forecasts.R",
@@ -5116,6 +5117,11 @@ server <- function(input, output, session) {
     ))
   }
   observeEvent(input$go_map, request_map())
+  # A parish expects a few deaths in a triennium: its observed SMR is mostly
+  # chance, so the parish map is smoothed unless the box is cleared again.
+  observeEvent(input$map_level, {
+    if (identical(input$map_level, PARISH_MAP_LEVEL)) updateCheckboxInput(session, "map_smoothed", value = TRUE)
+  }, ignoreInit = TRUE)
 
   # "Ver esta causa no mapa" in the mortality tabs: the tab's cause, sex and
   # areas (outlined), the latest triennium, the map's other settings as they are.
@@ -5139,6 +5145,7 @@ server <- function(input, output, session) {
   map_highlight <- function(level, lookup) {
     focus <- setdiff(map_focus(), c("Portugal", PLANNING_PORTUGAL_MUNICIPAL, "Continente"))
     if (length(focus) == 0) return(character(0))
+    if (identical(level, PARISH_MAP_LEVEL)) return(parish_map_highlight(focus, lookup))
     units <- planning_map_units(level, lookup)
     direct <- intersect(focus, units)
     if (identical(level, "municipio")) {
@@ -5155,9 +5162,16 @@ server <- function(input, output, session) {
     lookup <- active_nuts_lookup()
     boundaries <- planning_map_boundaries(settings$level, active_nuts_vintage())
     validate(need(!is.null(boundaries), "Faltam os limites dos mapas (data/boundaries): corra tools/build_boundaries.R."))
-    years <- cause_map_end_years(settings$cause)
+    parish <- identical(settings$level, PARISH_MAP_LEVEL)
+    if (parish) validate(need(is.null(parish_map_unavailable_reason(settings$cause, settings$sex, settings$metric, settings$view)),
+                              parish_map_unavailable_reason(settings$cause, settings$sex, settings$metric, settings$view)))
+    years <- if (parish) parish_map_end_years() else cause_map_end_years(settings$cause)
     validate(need(length(years) > 0, "Esta causa não tem três anos seguidos com óbitos por causa."))
     end_year <- if (isTRUE(settings$end_year %in% years)) settings$end_year else max(years)
+    if (parish && !isTRUE(settings$end_year %in% years)) notify_data(paste0(
+      "Por freguesia só há população no Censos 2021: o mapa mostra o triénio ", end_year - 2L, "-", end_year,
+      " (os possíveis vão de ", min(years) - 2L, "-", min(years), " a ", max(years) - 2L, "-", max(years), ")."
+    ), type = "message", id = "map-parish-years")
     basis <- active_population_basis()
     out <- list(boundaries = boundaries, settings = settings, end_year = end_year,
                 highlight = map_highlight(settings$level, lookup))
@@ -5212,8 +5226,12 @@ server <- function(input, output, session) {
                                    type = "message", id = "map-missing")
     } else {
       values <- shiny::withProgress(message = "A calcular a causa em todas as áreas...", value = 0.3, {
-        cause_map_values(settings$cause, settings$sex, end_year, settings$metric, settings$level, lookup,
-                         basis = basis, smoothed = settings$smoothed)
+        if (parish) {
+          parish_map_values(end_year, lookup, smoothed = settings$smoothed)
+        } else {
+          cause_map_values(settings$cause, settings$sex, end_year, settings$metric, settings$level, lookup,
+                           basis = basis, smoothed = settings$smoothed)
+        }
       })
       validate(need(nrow(values) > 0 && any(is.finite(values$value)), "Sem valores para esta causa neste triénio."))
       missing <- sum(!is.finite(values$value))
@@ -5374,7 +5392,9 @@ server <- function(input, output, session) {
            classes = map_class_colours(MAP_CHANGE_LABELS),
            legend = if (identical(s$scale, "significance")) "Variação" else paste0(map_period_label(m$base_year), " = 100<br>vermelho: subiu"))
     } else {
-      list(title = cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed),
+      title <- cause_map_title(s$cause, s$sex, m$end_year, s$metric, s$smoothed)
+      if (identical(s$level, PARISH_MAP_LEVEL)) title <- paste0(title, "<br><sup>Freguesias de 2013, população do Censos ", PARISH_CENSUS_YEAR, "</sup>")
+      list(title = title,
            scale = switch(s$scale, significance = "classes", quintile = "quintile", "index"),
            classes = map_class_colours(unname(MAP_SIGNIFICANCE_LABELS)),
            legend = if (identical(s$scale, "significance")) "Face a Portugal" else "Portugal = 100<br>vermelho: acima")
@@ -5433,6 +5453,12 @@ server <- function(input, output, session) {
       ),
       if (identical(s$scale, "quintile")) "Quintis: cinco grupos com o mesmo número de áreas. " else "",
       if (identical(s$level, "uls")) "As ULS que partilham Lisboa, Loures, Porto ou Gondomar têm os valores das suas freguesias. As ilhas não têm ULS. " else "",
+      if (identical(s$level, PARISH_MAP_LEVEL)) paste0(
+        "Por freguesia: os óbitos de residentes publicados pelo INE (todas as causas, ambos os sexos), contra os esperados se cada grupo ",
+        "de idade morresse à taxa de Portugal, com a população da freguesia no Censos ", PARISH_CENSUS_YEAR, ". Os óbitos contam na ",
+        "freguesia de residência: os residentes de um lar contam no lar, e uma freguesia com um lar grande pode ficar acima de Portugal ",
+        "pela fragilidade de quem lá vive, que a idade não mede. Freguesias de 2013 (as restauradas em 2025 estão dentro das uniões). "
+      ) else "",
       if (length(m$highlight) > 0) "Contorno escuro: o local escolhido no separador de onde veio. " else "",
       "Passe o rato para ver os valores, use a roda do rato para aproximar e clique numa área para abrir a sua série."
     ))
@@ -5490,12 +5516,14 @@ server <- function(input, output, session) {
         `Face a Portugal` = if (is.na(row$significance)) "—" else row$class
       )
     )
-    openable <- area %in% area_choices_for(active_nuts_vintage(), active_nuts_lookup())
+    series_area <- map_series_area(m, row)
+    openable <- series_area %in% area_choices_for(active_nuts_vintage(), active_nuts_lookup())
     tagList(
-      h5(area),
+      h5(if (is.null(row$label)) area else row$label),
       renderTable(table, striped = TRUE, bordered = TRUE, spacing = "s", align = "l"),
       if (openable) {
-        actionButton("map_open_series", "Abrir a série na Mortalidade Observada", icon = icon("chart-line"))
+        actionButton("map_open_series", if (identical(series_area, area)) "Abrir a série na Mortalidade Observada" else
+          paste0("Abrir a série do município (", series_area, ") na Mortalidade Observada"), icon = icon("chart-line"))
       } else {
         helpText("Esta área não se escolhe na Mortalidade Observada (as ULS partilhadas só existem nos Indicadores de Planeamento).")
       }
@@ -5504,9 +5532,15 @@ server <- function(input, output, session) {
 
   # The clicked area's series in the observed tab: same cause and sex, the
   # standardised rate (under 75 for that metric), loaded at once.
+  # The area whose series a click opens: a parish has none, its municipality has.
+  map_series_area <- function(m, row) {
+    if (identical(m$settings$level, PARISH_MAP_LEVEL)) as.character(row$municipality) else as.character(row$area)
+  }
   observeEvent(input$map_open_series, {
     m <- cause_map()
-    area <- cause_map_area()
+    row <- m$values[m$values$area == cause_map_area(), , drop = FALSE]
+    req(nrow(row) == 1)
+    area <- map_series_area(m, row)
     updateSelectInput(session, "area", selected = area)
     updateSelectInput(session, "cause", selected = m$settings$cause)
     updateSelectInput(session, "sex", selected = m$settings$sex)
@@ -5530,7 +5564,8 @@ server <- function(input, output, session) {
       m <- cause_map()
       v <- m$values
       s <- m$settings
-      head <- tibble::tibble(causa = s$cause, sexo = s$sex, metrica = cause_map_metric_label(s$metric), area = v$area)
+      head <- tibble::tibble(causa = s$cause, sexo = s$sex, metrica = cause_map_metric_label(s$metric), area = v$label %||% v$area)
+      if (identical(s$level, PARISH_MAP_LEVEL)) head <- dplyr::mutate(head, codigo = v$area, municipio = v$municipality, .after = area)
       table <- switch(
         s$view,
         projection = dplyr::bind_cols(head, tibble::tibble(

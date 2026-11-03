@@ -378,6 +378,32 @@ testServer(app, {
   refused <- tryCatch(cause_map(), error = function(e) e)
   cat("   projection by municipality refuses:", verdict(inherits(refused, "error"), "OK", "projection refusal"), "\n")
   session$setInputs(map_view = "period")
+  # Parishes (R/parish_maps.R): all causes, both sexes, the smoothed SMR; a
+  # click offers the municipality's series; another cause is refused.
+  session$setInputs(map_cause = "Todas as causas de morte", map_sex = "HM", map_metric = "smr", map_view = "period",
+                    map_end_year = "2024", map_level = "freguesia", map_scale = "index")
+  # The level ticks the smoothing box in the browser (updateCheckboxInput),
+  # which testServer does not apply: set as the browser would.
+  session$setInputs(map_smoothed = TRUE, go_map = 9)
+  cmap <- tryCatch(cause_map(), error = function(e) e)
+  if (!failed(cmap, "parish map")) {
+    v <- cmap$values
+    cat(sprintf("   parish map 2022-2024: %d parishes, %s, observed %d = expected %.0f %s\n", nrow(v), v$method[1],
+                sum(v$observed), sum(v$expected), verdict(nrow(v) == 3092 && all(is.finite(v$value)) && v$method[1] == "suavizado" &&
+                                                     abs(sum(v$observed) - sum(v$expected)) < 1e-6, "OK", "parish map")))
+    widget <- tryCatch(output$causeMap, error = function(e) e)
+    cat("   parish map plot:", if (failed(widget, "parish map plot")) conditionMessage(widget) else verdict(grepl("choropleth", widget), "OK", "parish map plot"), "\n")
+    code <- v$area[v$label == "Paranhos (Porto)"]
+    session$setInputs(`plotly_click-cause_map` = jsonlite::toJSON(list(list(customdata = code)), auto_unbox = TRUE))
+    clicked <- tryCatch(output$causeMapClicked, error = function(e) e)
+    cat("   parish map click:", if (failed(clicked, "parish map click")) conditionMessage(clicked) else
+      verdict(grepl("Paranhos (Porto)", clicked$html, fixed = TRUE) && grepl("município (Porto)", clicked$html, fixed = TRUE),
+              "OK", "parish map click"), "\n")
+  }
+  session$setInputs(map_cause = "Diabetes mellitus", go_map = 10)
+  refused <- tryCatch(cause_map(), error = function(e) e)
+  cat("   parish map of one cause refuses:", verdict(inherits(refused, "error"), "OK", "parish refusal"), "\n")
+  session$setInputs(map_cause = "Todas as causas de morte", map_level = "municipio", map_smoothed = FALSE)
 
   # Planning maps with significance colours; the SNS map by ACES and by ULS.
   session$setInputs(planning_map_level = "municipio", planning_map_indicators = c("smr_all", "ageing_index"), planning_map_scale = "significance")
