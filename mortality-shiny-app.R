@@ -56,6 +56,7 @@ for (app_file in c(
   "R/cause_maps.R",
   "R/data_versions.R",
   "R/forecast_helpers.R",
+  "R/inla_forecasts.R",
   "R/trend.R",
   "R/data_access.R",
   "R/ui_helpers.R"
@@ -1035,6 +1036,7 @@ server <- function(input, output, session) {
   }
 
   get_diagnostic_fit <- function(dat, model_id = NULL) {
+    dat <- diagnosable_result(dat)
     successful_models <- get_successful_model_ids(dat)
 
     validate(need(length(successful_models) > 0, "Nenhum modelo foi estimado com sucesso."))
@@ -2722,6 +2724,7 @@ server <- function(input, output, session) {
     validate_successful_forecast(dat)
 
     last_observed <- dat$full_history$series %>%
+      dplyr::filter(is.finite(value)) %>%
       dplyr::slice_tail(n = 1)
     final_forecast <- dat$fc %>%
       dplyr::filter(model == dat$recommended_model) %>%
@@ -2756,7 +2759,9 @@ server <- function(input, output, session) {
       "O intervalo da projecção torna-se amplo no final do horizonte, pelo que a trajectória de longo prazo é incerta."
     }
 
-    compare_text <- if (agreement_ratio < 0.15) {
+    compare_text <- if (isTRUE(dat$inla_only)) {
+      "Os modelos de séries temporais não puderam ser ajustados, porque há anos com menos de 10 óbitos; só o modelo espacial projecta esta série."
+    } else if (agreement_ratio < 0.15) {
       "Os diferentes modelos plausíveis contam uma história muito semelhante."
     } else if (agreement_ratio < 0.35) {
       "Os diferentes modelos plausíveis apontam na mesma direcção geral, mas não exactamente para o mesmo nível."
@@ -2779,7 +2784,22 @@ server <- function(input, output, session) {
         "Isto corresponde a uma variação de {sprintf('%+.2f', change_abs)} {unit}{if (!is.na(change_pct)) paste0(' (', sprintf('%+.2f%%', change_pct), ')') else ''}."
       )),
       p(uncertainty_text),
-      p(compare_text)
+      p(compare_text),
+      if (identical(dat$recommended_model, INLA_MODEL_ID)) p(tags$em(inla_method_text(dat)))
+    )
+  }
+
+  # How the INLA forecast was made, for the summaries.
+  inla_method_text <- function(dat) {
+    combo <- dat$inla_combo %||% inla_combo()
+    terms <- c(if (identical(combo, "B1C1")) "a quebra da série de população de 2014"
+               else if (grepl("B1", combo, fixed = TRUE)) "as quebras da série de população de 2014 e 2021",
+               if (grepl("C1", combo, fixed = TRUE)) "os anos de COVID-19 (2020-2022)")
+    paste0(
+      "Projecção do modelo espacial (INLA), pré-calculado com os dados até ", inla_origin_year(), ": todos os municípios ",
+      "estimados em conjunto, cada um apoiado nos vizinhos e na tendência nacional; uma ULS ou NUTS é a soma dos seus municípios.",
+      if (length(terms) > 0) paste0(" O modelo separa da tendência ", paste(terms, collapse = " e "), ".") else "",
+      " ", INLA_BACKTEST_TEXT
     )
   }
 
@@ -2809,6 +2829,7 @@ server <- function(input, output, session) {
       TRUE ~ 0L
     )
     agreement_score <- dplyr::case_when(
+      isTRUE(dat$inla_only) ~ 1L,
       agreement_ratio < 0.15 ~ 2L,
       agreement_ratio < 0.35 ~ 1L,
       TRUE ~ 0L
@@ -2832,12 +2853,19 @@ server <- function(input, output, session) {
       TRUE ~ "A banda de incerteza é ampla no ano final."
     )
     agreement_message <- dplyr::case_when(
+      isTRUE(dat$inla_only) ~ "Só o modelo espacial projecta esta série: não há outros modelos com que a comparar.",
       agreement_ratio < 0.15 ~ "Os diferentes modelos concordam de perto quanto à direcção e ao nível da variação.",
       agreement_ratio < 0.35 ~ "Os diferentes modelos concordam em termos gerais quanto à direcção, mas diferem no nível final.",
       TRUE ~ "Os diferentes modelos dão pontos finais bastante distintos, o que reduz a confiança."
     )
     structural_warning <- get_simple_structural_warning_text(dat$full_history)
     validation_text <- describe_validation_selection(dat$validation)
+    if (identical(dat$recommended_model, INLA_MODEL_ID)) {
+      validation_text <- paste(
+        "Projecção: modelo espacial (INLA), testado à parte com dados passados (ver o resumo).",
+        if (!is.null(dat$validation)) "A validação abaixo compara os modelos de séries temporais, não o INLA." else ""
+      )
+    }
     zero_note <- if (
       identical(dat$transform_method, "log_offset") &&
         any(dat$obs$value == 0, na.rm = TRUE)
@@ -3885,25 +3913,97 @@ server <- function(input, output, session) {
     list(result = result, validation = validation)
   }
 
-  # Fit, validate and combine for one training series.
+  # The precomputed INLA forecast (R/inla_forecasts.R) for a history, or the
+  # reason it cannot serve it.
+  inla_for_history <- function(history, horizon, conf_level = 95, combo = inla_combo()) {
+    spec <- history$spec
+    years <- history$series$year
+    reason <- if (!is.null(history$infant) || identical(spec$rate_type, "infant")) {
+      "a projecção espacial não cobre a mortalidade infantil"
+    } else {
+      inla_unavailable_reason(spec$selected_areas, spec$cause, spec$sex, rate_type = spec$rate_type,
+                              population = spec$population, combo = combo, vintage = active_nuts_vintage(),
+                              last_year = if (length(years) > 0) max(years) else NULL)
+    }
+    if (!is.null(reason)) return(list(fc = NULL, reason = reason, combo = combo))
+    fc <- inla_forecast(spec$selected_areas, spec$cause, spec$sex, combo, conf_level, horizon)
+    list(fc = fc, reason = if (is.null(fc)) "a projecção espacial não tem anos para este horizonte" else NULL, combo = combo)
+  }
+
+  # INLA as one more candidate; `use` makes it the forecast shown.
+  add_inla_candidate <- function(result, inla, use = TRUE) {
+    result$inla_reason <- inla$reason
+    if (is.null(inla$fc) || INLA_MODEL_ID %in% result$fitted_models) return(result)
+    result$fc <- dplyr::bind_rows(result$fc, inla$fc)
+    result$fitted_models <- c(result$fitted_models, INLA_MODEL_ID)
+    result$inla_combo <- inla$combo
+    if (isTRUE(use)) {
+      result$recommended_model <- INLA_MODEL_ID
+      result$projection_method <- "inla"
+    }
+    result
+  }
+
+  # Where no classical model can run - a small area whose years with fewer
+  # than 10 deaths have no rate - the spatial model still projects it.
+  inla_only_result <- function(history, fc, horizon) {
+    list(
+      history = history,
+      obs = history$series[is.finite(history$series$value), , drop = FALSE],
+      fc = fc,
+      fits = list(),
+      fitted_models = character(0),
+      selected_model_ids = character(0),
+      failures = tibble::tibble(Model = character(0), Message = character(0)),
+      accuracy = tibble::tibble(),
+      recommended_model = NULL,
+      horizon = horizon,
+      conf_level = 95,
+      transform_method = "none",
+      bias_adjust = FALSE,
+      transform_label = "Sem transformação",
+      transform_inverse = identity,
+      model_specs = list(),
+      area_label = history$area_label,
+      inla_only = TRUE
+    )
+  }
+
+  # Fit, validate and combine for one training series. With the method "auto"
+  # (the default) the forecast shown is INLA's where it exists, the mean of
+  # six elsewhere.
   run_guided_forecast <- function(training_history, token) {
-    guided_result <- run_forecast_models(
-      history = training_history,
-      model_ids = unname(forecast_model_choices),
-      horizon = input$beginner_horizon,
-      kind = "beginner",
-      token = token
+    method <- value_or_default(input$beginner_method, "auto")
+    inla <- inla_for_history(training_history, input$beginner_horizon)
+    guided_result <- tryCatch(
+      run_forecast_models(
+        history = training_history,
+        model_ids = unname(forecast_model_choices),
+        horizon = input$beginner_horizon,
+        kind = "beginner",
+        token = token
+      ),
+      error = function(e) {
+        if (inherits(e, "validation") && !is.null(inla$fc)) return(NULL)
+        stop(e)
+      }
     )
-    validation <- evaluate_model_selection(
-      base_result = guided_result,
-      method = value_or_default(input$beginner_validation, "rolling"),
-      test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
-    )
-    combined <- add_forecast_averages(guided_result, validation, value_or_default(input$beginner_method, "mean6"))
-    guided_result <- combined$result
-    validation <- combined$validation
-    if (!is.null(validation$recommended_model)) {
-      guided_result$recommended_model <- validation$recommended_model
+    if (is.null(guided_result)) {
+      guided_result <- add_inla_candidate(inla_only_result(training_history, inla$fc, input$beginner_horizon), inla)
+      validation <- NULL
+    } else {
+      validation <- evaluate_model_selection(
+        base_result = guided_result,
+        method = value_or_default(input$beginner_validation, "rolling"),
+        test_fraction = value_or_default(input$beginner_test_pct, 25) / 100
+      )
+      combined <- add_forecast_averages(guided_result, validation, if (identical(method, "selected")) "selected" else "mean6")
+      guided_result <- combined$result
+      validation <- combined$validation
+      if (!is.null(validation$recommended_model)) {
+        guided_result$recommended_model <- validation$recommended_model
+      }
+      guided_result <- add_inla_candidate(guided_result, inla, use = identical(method, "auto"))
     }
     aggregate_infant_result(c(
       guided_result,
@@ -5061,8 +5161,10 @@ server <- function(input, output, session) {
                 highlight = map_highlight(settings$level, lookup))
 
     if (identical(settings$view, "projection")) {
-      validate(need(settings$level %in% PROJECTION_LEVELS,
-                    "As projecções fazem-se por NUTS III, ULS ou NUTS II: por município as séries são curtas e instáveis demais."))
+      validate(need(settings$level %in% PROJECTION_LEVELS || projection_inla_serves(settings),
+                    paste("As projecções por município fazem-se com o modelo espacial (INLA), nas suas 8 causas, taxa padronizada",
+                          "da população total e dados corrigidos; nos outros casos por NUTS III, ULS ou NUTS II: por município as",
+                          "séries são curtas e instáveis demais.")))
       units <- planning_map_units(settings$level, lookup)
       values <- shiny::withProgress(message = paste0("A projectar ", length(units), " áreas até ", settings$target, "..."), value = 0, {
         projection_map_values(settings$cause, settings$sex, identical(settings$metric, "dsr75"), settings$target, settings$level, lookup)
@@ -5140,6 +5242,11 @@ server <- function(input, output, session) {
   PROJECTION_MIN_YEARS <- 8L
   PROJECTION_MIN_DEATHS <- 10
   PROJECTION_LEVELS <- c("nuts3", "uls", "nuts2")
+  # Municipalities only through the INLA forecast.
+  projection_inla_serves <- function(settings) {
+    !is.null(inla_map_rows("Portugal", settings$cause, settings$sex, settings$target,
+                           under75 = identical(settings$metric, "dsr75"), mode = active_data_mode()))
+  }
   projection_cache <- new.env(parent = emptyenv())
 
   projection_state_key <- function(...) paste(..., active_nuts_vintage(), active_data_mode(), active_population_basis(),
@@ -5193,19 +5300,26 @@ server <- function(input, output, session) {
                    value = row$mean, lower = row$lower, upper = row$upper, members = length(members))
   }
 
+  # Where the precomputed INLA forecast covers an area (R/inla_forecasts.R)
+  # it is the projection; the other areas (ULS sharing a municipality) keep
+  # the mean of six.
   projection_map_values <- function(cause, sex, under75, target, level, lookup) {
     key <- projection_state_key("projection", cause, sex, under75, target, level)
     if (exists(key, envir = projection_cache, inherits = FALSE)) return(get(key, envir = projection_cache))
-    series <- projection_series(cause, sex, under75, level, lookup)
-    if (nrow(series) == 0) return(tibble::tibble())
-    token <- isolate(cancel_seq$maps)
     areas <- c("Portugal", planning_map_units(level, lookup))
-    rows <- lapply(seq_along(areas), function(i) {
-      shiny::setProgress(0.7 + 0.3 * i / length(areas), detail = areas[[i]])
-      one <- tryCatch(projection_one(series[series$area == areas[[i]], , drop = FALSE], target, token), error = function(e) NULL)
-      if (is.null(one)) NULL else dplyr::mutate(one, area = areas[[i]], .before = 1)
-    })
-    projected <- dplyr::bind_rows(rows)
+    inla <- inla_map_rows(areas, cause, sex, target, under75 = under75, mode = active_data_mode(), vintage = active_nuts_vintage())
+    rest <- setdiff(areas, inla$area)
+    rows <- list()
+    if (length(rest) > 0) {
+      series <- projection_series(cause, sex, under75, level, lookup)
+      token <- isolate(cancel_seq$maps)
+      rows <- lapply(seq_along(rest), function(i) {
+        shiny::setProgress(0.7 + 0.3 * i / length(rest), detail = rest[[i]])
+        one <- tryCatch(projection_one(series[series$area == rest[[i]], , drop = FALSE], target, token), error = function(e) NULL)
+        if (is.null(one)) NULL else dplyr::mutate(one, area = rest[[i]], method = FORECAST_MEAN_ID, .before = 1)
+      })
+    }
+    projected <- dplyr::bind_rows(c(list(inla), rows))
     if (nrow(projected) == 0) return(tibble::tibble())
     reference <- projected$value[projected$area == "Portugal"][1]
     out <- dplyr::left_join(tibble::tibble(area = areas[-1]), projected, by = "area")
@@ -5226,8 +5340,16 @@ server <- function(input, output, session) {
     metric <- cause_map_metric_label(s$metric)
     if (identical(s$view, "projection")) {
       metric <- if (identical(s$metric, "dsr75")) cause_map_metric_label("dsr75") else cause_map_metric_label("dsr")
+      methods <- unique(stats::na.omit(m$values$method))
+      how <- if (identical(methods, INLA_MODEL_ID)) {
+        "modelo espacial (INLA), face ao nível estimado para o último ano observado"
+      } else if (INLA_MODEL_ID %in% methods) {
+        "modelo espacial (INLA) face ao nível estimado; ULS com municípios partilhados: média de 6 modelos face ao último ano"
+      } else {
+        "média de 6 modelos, face ao último ano observado"
+      }
       list(title = paste0(s$cause, " · ", sex_label, " · projecção para ", m$target,
-                          "<br><sup>", metric, ", média de 6 modelos, face ao último ano observado</sup>"),
+                          "<br><sup>", metric, ", ", how, "</sup>"),
            scale = switch(s$scale, significance = "classes", quintile = "quintile", "linear"),
            classes = map_class_colours(MAP_CHANGE_LABELS),
            legend = if (identical(s$scale, "significance")) "Projecção" else "% face ao último ano<br>vermelho: sobe",
@@ -5937,8 +6059,31 @@ server <- function(input, output, session) {
     if (!is.null(validation) && !is.null(validation$recommended_model)) {
       base$recommended_model <- validation$recommended_model
     }
+    # The precomputed INLA forecast joins after the validation, which refits
+    # every model and cannot refit it; where it exists it is the default.
+    if (isTRUE(value_or_default(input$advanced_inla, TRUE))) {
+      base <- add_inla_candidate(base, advanced_inla())
+    }
     base
   })
+
+  # Read live, not frozen with the run: the four combinations of the switches
+  # B and C are all precomputed, so changing one needs no refit.
+  advanced_inla <- reactive({
+    base <- advanced_forecast_base()
+    inla_for_history(base$history, base$horizon, conf_level = base$conf_level,
+                     combo = inla_combo(value_or_default(input$inla_steps, INLA_DEFAULT_STEPS),
+                                        value_or_default(input$inla_covid, INLA_DEFAULT_COVID)))
+  })
+
+  # The models with a fit object to inspect: INLA is precomputed, so it has
+  # no residuals here.
+  diagnosable_result <- function(dat) {
+    if (is.null(dat)) return(NULL)
+    dat$fitted_models <- intersect(get_successful_model_ids(dat), names(dat$fits))
+    if (!isTRUE(dat$recommended_model %in% dat$fitted_models)) dat$recommended_model <- NULL
+    dat
+  }
 
   advanced_forecast_history <- reactive({
     req(input$go_forecast > 0)
@@ -5957,7 +6102,7 @@ server <- function(input, output, session) {
 
   advanced_diagnostic_model <- reactive({
     resolve_selected_successful_model(
-      dat = advanced_forecast_result(),
+      dat = diagnosable_result(advanced_forecast_result()),
       selected_model = input$diagnostic_model
     )
   })
@@ -6162,7 +6307,7 @@ server <- function(input, output, session) {
   # Advanced Forecasting: Diagnostics
   # -------------------------
   output$diagnosticModelSelector <- renderUI({
-    dat <- advanced_forecast_result()
+    dat <- diagnosable_result(advanced_forecast_result())
     successful_models <- get_successful_model_ids(dat)
 
     if (length(successful_models) == 0) {
@@ -6444,6 +6589,30 @@ server <- function(input, output, session) {
       p(build_break_interpretation_text(break_info))
     )
   })
+
+  # The INLA switches (R/inla_forecasts.R): whether the model serves this
+  # selection, and the effects it estimated.
+  output$inlaSwitchesNote <- renderUI({
+    if (nzchar(INLA_SWITCHES_TEXT)) helpText(tags$em(INLA_SWITCHES_TEXT))
+  })
+
+  output$inlaStatus <- renderUI({
+    req(input$go_forecast > 0)
+    if (!isTRUE(value_or_default(input$advanced_inla, TRUE))) {
+      return(p("O modelo espacial está desligado nas opções de modelos."))
+    }
+    inla <- advanced_inla()
+    if (!is.null(inla$reason)) return(p(paste0("Sem projecção espacial para esta selecção: ", inla$reason, ".")))
+    p(paste0("Projecção espacial em uso (", inla$combo, "). Efeitos estimados, como razões de taxas:"))
+  })
+
+  output$inlaEffectsTable <- renderTable({
+    req(input$go_forecast > 0, isTRUE(value_or_default(input$advanced_inla, TRUE)))
+    inla <- advanced_inla()
+    req(is.null(inla$reason))
+    spec <- advanced_forecast_base()$history$spec
+    inla_effects(spec$cause, spec$sex, inla$combo)
+  }, digits = 3)
 
   output$breakPlot <- renderPlot({
     build_break_plot(advanced_break_analysis())

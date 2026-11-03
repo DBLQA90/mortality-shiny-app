@@ -392,7 +392,8 @@ cause_map_projection_hover <- function(values, target) {
   pct <- function(x) formatC(x - 100, format = "f", digits = 0, decimal.mark = ",", flag = "+")
   paste0("<b>", values$area, "</b>",
          ifelse(is.finite(values$value),
-                paste0("<br>", values$last_year, ": ", planning_format_value(values$last_value, 1),
+                paste0("<br>", values$last_year, if (is.null(values$method)) "" else ifelse(values$method %in% "inla", " (nível estimado)", ""),
+                       ": ", planning_format_value(values$last_value, 1),
                        "<br>", target, ": ", planning_format_value(values$value, 1),
                        " (", planning_format_value(values$lower, 1), " a ", planning_format_value(values$upper, 1), ")",
                        "<br>Variação: ", pct(values$index), "%",

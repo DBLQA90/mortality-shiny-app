@@ -1820,6 +1820,98 @@ reads interval width, so it more often reports a lower reliability: that is the
 uncertainty, not a degradation. The mean is offered when at least four of its
 six members could be fitted (`FORECAST_MEAN_MIN_MEMBERS`).
 
+### Small-Area Forecasts: the INLA Model
+
+For one municipality, a ULS made of whole municipalities, a NUTS III or NUTS II
+of 2024 or Portugal, in eight causes (`INLA_CAUSES`: transport accidents,
+suicide, stomach, colon and trachea/bronchus/lung cancer, diabetes, pneumonia,
+ischaemic heart disease), the guided forecast's automatic method shows a
+precomputed Bayesian spatio-temporal forecast instead of the mean of six; the
+advanced tab adds it as a candidate and shows it by default, and the maps'
+projection view uses it (and so also maps municipalities). It serves the
+age-standardised rate of the whole population, in corrected data mode, when the
+fitting window ends in the last year of causes of death
+(`inla_unavailable_reason()`, `R/inla_forecasts.R`). The ULS sharing a
+municipality, other causes, crude or under-75 rates and other windows keep the
+mean of six.
+
+**Model** (`tools/precompute_inla.R`, R-INLA). Deaths by municipality (all 308),
+age band and year, 1999 to the last year, are Poisson with offset log
+person-years, from the maps' engine (`planning_standardised_pool(span = 1)`,
+so the observed rates are the app's; checked equal for Beja, Porto). Linear
+predictor: age band + a national linear trend + a change of slope in the last 6
+years + AR1 year deviations (sum to zero) + BYM2 municipality effect
+(neighbours: municipalities whose boundaries touch within 50 m, so the mainland
+and each island are separate components) + an iid slope per municipality + an
+iid municipality-year deviation; PC priors (precision U = 1, α = 0.01; slope
+U = 0.1; BYM2 mixing 0.5, 0.5). Age bands with fewer than 20 deaths in the
+country over the whole period are left out (at most 0.023% of deaths). The
+projected years keep the last year's person-years. 300 posterior samples of the
+expected deaths, plus Poisson draws for the predictive interval, are summed by
+band over each unit and standardised (ESP 2013); every aggregate is therefore
+exactly the sum of its municipalities. Stored: quantiles 2.5-97.5% of the rate
+and of the predictive draws, by unit and year, for the last 10 observed and 11
+projected years (`data/inla_forecasts/`, not in git, rebuilt from the
+snapshots).
+
+**Switches** (advanced tab, "Quebras e Estrutura"; all four combinations
+precomputed): B, level shifts at the breaks of INE's population series (2014,
+new indicator; 2021, census revision, only without C), so a jump of the
+denominator is not read as trend; C, a fixed effect for each of 2020, 2021 and 2022, so the COVID
+shocks keep their level but bend no trend (a projected year has none).
+
+**Interval.** The forecast is the posterior median; the interval is the
+predictive one, widened on the log scale around the median by a factor per
+level measured in the backtests (`INLA_WIDENING`), and for levels other than
+95% scaled by the ratio of normal quantiles.
+
+**Backtests.** Origins 2008, 2010, 2012, 2014, 2016, 2018, 2020, 2021 and
+2022, horizon 4, the 8 causes × 3 sexes, on the corrected data; the model sees
+only the years up to the origin (research scripts and full tables:
+`~/Desktop/DGS/Mortality/forecast_smallarea_2026/`, `decisions_*_all.txt`).
+Triennium of the last three projected years, cases where the mean of six also
+forecasts, default combination (B off, C on):
+
+| Level | Bias INLA | Bias M6 | Median rel. error INLA | M6 | 95% coverage INLA (unwidened) | M6 |
+|---|---:|---:|---:|---:|---:|---:|
+| ULS | +2.0% | +10.8% | 12.5% | 14.5% | 0.918 | 0.968 |
+| NUTS III | +0.6% | +10.1% | 12.0% | 14.0% | 0.917 | 0.967 |
+| NUTS II | +0.5% | +9.4% | 10.5% | 11.7% | 0.914 | 0.968 |
+| Portugal | +2.6% | +6.5% | 8.7% | 6.9% | 0.894 | 0.954 |
+
+The mean of six's intervals are wider (1.5 times in the ULS, 1.25 in the NUTS II, the same in Portugal). Where the mean of six
+cannot forecast (1394 ULS and 797 NUTS III cases), INLA's coverage is 0.94.
+Municipalities: bias -4.1% (islands -13%, mainland -2.7%), coverage 0.95.
+
+**Switch defaults.** Against the model without either switch, all 9 origins
+(ULS, triennium): B alone raised the bias (+0.2% to +2.4%) and the error (2.70
+to 2.85 per 100 000) and lowered coverage (0.905 to 0.894), with the largest
+harm at the 2018 origin (coverage of all aggregates 0.93 to 0.87); B is off by default. The 2021
+step is untested. With C on it is left out: at origin 2024 only 2023-2024
+follow it, it cannot be told from the 2021-2022 COVID effects, and it took the
+rebound after COVID as a population jump (pneumonia: step 1.59, COVID 2021
+0.59, Portugal's 2035 projection 8.8 against 20.1 without B; women's lung
+cancer 45.7 against 19.7). So with C, B is the 2014 step alone, as backtested. C changes only the
+origins after COVID: bias at 2021 -7.7% to -0.2%, at 2022 -5.3% to -2.5%,
+coverage 0.86 to 0.94 and 0.88 to 0.95, median absolute error 2.33 to 3.00 and
+2.52 to 3.24; C is on by default, since the published origin, 2024, is the
+closest to these.
+
+**Widening factors** (`INLA_WIDENING`): per combination and level, the 95th
+percentile over every projected year (1-4 ahead) of the factor needed to
+cover the observed rate, never below 1:
+
+| Combination | municipio | ULS | NUTS III | NUTS II | Portugal |
+|---|---:|---:|---:|---:|---:|
+| B off, C off | 1.00 | 1.09 | 1.11 | 1.08 | 1.00 |
+| **B off, C on** | **1.00** | **1.06** | **1.08** | **1.08** | **1.08** |
+| B on, C off | 1.00 | 1.10 | 1.13 | 1.14 | 1.15 |
+| B on, C on | 1.00 | 1.09 | 1.13 | 1.17 | 1.28 |
+
+Coverage still falls with the horizon (Portugal, widened: 0.97 one year ahead,
+0.93 four years ahead); the app projects to 11 years, beyond what the backtests
+can test, so the intervals past year 4 are likely too narrow.
+
 ### Combining Models and Comparing Areas
 
 The guided forecast also offers the equal-weight combination of the three

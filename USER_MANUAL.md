@@ -589,7 +589,7 @@ Controlos principais:
 - `Janela de ajuste`;
 - horizonte da previsão, em anos a partir do último ano com dados; o rótulo diz o ano a que chega (por exemplo «até 2030»);
 - modo de previsão;
-- em `Mostrar opções avançadas` (opcional): a `Projecção apresentada` (média de 6 modelos ou o modelo com menor erro), o método de validação e o `Tamanho do teste (% dos anos)`.
+- em `Mostrar opções avançadas` (opcional): a `Projecção apresentada` (automática, média de 6 modelos ou o modelo com menor erro), o método de validação e o `Tamanho do teste (% dos anos)`.
 
 Em `Indicador` pode escolher a taxa de mortalidade (por causa) ou a **mortalidade infantil** (por 1.000 nados-vivos), anual, por triénio ou por quinquénio. Para um triénio ou quinquénio há dois métodos:
 
@@ -609,7 +609,7 @@ Modos típicos:
 
 ### A projecção apresentada: média de 6 modelos
 
-Por omissão, a projecção é a **média de 6 modelos**: ARIMA, ETS, Theta, TBATS,
+Fora dos casos do modelo espacial (secção seguinte), a projecção é a **média de 6 modelos**: ARIMA, ETS, Theta, TBATS,
 Holt e Holt amortecido. O valor central é a média das seis projecções. O
 intervalo junta a incerteza de cada modelo com o desacordo entre eles, e por isso
 é mais largo do que o de um modelo sozinho.
@@ -642,6 +642,55 @@ vezes que a fiabilidade é moderada ou mais baixa.
 O modelo com menor erro continua disponível em `Mostrar opções avançadas` →
 `Projecção apresentada`. A tabela de validação mostra sempre o erro de cada
 modelo e das duas médias.
+
+### Áreas pequenas: o modelo espacial (INLA)
+
+Para **um município, uma ULS de municípios inteiros, uma NUTS de 2024 ou
+Portugal**, em **8 causas** (acidentes de transporte, suicídio, tumores malignos
+do estômago, do cólon e da traqueia, brônquios e pulmão, diabetes, pneumonia e
+doenças isquémicas do coração), com a taxa padronizada da população total, os
+dados corrigidos e a janela de ajuste a terminar no último ano de causas de
+morte, a projecção apresentada por omissão (`Automática`) é a do **modelo
+espacial**.
+
+Os modelos de séries temporais olham para uma área de cada vez. Num município
+pequeno, metade dos anos pode ter menos de 10 óbitos e ficar sem taxa, e a
+série não chega para projectar. O modelo espacial estima os 308 municípios em
+conjunto: cada um tem o seu nível e a sua tendência, mas apoia-se nos vizinhos e
+na tendência nacional quando os seus próprios óbitos são poucos. Uma ULS ou NUTS
+é a soma dos seus municípios, por isso as projecções somam certo de um nível
+para o seguinte. Projecta também as áreas onde a média de 6 não consegue: nesse
+caso é a única projecção, e o resumo di-lo.
+
+É um modelo bayesiano (INLA) de Poisson dos óbitos por município, idade e ano,
+ajustado de 1999 ao último ano, e **pré-calculado**: demora um a dois minutos
+por causa e sexo e precisa de 6 GB de memória, por isso a aplicação lê o
+resultado em vez de o ajustar. O intervalo é o de previsão (inclui o acaso dos
+óbitos de cada ano), alargado pelo factor que os testes com dados passados
+mostraram necessário para conter 95% dos valores observados.
+
+**Testes com dados passados.** O modelo foi testado como a média de 6: previsões
+feitas a partir de 9 anos (2008-2022), com os dados até esse ano, comparadas com
+o que aconteceu nos 4 anos seguintes, nas 8 causas e nos 3 sexos. Nos casos em
+que a média de 6 também projecta (média dos 3 últimos anos projectados):
+
+| Nível | Viés, INLA | Viés, média de 6 | Erro relativo, INLA | Erro relativo, média de 6 |
+|---|---:|---:|---:|---:|
+| ULS | +2,0% | +10,8% | 12,5% | 14,5% |
+| NUTS III | +0,6% | +10,1% | 12,0% | 14,0% |
+| NUTS II | +0,5% | +9,4% | 10,5% | 11,7% |
+| Portugal | +2,6% | +6,5% | 8,7% | 6,9% |
+
+Nas ULS e NUTS o modelo espacial erra menos e quase sem viés. Em Portugal, que
+tem óbitos de sobra, a média de 6 erra um pouco menos; o modelo espacial é usado
+na mesma para que Portugal seja a soma das suas regiões. Os intervalos de 95% do
+modelo, alargados, contiveram 95% dos valores observados em cada nível, 1 a 4
+anos à frente; para lá de 4 anos não há anos suficientes para o testar.
+
+Para usar a média de 6 nestes casos, escolha `Média de 6 modelos` em
+`Mostrar opções avançadas` → `Projecção apresentada`. A tabela de validação
+continua a comparar os modelos de séries temporais; o modelo espacial foi
+testado à parte.
 
 ### Combinação de modelos e vários locais
 
@@ -732,6 +781,13 @@ Use quando precisa de:
 
 `Holt amortecido` reduz a extrapolação indefinida da tendência. Pode ser mais prudente quando uma subida ou descida não deve continuar para sempre ao mesmo ritmo.
 
+`Modelo espacial (INLA)` não se escolhe na lista de famílias: entra com
+`Incluir o modelo espacial (INLA, pré-calculado)`, ligado por omissão, nos casos
+descritos em «Áreas pequenas: o modelo espacial (INLA)» (secção 7), e é então a
+projecção apresentada por omissão. Como é pré-calculado, não tem resíduos nem
+entra no backtesting deste separador; as suas opções estão em `Quebras e
+Estrutura`.
+
 ### Transformações
 
 A transformação logarítmica pode estabilizar séries positivas e reduzir a influência de valores extremos. A previsão é ajustada na escala transformada e depois reconvertida.
@@ -813,6 +869,32 @@ Limitações fundamentais:
 - uma quebra deve ser interpretada com conhecimento epidemiológico e histórico.
 
 Se houver uma quebra importante, compare previsões com janelas de ajuste diferentes. Uma previsão usando toda a série pode ser menos adequada do que uma previsão usando apenas o período posterior à quebra.
+
+**Opções do modelo espacial.** No topo do separador há duas opções do modelo
+espacial (INLA). As quatro combinações estão pré-calculadas, por isso mudar uma
+actualiza a projecção de imediato, sem novo ajuste:
+
+- **B. Separar as quebras da série de população (2014 e 2021).** Em 2014 o INE
+  passou a outro indicador de população e em 2021 reviu-a com os Censos: a
+  população salta, e com ela as taxas, sem que a mortalidade mude. Com esta
+  opção o modelo estima um degrau em cada quebra, em vez de o ler como
+  tendência. Com C ligado, só a quebra de 2014: a de 2021 não se distingue
+  dos anos de COVID-19, porque só 2023 e 2024 vêm depois.
+- **C. Separar os anos de COVID-19 (2020-2022).** Cada um destes anos tem um
+  efeito próprio: mantém o seu nível observado, mas não dobra a tendência
+  projectada. Os anos projectados não têm efeito de COVID.
+
+**Por omissão, B está desligado e C ligado**, pelos mesmos testes com dados
+passados. Com B, a quebra de 2014 aumentou o viés e o erro e baixou a cobertura
+dos intervalos (ULS: 89% contra 91% sem ela); a quebra de 2021 ainda não pôde
+ser testada. Com C, as
+previsões feitas depois da pandemia perderam quase todo o viés (ULS, a partir
+de 2021: de -7,7% para -0,2%; cobertura de 86% para 94%), à custa de um erro um
+pouco maior em cada previsão. Pode ligar ou desligar cada uma: os intervalos de
+cada combinação estão alargados pelo factor medido para ela.
+
+Por baixo, a tabela mostra os efeitos estimados, como razões de taxas: 1,05
+quer dizer que o termo sobe a taxa 5%.
 
 ## 9. Métricas de Erro
 
@@ -1019,14 +1101,18 @@ mortalidade por essa causa é mais alta ou mais baixa do que em Portugal.
     Portugal: 0% quer dizer que a área acompanha Portugal.
   - **Variação entre dois triénios:** o valor no triénio escolhido face a um
     triénio anterior sem anos em comum (= 100), com intervalo.
-  - **Projecção:** a taxa padronizada de cada NUTS III, ULS ou NUTS II no ano
-    escolhido (2026 a 2035), com o método da Previsão Guiada (a média de 6
-    modelos, ajustados à taxa anual), face ao último ano observado. Coincide com a
-    Previsão Guiada da mesma área (testado na ULS Matosinhos: 740 em 2030 nos
-    dois). As séries com anos de menos de 10 óbitos usam os anos seguidos mais
-    recentes, no mínimo 8; com menos, a área fica sem projecção. Por município
-    não há projecções: as séries são curtas e instáveis. Da primeira vez demora
-    cerca de um minuto.
+  - **Projecção:** a taxa padronizada de cada área no ano escolhido (2026 a
+    2035), com o método da Previsão Guiada. Nas 8 causas do modelo espacial
+    (INLA), com a taxa padronizada da população total e os dados corrigidos, é a
+    projecção desse modelo, face ao nível que ele estima para o último ano
+    observado (num município pequeno, a taxa observada de um só ano é ruído
+    demais para comparar), e há projecções também **por município**; as ULS que
+    partilham um município ficam com a média de 6. Nos outros casos, só por NUTS
+    III, ULS ou NUTS II: a média de 6 modelos, ajustados à taxa anual, face ao
+    último ano observado. Coincide com a Previsão Guiada da mesma área (testado
+    na ULS Matosinhos: 740 em 2030 nos dois). As séries com anos de menos de 10
+    óbitos usam os anos seguidos mais recentes, no mínimo 8; com menos, a área
+    fica sem projecção. Da primeira vez demora cerca de um minuto.
 - **Cores:**
   - **Escala contínua:** face a Portugal, de 67 a 150 (vermelho acima, azul
     abaixo); na tendência, de -5% a +5% por ano; na variação, face ao triénio

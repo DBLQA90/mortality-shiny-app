@@ -11,3 +11,6 @@ backups/
 
 # testthat writes these when a test fails; they are not test sources.
 tests/testthat/_problems/
+
+# Precomputed INLA forecasts (tools/precompute_inla.R): rebuilt from the snapshots.
+data/inla_forecasts/

@@ -42,6 +42,10 @@ unknown_residence <- sapply(c("2021", "2022", "2023"), function(y) {
   totals$deaths[totals$area == "Portugal"] - sum(totals$deaths[totals$area %in% readRDS("data/nuts_lookup_2024.rds")$municipality])
 })
 
+# The INLA switches' defaults: the app's modules are not visible inside testServer.
+inla <- new.env()
+sys.source("R/inla_forecasts.R", envir = inla)
+
 testServer(app, {
 
   run <- function(metric, pooling, year = 2022, area = "Barrancos", ref = "Portugal",
@@ -489,6 +493,52 @@ testServer(app, {
       cat(sprintf("   %s: %s, %d = %.2f (%.2f; %.2f) %s\n", method, f$recommended_model, last$year, last$mean, last$lower, last$upper,
                   verdict(is.finite(last$mean) && last$lower < last$mean && last$mean < last$upper &&
                             identical(f$recommended_model, "mean6"), "OK", paste("infant forecast", method))))
+    }
+  }
+
+  # The precomputed INLA forecasts (tools/precompute_inla.R), when present.
+  if (file.exists("data/inla_forecasts/manifest.rds")) {
+    cat("\n=== INLA forecasts: guided (Barrancos, Beja), advanced switches (Porto), municipal map ===\n")
+    for (area in c("Barrancos", "Beja")) {
+      session$setInputs(beginner_area = area, beginner_area_label = "", beginner_indicator = "mortality",
+                        beginner_cause = "Diabetes mellitus", beginner_sex = "HM", beginner_population = "Total",
+                        beginner_rate_type = "dsr", beginner_data_source = "snapshot", beginner_horizon = 6,
+                        beginner_years_fit = c(2001, 2025), beginner_mode = "recommended", beginner_method = "auto",
+                        beginner_validation = "rolling", beginner_test_pct = 25,
+                        go_beginner_forecast = 20 + match(area, c("Barrancos", "Beja")))
+      f <- tryCatch(beginner_forecast(), error = function(e) e)
+      if (!failed(f, paste("INLA guided", area))) {
+        last <- utils::tail(f$fc[f$fc$model == f$recommended_model, ], 1)
+        cat(sprintf("   %s: %s%s, %d = %.1f (%.1f; %.1f) %s\n", area, f$recommended_model, if (isTRUE(f$inla_only)) " (only)" else "",
+                    last$year, last$mean, last$lower, last$upper,
+                    verdict(identical(f$recommended_model, "inla") && last$lower <= last$mean && last$mean <= last$upper,
+                            "OK", paste("INLA guided", area))))
+      }
+    }
+    session$setInputs(area2 = "Porto", area_label2 = "", cause2 = "Pneumonia", sex2 = "HM", population2 = "Total",
+                      rate_type2 = "dsr", years_fit = c(2001, 2024), data_source2 = "snapshot", models = c("arima", "ets"),
+                      horizon = 5, conf_level2 = 95, transform2 = "log_offset", bias_adjust2 = TRUE, advanced_inla = TRUE,
+                      inla_steps = inla$INLA_DEFAULT_STEPS, inla_covid = inla$INLA_DEFAULT_COVID, go_forecast = 20)
+    a <- tryCatch(advanced_forecast_result(), error = function(e) e)
+    if (inherits(a, "error")) cat("   advanced:", conditionMessage(a), "\n")
+    if (!failed(a, "INLA advanced")) {
+      one <- utils::tail(a$fc[a$fc$model == "inla", ], 1)
+      session$setInputs(inla_steps = !inla$INLA_DEFAULT_STEPS)
+      b <- tryCatch(advanced_forecast_result(), error = function(e) e)
+      other <- if (inherits(b, "error")) NULL else utils::tail(b$fc[b$fc$model == "inla", ], 1)
+      cat(sprintf("   advanced Porto pneumonia: recommended %s; %d = %.1f, switch B flipped %.1f %s\n", a$recommended_model,
+                  one$year, one$mean, if (is.null(other)) NA else other$mean,
+                  verdict(identical(a$recommended_model, "inla") && !is.null(other) && nrow(other) == 1 && other$mean != one$mean,
+                          "OK", "INLA advanced switches")))
+      session$setInputs(inla_steps = inla$INLA_DEFAULT_STEPS)
+    }
+    session$setInputs(map_cause = "Diabetes mellitus", map_sex = "HM", map_metric = "dsr", map_level = "municipio",
+                      map_scale = "index", map_view = "projection", map_target_year = "2030", go_map = 20)
+    m <- tryCatch(cause_map()$values, error = function(e) e)
+    if (!failed(m, "INLA municipal map")) {
+      cat(sprintf("   map 2030, municipalities: %d, %d projected, all INLA: %s %s\n", nrow(m), sum(is.finite(m$value)),
+                  all(m$method == "inla"), verdict(nrow(m) == 308 && all(is.finite(m$value)) && all(m$method == "inla"),
+                                                   "OK", "INLA municipal map")))
     }
   }
 }, session = MockShinySession$new())

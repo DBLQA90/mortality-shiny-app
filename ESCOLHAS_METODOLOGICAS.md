@@ -264,7 +264,7 @@ Nos óbitos por causa, o INE oculta sobretudo a repartição por sexo: publica o
 
 - A tendência usa triénios sem anos em comum, com a mesma regressão da tendência dos Indicadores de Planeamento.
 - A variação compara dois triénios sem anos em comum.
-- A projecção usa o método da Previsão Guiada (a média de 6 modelos) e só se faz por NUTS III, ULS e NUTS II.
+- A projecção usa o método da Previsão Guiada: o modelo espacial (INLA) nas suas 8 causas, que projecta também cada município; nas outras, a média de 6 modelos, só por NUTS III, ULS e NUTS II.
 - Todas têm também a versão de três cores (▲ = ▼).
 
 **Porquê.**
@@ -315,6 +315,22 @@ Dois modelos ficaram de fora da média: o passeio aleatório e o modelo ingénuo
 - Os intervalos são cerca de duas vezes mais largos do que eram. É a incerteza real a alguns anos de distância.
 - A projecção muda menos quando chegam dados novos.
 - A escolha do «melhor modelo» continua disponível nas opções avançadas.
+
+### Áreas pequenas: o modelo espacial
+
+**O que fazemos.** Para um município, uma ULS de municípios inteiros, uma NUTS de 2024 ou Portugal, em 8 causas, a Previsão Guiada apresenta a projecção de um modelo espacial (INLA), pré-calculado: estima os 308 municípios em conjunto, e cada um apoia-se nos vizinhos e na tendência nacional. Uma ULS ou NUTS é a soma dos seus municípios.
+
+**Porquê.** Num município pequeno, muitos anos têm menos de 10 óbitos e ficam sem taxa: a média de 6 não tem série para projectar. Mesmo onde tem, olha para uma área de cada vez e confunde o acaso de poucos óbitos com tendência.
+
+**Como foi testado.** Como a média de 6: previsões feitas a partir de 9 anos (2008-2022), com os dados até esse ano, comparadas com o que aconteceu nos 4 anos seguintes, em 8 causas e 3 sexos. Nas ULS e NUTS o viés ficou entre +0,5% e +2%, contra cerca de +10% da média de 6, e o erro relativo foi menor (ULS: 12,5% contra 14,5%). Em Portugal a média de 6 erra um pouco menos (6,9% contra 8,7%); o modelo espacial é usado na mesma para que Portugal seja a soma das suas regiões. Os intervalos de 95% foram alargados até conterem 95% dos valores observados, 1 a 4 anos à frente.
+
+**As duas opções.** Separar os anos de COVID-19 está ligado por omissão: tirou quase todo o viés às previsões feitas depois da pandemia (ULS, a partir de 2021: de -7,7% para -0,2%). Separar as quebras da série de população está desligado: a quebra de 2014 piorou as previsões, e a de 2021 ainda não pôde ser testada (com a COVID-19 separada, fica de fora: não se distingue desses anos).
+
+**O que significa para si.**
+
+- Há projecção também para municípios e ULS pequenos, e as projecções somam certo de um nível para o seguinte.
+- O modelo é pré-calculado: mudar a janela de ajuste para acabar antes do último ano, pedir a taxa bruta ou a população com menos de 75 anos volta à média de 6.
+- Na Previsão Avançada pode ligar e desligar duas opções do modelo: separar as quebras da série de população (2014 e 2021) e separar os anos de COVID-19.
 
 ### O valor central é o valor esperado
 

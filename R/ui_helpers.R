@@ -240,7 +240,11 @@ infant_method_help <- function() {
 }
 beginner_method_help <- function() {
   helpText(
-    "Por omissão, a projecção é a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido), com um ",
+    "Para um município, uma ULS de municípios inteiros, uma NUTS de 2024 ou Portugal, em 8 causas de morte, ",
+    "a projecção é a do modelo espacial (INLA), pré-calculado: estima todos os municípios em conjunto, cada um ",
+    "apoiado nos vizinhos e na tendência nacional, e por isso projecta também áreas pequenas, com anos de menos ",
+    "de 10 óbitos. Nos outros casos, ",
+    "a projecção é a média de 6 modelos (ARIMA, ETS, Theta, TBATS, Holt e Holt amortecido), com um ",
     "intervalo que junta a incerteza de cada um e o desacordo entre eles. Em testes com dados passados, a 4 anos, ",
     "errou menos do que escolher o modelo com menor erro e foi mais estável: a escolha muda muitas vezes de modelo ",
     "quando chega mais um ano de dados, e os intervalos de um só modelo são em geral estreitos demais."
@@ -288,6 +292,12 @@ forecast_controls_panel <- function() {
       selected = c("arima", "ets")
     ),
     models_help(),
+    checkboxInput("advanced_inla", "Incluir o modelo espacial (INLA, pré-calculado)", value = TRUE),
+    helpText(
+      "Para um município, uma ULS de municípios inteiros, uma NUTS de 2024 ou Portugal, em 8 causas, taxa padronizada ",
+      "da população total, com a janela de ajuste a terminar no último ano de causas de morte. Onde existe, é a ",
+      "projecção apresentada por omissão. As opções do modelo estão em 'Quebras e Estrutura'."
+    ),
     sliderInput(
       "horizon",
       "Horizonte de projecção (anos):",
@@ -440,10 +450,11 @@ beginner_forecast_controls_panel <- function() {
         "beginner_method",
         "Projecção apresentada:",
         choices = c(
-          "Média de 6 modelos (recomendada)" = "mean6",
+          "Automática: modelo espacial onde existir, senão média de 6 (recomendada)" = "auto",
+          "Média de 6 modelos" = "mean6",
           "O modelo com menor erro na validação" = "selected"
         ),
-        selected = "mean6"
+        selected = "auto"
       ),
       beginner_method_help(),
       radioButtons(
@@ -1541,6 +1552,29 @@ advanced_breaks_tab_ui <- function() {
   tabPanel(
     "Quebras e Estrutura",
     forecast_selection_note_ui(),
+    wellPanel(
+      h4("Modelo espacial (INLA): quebras da série e COVID-19"),
+      p(
+        "Duas opções do modelo espacial. Cada combinação está pré-calculada: ",
+        "mudar uma actualiza a projecção sem novo ajuste."
+      ),
+      checkboxInput("inla_steps", "B. Separar as quebras da série de população (2014 e 2021)", value = INLA_DEFAULT_STEPS),
+      helpText(
+        "Em 2014 o INE passou a outro indicador de população e em 2021 reviu-a com os Censos: a população salta, ",
+        "e com ela as taxas, sem que a mortalidade mude. Com esta opção o modelo estima um degrau em cada quebra, ",
+        "em vez de o ler como tendência. Sem ela, o salto entra na tendência e é projectado para o futuro. ",
+        "Com C ligado, só a quebra de 2014: a de 2021 não se distingue dos anos de COVID-19, e só 2023 e 2024 vêm depois."
+      ),
+      checkboxInput("inla_covid", "C. Separar os anos de COVID-19 (2020-2022)", value = INLA_DEFAULT_COVID),
+      helpText(
+        "2020-2022 tiveram mortalidade excepcional. Com esta opção cada um destes anos tem um efeito próprio: ",
+        "mantém o seu nível observado, mas não dobra a tendência projectada; os anos projectados não têm efeito de COVID. ",
+        "Sem ela, os três anos pesam na tendência como quaisquer outros."
+      ),
+      uiOutput("inlaSwitchesNote"),
+      uiOutput("inlaStatus"),
+      tableOutput("inlaEffectsTable")
+    ),
     uiOutput("breakInterpretation"),
     br(),
     plotOutput("breakPlot", height = "400px"),

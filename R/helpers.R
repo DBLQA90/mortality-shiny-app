@@ -30,7 +30,8 @@ safe_filename_token <- function(x) {
 
 # Models the guided forecast builds from the others, not fitted on their own.
 forecast_derived_model_labels <- c("Combinação (média dos 3 melhores)" = "combo",
-                                   "Média de 6 modelos" = "mean6")
+                                   "Média de 6 modelos" = "mean6",
+                                   "Modelo espacial (INLA)" = "inla")
 
 get_model_labels <- function(model_ids) {
   choices <- c(forecast_model_choices, forecast_derived_model_labels)
