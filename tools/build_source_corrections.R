@@ -244,6 +244,15 @@ corrections <- list(
            reason = SEX_REASON, built = format(Sys.Date()))
   )
 )
+# Keep the build date of the file in place when nothing else changed: a new
+# date alone would replace the file, archive a copy and log an import on every
+# scheduled refresh although no correction moved.
+previous <- tryCatch(readRDS("data/source_corrections.rds"), error = function(e) NULL)
+if (!is.null(previous) && nrow(previous$notes) == nrow(corrections$notes)) {
+  same_date <- corrections
+  same_date$notes$built <- previous$notes$built
+  if (snapshot_content_equal(previous, same_date)) corrections <- same_date
+}
 versioned_save_rds(corrections, "data/source_corrections.rds", tool = "build_source_corrections.R",
                    note = "INE 2011 Alto Alentejo all-cause rows; totals by sex withheld by INE")
 
